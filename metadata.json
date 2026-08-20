@@ -1,0 +1,6 @@
+{
+  "name": "Ghana Civic Awareness & Citizen Reporting Network",
+  "description": "A mobile-first megaphone for Ghanaian citizens to publish civic issues, tag verified institutions, amplify community voices with zero followers, and track official public responses.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

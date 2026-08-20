@@ -50,7 +50,7 @@ export const api = {
     return data;
   },
 
-  async register(data: { email: string; password: string; name: string; handle?: string; role?: string }): Promise<{ token: string; user: any }> {
+  async register(data: { email: string; password: string; name: string; handle?: string; role?: string; phone?: string; institutionId?: string }): Promise<{ token: string; user: any }> {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -160,6 +160,15 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to toggle confirmation');
+    return res.json();
+  },
+
+  async toggleFollowIssue(postId: string): Promise<{ success: boolean; followed: boolean; followersCount: number }> {
+    const res = await fetch(`/api/posts/${postId}/follow`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to toggle follow issue');
     return res.json();
   },
 
@@ -293,6 +302,44 @@ export const api = {
       body: JSON.stringify({ postId, reason, details })
     });
     if (!res.ok) throw new Error('Failed to submit abuse report');
+    return res.json();
+  },
+
+  // Official Responses & Communiqués
+  async getResponseById(id: string): Promise<{ response: InstitutionResponse; originalPost: CivicPost | null; relatedResponses: InstitutionResponse[] }> {
+    const res = await fetch(`/api/responses/${id}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch response statement');
+    return res.json();
+  },
+
+  async addResponseComment(responseId: string, content: string, authorInfo?: { userName?: string; userHandle?: string }): Promise<any> {
+    const res = await fetch(`/api/responses/${responseId}/comments`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ content, ...authorInfo })
+    });
+    if (!res.ok) throw new Error('Failed to submit comment on statement');
+    return res.json();
+  },
+
+  async voteResponseHelpful(responseId: string, voteType: 'helpful' | 'unhelpful', userId?: string): Promise<{ helpfulCount: number; unhelpfulCount: number; userVote: string | null }> {
+    const res = await fetch(`/api/responses/${responseId}/vote`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ voteType, userId })
+    });
+    if (!res.ok) throw new Error('Failed to vote on response');
+    return res.json();
+  },
+
+  async likeResponseComment(commentId: string): Promise<{ success: boolean; likesCount: number }> {
+    const res = await fetch(`/api/responses/comments/${commentId}/like`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to like statement reply');
     return res.json();
   },
 

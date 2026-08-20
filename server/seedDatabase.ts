@@ -208,12 +208,24 @@ export async function seedDatabaseIfEmpty() {
   const insertResponse = db.prepare(`
     INSERT INTO institution_responses (
       id, post_id, institution_id, institution_name, institution_logo, response_type, message,
+      statement_title, full_statement, reference_number, action_timeline_json, resolution_status,
+      documents_json, hotlines_json, helpful_count, unhelpful_count,
       official, verified, responder_name, responder_title, redirected_to_institution_id,
       redirected_to_institution_name, created_at
     ) VALUES (
       @id, @post_id, @institution_id, @institution_name, @institution_logo, @response_type, @message,
+      @statement_title, @full_statement, @reference_number, @action_timeline_json, @resolution_status,
+      @documents_json, @hotlines_json, @helpful_count, @unhelpful_count,
       @official, @verified, @responder_name, @responder_title, @redirected_to_institution_id,
       @redirected_to_institution_name, @created_at
+    )
+  `);
+
+  const insertResponseComment = db.prepare(`
+    INSERT INTO response_comments (
+      id, response_id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, content, likes_count, created_at
+    ) VALUES (
+      @id, @response_id, @post_id, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @content, @likes_count, @created_at
     )
   `);
 
@@ -292,6 +304,15 @@ export async function seedDatabaseIfEmpty() {
         institution_logo: r.institutionLogo || null,
         response_type: r.responseType,
         message: r.message,
+        statement_title: r.statementTitle || null,
+        full_statement: r.fullStatement || r.message,
+        reference_number: r.referenceNumber || null,
+        action_timeline_json: r.actionTimeline ? JSON.stringify(r.actionTimeline) : null,
+        resolution_status: r.resolutionStatus || 'IN_PROGRESS',
+        documents_json: r.documents ? JSON.stringify(r.documents) : null,
+        hotlines_json: r.hotlines ? JSON.stringify(r.hotlines) : null,
+        helpful_count: r.helpfulCount || 0,
+        unhelpful_count: r.unhelpfulCount || 0,
         official: r.official ? 1 : 0,
         verified: r.verified ? 1 : 0,
         responder_name: r.responderName,
@@ -300,6 +321,22 @@ export async function seedDatabaseIfEmpty() {
         redirected_to_institution_name: r.redirectedToInstitutionName || null,
         created_at: r.createdAt || now
       });
+
+      for (const rc of r.commentsList || []) {
+        insertResponseComment.run({
+          id: rc.id,
+          response_id: r.id,
+          post_id: p.id,
+          user_id: rc.userId,
+          user_name: rc.userName,
+          user_handle: rc.userHandle,
+          user_avatar: rc.userAvatar || null,
+          is_verified: rc.isVerified ? 1 : 0,
+          content: rc.content,
+          likes_count: rc.likesCount || 0,
+          created_at: rc.createdAt || now
+        });
+      }
     }
   }
 

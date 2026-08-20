@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { db, initDatabase } from './server/db';
-import { seedDatabaseIfEmpty } from './server/seedDatabase';
+import { db, initDatabase } from '../server/db';
+import { seedDatabaseIfEmpty } from '../server/seedDatabase';
 
 describe('Speak Up Core System Tests', () => {
   beforeAll(async () => {

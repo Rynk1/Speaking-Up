@@ -48,6 +48,9 @@ export interface PostMedia {
   waveform?: number[];
   blurred?: boolean;
   uploadedAt: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  fileName?: string;
 }
 
 export interface PostLocation {
@@ -71,6 +74,35 @@ export interface PostInstitutionTag {
   deliveryTimestamp?: string;
 }
 
+export interface ResponseTimelineStep {
+  step: string;
+  status: 'completed' | 'in_progress' | 'scheduled';
+  timestamp?: string;
+  description?: string;
+}
+
+export interface ResponseDocument {
+  title: string;
+  url: string;
+  fileType: string;
+  size?: string;
+}
+
+export interface ResponseComment {
+  id: string;
+  responseId: string;
+  postId?: string;
+  userId: string;
+  userName: string;
+  userHandle: string;
+  userAvatar?: string;
+  isVerified?: boolean;
+  content: string;
+  createdAt: string;
+  likesCount: number;
+  userLiked?: boolean;
+}
+
 export interface InstitutionResponse {
   id: string;
   postId: string;
@@ -85,6 +117,18 @@ export interface InstitutionResponse {
     | 'OUTSIDE_MANDATE'
     | 'CONTACT_DIRECTLY';
   message: string;
+  statementTitle?: string;
+  fullStatement?: string;
+  referenceNumber?: string;
+  actionTimeline?: ResponseTimelineStep[] | string;
+  resolutionStatus?: 'IN_PROGRESS' | 'RESOLVED' | 'UNDER_REVIEW' | 'MONITORING' | 'REFERRED';
+  documents?: ResponseDocument[];
+  hotlines?: string[];
+  helpfulCount?: number;
+  unhelpfulCount?: number;
+  userHelpfulVote?: 'helpful' | 'unhelpful';
+  commentsCount?: number;
+  commentsList?: ResponseComment[];
   official: boolean;
   verified: boolean;
   responderName: string;
@@ -169,7 +213,9 @@ export interface CivicPost {
     shares: number;
     confirmations: number;
     comments: number;
+    followersCount?: number;
   };
+  userFollowed?: boolean;
   userConfirmed?: boolean;
   userBookmarked?: boolean;
   userReposted?: boolean;
@@ -185,13 +231,17 @@ export interface Institution {
   officialName: string;
   shortName: string;
   acronym: string;
-  verified: boolean;
-  logo: string;
+  verified?: boolean;
+  logo?: string;
   mandate: string;
   category?: string;
   categories: CivicCategory[];
-  geographicScope: 'National' | 'Regional' | 'District';
-  website: string;
+  geographicScope?: 'National' | 'Regional' | 'District';
+  website?: string;
+  jurisdiction?: string;
+  officialWebsite?: string;
+  officialContacts?: any[];
+  officialSocialAccounts?: any[];
   emergencyChannels?: string[];
   emergencyHotline?: string;
   whatsappDesk?: string;
@@ -206,9 +256,14 @@ export interface Institution {
   activeMentionsCount?: number;
   unansweredMentionsCount?: number;
   officialResponsesCount?: number;
+  avgResponseTimeHours?: number;
+  verificationStatus?: string;
+  sourceDocuments?: any[];
+  verificationDate?: string;
+  nextReviewDate?: string;
   verifiedBy?: string;
   lastVerifiedAt?: string;
-  description: string;
+  description?: string;
 }
 
 export interface IssueCluster {
@@ -217,20 +272,22 @@ export interface IssueCluster {
   category: CivicCategory;
   region: GhanaRegionName;
   district: string;
-  locationSummary: string;
+  locationSummary?: string;
   postIds: string[];
-  postsCount: number;
+  postsCount?: number;
   postCount?: number;
-  confirmationCount: number;
+  confirmationCount?: number;
   totalConfirmations?: number;
-  evidenceCount: number;
-  firstSeenAt: string;
-  latestSeenAt: string;
-  trendScore: number;
-  publicInterestScore: number;
-  taggedInstitutionIds: string[];
+  evidenceCount?: number;
+  firstSeenAt?: string;
+  latestSeenAt?: string;
+  firstReportedAt?: string;
+  lastUpdatedAt?: string;
+  trendScore?: number;
+  publicInterestScore?: number;
+  taggedInstitutionIds?: string[];
   primaryInstitutions?: string[];
-  status: 'EMERGING' | 'TRENDING' | 'UNDER_ATTENTION' | 'RESOLVED_BY_COMMUNITY';
+  status: 'EMERGING' | 'TRENDING' | 'UNDER_ATTENTION' | 'RESOLVED_BY_COMMUNITY' | string;
   summary: string;
   primaryImage?: string;
 }

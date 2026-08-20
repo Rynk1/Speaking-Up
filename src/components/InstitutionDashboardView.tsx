@@ -12,7 +12,7 @@ import {
   Check,
   ChevronRight
 } from 'lucide-react';
-import { Institution, CivicPost } from '../types';
+import { Institution, CivicPost, InstitutionResponse } from '../types';
 import { api } from '../services/api';
 
 interface InstitutionDashboardViewProps {
@@ -22,6 +22,8 @@ interface InstitutionDashboardViewProps {
   setSelectedInstitutionId: (id: string) => void;
   onOpenResponseModal: (post: CivicPost) => void;
   onPostUpdated: () => void;
+  onViewOfficialResponse?: (post: CivicPost, response: InstitutionResponse) => void;
+  onViewResponseFeedPost?: (post: CivicPost, response: InstitutionResponse) => void;
 }
 
 export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> = ({
@@ -30,7 +32,9 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
   selectedInstitutionId,
   setSelectedInstitutionId,
   onOpenResponseModal,
-  onPostUpdated
+  onPostUpdated,
+  onViewOfficialResponse,
+  onViewResponseFeedPost
 }) => {
   const [filterTab, setFilterTab] = useState<'all' | 'unanswered' | 'critical' | 'responded'>('unanswered');
 
@@ -102,8 +106,8 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
             onChange={e => setSelectedInstitutionId(e.target.value)}
             className="w-full md:w-64 p-2 bg-slate-800 text-slate-100 text-xs font-semibold rounded-xl border border-slate-700 focus:outline-none focus:border-amber-500"
           >
-            {institutions.map(inst => (
-              <option key={inst.id} value={inst.id}>
+            {institutions.map((inst, idx) => (
+              <option key={inst.id ? `${inst.id}-${idx}` : `inst-opt-${idx}`} value={inst.id}>
                 {inst.shortName} ({inst.acronym})
               </option>
             ))}
@@ -193,13 +197,13 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
             No citizen observations matching this tab currently.
           </div>
         ) : (
-          displayedPosts.map(post => {
+          displayedPosts.map((post, postIdx) => {
             const hasResponded = post.officialResponses?.some(r => r.institutionId === currentInstitution?.id);
             const myTag = post.institutionTags.find(t => t.institutionId === currentInstitution?.id);
 
             return (
               <div
-                key={post.id}
+                key={post.id ? `${post.id}-${postIdx}` : `dash-post-${postIdx}`}
                 className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3 hover:border-slate-700 transition-all shadow-md"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -234,8 +238,8 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                 {/* Evidence thumbnails */}
                 {post.media.length > 0 && (
                   <div className="flex items-center gap-2">
-                    {post.media.map(m => (
-                      <div key={m.id} className="w-16 h-16 rounded-lg bg-slate-800 overflow-hidden border border-slate-700">
+                    {post.media.map((m, mIdx) => (
+                      <div key={m.id ? `${m.id}-${mIdx}` : `media-${mIdx}`} className="w-16 h-16 rounded-lg bg-slate-800 overflow-hidden border border-slate-700">
                         {m.type === 'image' && <img src={m.url} alt="Evidence" className="w-full h-full object-cover" />}
                         {m.type === 'audio' && <div className="w-full h-full flex items-center justify-center text-xs text-emerald-400">🎤 Audio</div>}
                       </div>
@@ -245,9 +249,40 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
 
                 {/* Existing response banner if responded */}
                 {hasResponded && (
-                  <div className="bg-emerald-950/40 border border-emerald-800/60 rounded-xl p-2.5 text-xs text-emerald-300">
-                    <span className="font-bold">Official Response Published: </span>
-                    <span>{post.officialResponses?.find(r => r.institutionId === currentInstitution?.id)?.message}</span>
+                  <div className="bg-emerald-950/40 border border-emerald-800/60 rounded-xl p-3 text-xs text-emerald-300 space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="font-bold flex items-center gap-1 text-emerald-400">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Official Statement Live & Published:
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {onViewResponseFeedPost && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const resp = post.officialResponses?.find(r => r.institutionId === currentInstitution?.id);
+                              if (resp) onViewResponseFeedPost(post, resp);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 text-[11px] font-semibold transition-colors flex items-center gap-1"
+                          >
+                            <span>Feed Post View</span>
+                            <ChevronRight className="w-3 h-3 text-emerald-400" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const resp = post.officialResponses?.find(r => r.institutionId === currentInstitution?.id);
+                            if (resp && onViewOfficialResponse) onViewOfficialResponse(post, resp);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-semibold transition-colors"
+                        >
+                          Full Statement & Replies Thread →
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-slate-300 line-clamp-2">
+                      {post.officialResponses?.find(r => r.institutionId === currentInstitution?.id)?.message}
+                    </p>
                   </div>
                 )}
 

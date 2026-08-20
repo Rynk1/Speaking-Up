@@ -200,8 +200,8 @@ export const NationalAnalyticsView: React.FC<NationalAnalyticsViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-300">
-              {institutions.map(inst => (
-                <tr key={inst.id} className="hover:bg-slate-800/40">
+              {institutions.map((inst, idx) => (
+                <tr key={inst.id ? `${inst.id}-${idx}` : `inst-row-${idx}`} className="hover:bg-slate-800/40">
                   <td className="py-2.5">
                     <div className="font-bold text-slate-200">{inst.shortName}</div>
                     <div className="text-[10px] text-slate-400">{inst.officialName}</div>

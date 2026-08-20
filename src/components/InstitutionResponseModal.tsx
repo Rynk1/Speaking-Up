@@ -97,8 +97,8 @@ export const InstitutionResponseModal: React.FC<InstitutionResponseModalProps> =
               onChange={e => setSelectedInstId(e.target.value)}
               className="w-full p-2 bg-slate-800 text-xs text-slate-100 rounded-lg border border-slate-700 font-semibold"
             >
-              {institutionsList.map(inst => (
-                <option key={inst.id} value={inst.id}>
+              {institutionsList.map((inst, idx) => (
+                <option key={inst.id ? `${inst.id}-${idx}` : `inst-opt-${idx}`} value={inst.id}>
                   {inst.officialName} ({inst.acronym})
                 </option>
               ))}
@@ -170,8 +170,8 @@ export const InstitutionResponseModal: React.FC<InstitutionResponseModalProps> =
                 <option value="">Select target authority...</option>
                 {institutionsList
                   .filter(i => i.id !== selectedInstId)
-                  .map(i => (
-                    <option key={i.id} value={i.id}>
+                  .map((i, idx) => (
+                    <option key={i.id ? `${i.id}-${idx}` : `redir-opt-${idx}`} value={i.id}>
                       {i.officialName}
                     </option>
                   ))}

@@ -199,6 +199,15 @@ export function initDatabase() {
       institution_logo TEXT,
       response_type TEXT NOT NULL DEFAULT 'WE_ARE_AWARE',
       message TEXT NOT NULL,
+      statement_title TEXT,
+      full_statement TEXT,
+      reference_number TEXT,
+      action_timeline_json TEXT,
+      resolution_status TEXT DEFAULT 'IN_PROGRESS',
+      documents_json TEXT,
+      hotlines_json TEXT,
+      helpful_count INTEGER DEFAULT 0,
+      unhelpful_count INTEGER DEFAULT 0,
       official INTEGER NOT NULL DEFAULT 1,
       verified INTEGER NOT NULL DEFAULT 1,
       responder_name TEXT NOT NULL,
@@ -208,6 +217,57 @@ export function initDatabase() {
       created_at TEXT NOT NULL,
       FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
       FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Safe migrations for existing SQLite databases
+  const responseColumns = [
+    { name: 'statement_title', type: 'TEXT' },
+    { name: 'full_statement', type: 'TEXT' },
+    { name: 'reference_number', type: 'TEXT' },
+    { name: 'action_timeline_json', type: 'TEXT' },
+    { name: 'resolution_status', type: 'TEXT DEFAULT "IN_PROGRESS"' },
+    { name: 'documents_json', type: 'TEXT' },
+    { name: 'hotlines_json', type: 'TEXT' },
+    { name: 'helpful_count', type: 'INTEGER DEFAULT 0' },
+    { name: 'unhelpful_count', type: 'INTEGER DEFAULT 0' }
+  ];
+
+  for (const col of responseColumns) {
+    try {
+      db.exec(`ALTER TABLE institution_responses ADD COLUMN ${col.name} ${col.type}`);
+    } catch (e) {
+      // Column already exists
+    }
+  }
+
+  // Create Response Comments table (Citizen comments & replies directly to state statements)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS response_comments (
+      id TEXT PRIMARY KEY,
+      response_id TEXT NOT NULL,
+      post_id TEXT,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      user_handle TEXT NOT NULL,
+      user_avatar TEXT,
+      is_verified INTEGER DEFAULT 1,
+      content TEXT NOT NULL,
+      likes_count INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (response_id) REFERENCES institution_responses(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Create Response Helpfulness Votes table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS response_votes (
+      user_id TEXT NOT NULL,
+      response_id TEXT NOT NULL,
+      vote_type TEXT NOT NULL, -- 'helpful' | 'unhelpful'
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, response_id),
+      FOREIGN KEY (response_id) REFERENCES institution_responses(id) ON DELETE CASCADE
     );
   `);
 

@@ -514,7 +514,53 @@ export const INITIAL_POSTS: CivicPost[] = [
         institutionName: 'National Disaster Management Organisation (NADMO)',
         institutionLogo: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=150&auto=format&fit=crop&q=80',
         responseType: 'ACTION_TAKEN',
+        statementTitle: 'Emergency Dewatering & Public Evacuation Advisory — Kwame Nkrumah Interchange / Odawna',
+        referenceNumber: 'NADMO/GAR/OPS/2026-08/042',
         message: 'NADMO Rapid Response Team and Greater Accra regional coordinators have arrived at Odawna with dewatering pumps. Citizens are urged to avoid the lower ground pathway near the railway bridge.',
+        fullStatement: 'The National Disaster Management Organisation (NADMO) Greater Accra Regional Command, in direct coordination with the Ghana National Fire Service (GNFS) and the Klottey-Korle Municipal Assembly, has activated an emergency Level-2 flood response protocol across the Kwame Nkrumah Interchange basin.\n\nThree heavy-duty 12-inch trailer-mounted dewatering pumps have been positioned at the Odawna pedestrian terminal to accelerate runoff discharge into the main Odaw basin. Traffic along the lower overpass loops has been cordoned off by MTTD officers to protect motorists from submerged open culverts.\n\nAll residents and market traders in low-lying structures within 200 metres of the Odawna rail line are strongly advised to relocate to the designated temporary relief holding ground established at the Ring Road Central Salvation Army compound.',
+        actionTimeline: [
+          { step: 'Alert Broadcast Logged & GPS Triangulation', status: 'completed', timestamp: '02:15 GMT', description: 'Citizen distress signals confirmed by Klottey-Korle field scout.' },
+          { step: 'Rapid Response Unit & 3 Dewatering Pumps Dispatched', status: 'completed', timestamp: '02:45 GMT', description: 'Equipment deployed from Greater Accra regional logistics depot.' },
+          { step: 'On-site Flood Water Pumping & Hazard Perimeter Cordon', status: 'in_progress', timestamp: '03:10 GMT', description: 'Crews active on site; traffic diverted to Liberation Road.' },
+          { step: 'Drain Clearing & Post-Flood Debris Sweeping', status: 'scheduled', timestamp: '06:30 GMT', description: 'Joint operations with Zoomlion Ghana Ltd.' }
+        ],
+        resolutionStatus: 'IN_PROGRESS',
+        documents: [
+          { title: 'NADMO Greater Accra Flood Contingency & Safety Directives (PDF)', url: '#', fileType: 'PDF', size: '1.4 MB' },
+          { title: 'Emergency Holding Centers & Shelter Coordinate Map', url: '#', fileType: 'DOCX', size: '620 KB' }
+        ],
+        hotlines: ['112 (National Emergency Hotline)', '0302-772926 (NADMO Central Desk)', '+233 24 435 5588 (Odawna Incident Officer)'],
+        helpfulCount: 52,
+        unhelpfulCount: 3,
+        commentsCount: 2,
+        commentsList: [
+          {
+            id: 'rc-nadmo-1',
+            responseId: 'resp-nadmo-1',
+            postId: 'post-circle-flood-1',
+            userId: 'user-yaw',
+            userName: 'Yaw Mensah',
+            userHandle: 'yaw_circle',
+            userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'Can you confirm if the VIP bus terminal departures are rerouted through Kaneshie or if passengers can still access via overhead bridge?',
+            createdAt: '2026-08-20T03:22:00Z',
+            likesCount: 16
+          },
+          {
+            id: 'rc-nadmo-2',
+            responseId: 'resp-nadmo-1',
+            postId: 'post-circle-flood-1',
+            userId: 'user-abena-2',
+            userName: 'Abena Serwaa',
+            userHandle: 'abena_s',
+            userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'Thank you for deploying pumps quickly! The water level near the fuel station has started going down.',
+            createdAt: '2026-08-20T03:38:00Z',
+            likesCount: 11
+          }
+        ],
         official: true,
         verified: true,
         responderName: 'George Ayisi',
@@ -624,7 +670,52 @@ export const INITIAL_POSTS: CivicPost[] = [
         institutionName: 'Ghana Highway Authority & Urban Roads',
         institutionLogo: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=150&auto=format&fit=crop&q=80',
         responseType: 'INVESTIGATING',
+        statementTitle: 'Technical Directive on Emergency Asphalt Restoration: Accra-Tema Motorway (Km 12-14)',
+        referenceNumber: 'GHA/HQ/MRD/2026/04-TMA',
         message: 'GHA Maintenance Directorate has dispatched an emergency asphalt patch crew with warning retro-reflective signage. MTTD patrol team is staging warning lights.',
+        fullStatement: 'The Ghana Highway Authority (GHA) Maintenance & Operations Directorate has acknowledged public safety reports regarding severe structural asphalt delamination on the Accra-bound carriageway of the Accra-Tema Motorway near the Abattoir overpass.\n\nA rapid intervention civil maintenance crew has been deployed with heavy-duty cold-mix asphalt, compactors, and portable floodlights. The Motorway Police Unit (MTTD) has established a 400-metre gradual deceleration corridor with high-visibility chevron signs.\n\nMotorists are urged to reduce speeds to 50 km/h between the Tema toll precinct and the Abattoir bridge during night hours while restoration work is ongoing.',
+        actionTimeline: [
+          { step: 'Highway Safety Inspection Logged', status: 'completed', timestamp: '08:45 GMT', description: 'Crater dimensions measured at 1.4m x 0.8m with 15cm depth.' },
+          { step: 'MTTD Mobile Warning Beacon Staged', status: 'completed', timestamp: '10:00 GMT', description: 'Two patrol units deployed to alert approaching traffic.' },
+          { step: 'Asphalt Cutting & Cold-Mix Compaction', status: 'in_progress', timestamp: '14:20 GMT', description: 'Asphalt cutting and aggregate infill underway.' },
+          { step: 'Permanent Hot-Mix Resurfacing & Lane Reopening', status: 'scheduled', timestamp: '22:00 GMT', description: 'Final thermoplastic road marking.' }
+        ],
+        resolutionStatus: 'IN_PROGRESS',
+        documents: [
+          { title: 'GHA Motorway Maintenance Incident Report #884 (PDF)', url: '#', fileType: 'PDF', size: '980 KB' }
+        ],
+        hotlines: ['0302-664921 (GHA Toll-Free Complaints)', '18555 (MTTD Highway Emergency Dispatch)'],
+        helpfulCount: 38,
+        unhelpfulCount: 1,
+        commentsCount: 2,
+        commentsList: [
+          {
+            id: 'rc-gha-1',
+            responseId: 'resp-gha-1',
+            postId: 'post-motorway-pothole-1',
+            userId: 'user-yaw-boateng',
+            userName: 'Kwame Boateng',
+            userHandle: 'kwame_motorway',
+            userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'Thank you GHA. Please ensure the warning signs are placed at least 300m before the bridge so fast moving cars can brake safely.',
+            createdAt: '2026-08-18T15:10:00Z',
+            likesCount: 22
+          },
+          {
+            id: 'rc-gha-2',
+            responseId: 'resp-gha-1',
+            postId: 'post-motorway-pothole-1',
+            userId: 'user-dr-owusu',
+            userName: 'Dr. Emmanuel Owusu',
+            userHandle: 'drowusu_kumasi',
+            userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'We need permanent hot asphalt, not just sand and gravel that washes away in heavy rains.',
+            createdAt: '2026-08-18T16:05:00Z',
+            likesCount: 14
+          }
+        ],
         official: true,
         verified: true,
         responderName: 'Ing. Christian Nti',
@@ -723,7 +814,53 @@ export const INITIAL_POSTS: CivicPost[] = [
         institutionName: 'Public Utilities Regulatory Commission (PURC)',
         institutionLogo: 'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=150&auto=format&fit=crop&q=80',
         responseType: 'WE_ARE_AWARE',
+        statementTitle: 'Regulatory Enforcement Notice & Supply Restoration Order: ECG Ahodwo-Nhyiaeso District',
+        referenceNumber: 'PURC/ASH/REG-ORD/2026/088-A',
         message: 'PURC Ashanti Regional Secretariat has logged this case (Ref: PURC-ASH-2026-088) and instructed ECG Ashanti Technical Director to restore supply or provide alternate mobile generator backup to health facilities within 6 hours.',
+        fullStatement: 'Pursuant to the Public Utilities Regulatory Commission Act, 1997 (Act 538) and LI 2413 (Electricity Supply & Quality of Service Regulations), the PURC Ashanti Regional Secretariat has issued a formal 6-Hour Emergency Compliance Order to the Electricity Company of Ghana (Ashanti South Operational Directorate).\n\nKey Directives Issued:\n1. Immediate deployment of ECG mobile substation or 500kVA emergency trailer generator to Ahodwo Maternal Health Clinic and Vienna cold-chain hubs.\n2. Provision of a technical fault analysis regarding the burnt 33kV primary feeder insulator.\n3. Mandatory publication of an hourly restoration advisory to all affected consumers in Ahodwo, Nhyiaeso, and Danyame.\n\nFailure of the utility provider to restore supply or provide alternative power within the stipulated timeframe will trigger statutory regulatory sanctions.',
+        actionTimeline: [
+          { step: 'Citizen Outage Grievance Formally Registered', status: 'completed', timestamp: '15:10 GMT', description: 'Cross-validated against 38 citizen reports in Kumasi.' },
+          { step: 'Statutory 6-Hour Restoration Notice Served to ECG', status: 'completed', timestamp: '16:30 GMT', description: 'Direct notice served to Regional General Manager.' },
+          { step: 'Mobile Generator Deployment to Ahodwo Clinic', status: 'in_progress', timestamp: '18:00 GMT', description: 'ECG emergency power truck in transit.' },
+          { step: 'Full 33kV Primary Feeder Replacement & Power Restoration', status: 'scheduled', timestamp: '21:00 GMT', description: 'Final grid synchronisation check.' }
+        ],
+        resolutionStatus: 'UNDER_REVIEW',
+        documents: [
+          { title: 'PURC Order #088-A Served on ECG Ashanti (PDF)', url: '#', fileType: 'PDF', size: '1.1 MB' },
+          { title: 'Consumer Rights & Outage Compensation Guidelines', url: '#', fileType: 'PDF', size: '750 KB' }
+        ],
+        hotlines: ['0800-100-700 (PURC Toll-Free Consumer Hotline)', '0322-080123 (PURC Kumasi Office)'],
+        helpfulCount: 64,
+        unhelpfulCount: 2,
+        commentsCount: 2,
+        commentsList: [
+          {
+            id: 'rc-purc-1',
+            responseId: 'resp-purc-1',
+            postId: 'post-kumasi-dumsor-1',
+            userId: 'user-dr-owusu',
+            userName: 'Dr. Emmanuel Owusu',
+            userHandle: 'drowusu_kumasi',
+            userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'Thank you PURC! The mobile generator truck from ECG just arrived at the maternal clinic gate. This has saved our vaccine stock.',
+            createdAt: '2026-08-19T18:15:00Z',
+            likesCount: 31
+          },
+          {
+            id: 'rc-purc-2',
+            responseId: 'resp-purc-1',
+            postId: 'post-kumasi-dumsor-1',
+            userId: 'user-abena-2',
+            userName: 'Abena Serwaa',
+            userHandle: 'abena_s',
+            userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'Please PURC, ensure they also inspect the low voltage lines in Danyame after Ahodwo is restored.',
+            createdAt: '2026-08-19T18:40:00Z',
+            likesCount: 18
+          }
+        ],
         official: true,
         verified: true,
         responderName: 'Ing. M. A. Kabo',
@@ -882,7 +1019,53 @@ export const INITIAL_POSTS: CivicPost[] = [
         institutionName: 'Cyber Security Authority (CSA)',
         institutionLogo: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=150&auto=format&fit=crop&q=80',
         responseType: 'PUBLIC_GUIDANCE',
+        statementTitle: 'National Cyber Advisory: Deactivation of Fake Mobile Money Verification Phishing Domain',
+        referenceNumber: 'CSA/CERT-GH/ADV/2026/019',
         message: 'CSA Computer Emergency Response Team (CERT-GH) has taken down the fraudulent phishing URL. Citizens are reminded that neither Bank of Ghana nor any Telco will ever ask for your MoMo PIN via SMS. Report suspicious texts to CSA on shortcode 292 or WhatsApp 0501603111.',
+        fullStatement: 'The Cyber Security Authority (CSA) National Computer Emergency Response Team (CERT-GH), in active collaboration with the National Communications Authority (NCA) and major Telecommunications Mobile Money Operators, has successfully coordinated the global DNS takedown and IP null-routing of fraudulent phishing landing pages spoofing the Bank of Ghana.\n\nKey Security Insights & Recommendations:\n1. Threat vectors involved bulk SMS spoofing originating from illicit international SIM-box gateways.\n2. Over 1,200 credential submission attempts were thwarted in real time prior to takedown.\n3. Citizens who inadvertently entered their secret PIN on the phishing portal are urged to immediately change their PIN using their respective network USSD menus (*170#, *110#, *500#) and report to their telco service center.\n\nCSA maintains 24/7 monitoring through the National Cyber Security Incident Point of Contact (PoC).',
+        actionTimeline: [
+          { step: 'Phishing Campaign Flagged via SpeakUp Citizen Alert', status: 'completed', timestamp: '00:30 GMT', description: 'Malicious domain bit.ly/bog-gh-verify quarantined.' },
+          { step: 'CERT-GH Domain Registrar Blacklist Notice', status: 'completed', timestamp: '01:15 GMT', description: 'DNS servers updated to point to security warning page.' },
+          { step: 'Telco SMS Header Filtering & Gate Lockdown', status: 'completed', timestamp: '02:00 GMT', description: 'Telecom operators block SMS originating headers.' },
+          { step: 'Public Advisory & Continuous Threat Hunting', status: 'completed', timestamp: '02:30 GMT', description: 'Public guidance disseminated via national broadcasters.' }
+        ],
+        resolutionStatus: 'RESOLVED',
+        documents: [
+          { title: 'CSA Public Cyber Security Alert Bulletin #019 (PDF)', url: '#', fileType: 'PDF', size: '820 KB' },
+          { title: 'Mobile Money Security Best Practice Handbook', url: '#', fileType: 'PDF', size: '1.5 MB' }
+        ],
+        hotlines: ['292 (Toll-Free Cyber Incident Shortcode)', '0501603111 (WhatsApp Incident Desk)', 'report@csa.gov.gh'],
+        helpfulCount: 89,
+        unhelpfulCount: 0,
+        commentsCount: 2,
+        commentsList: [
+          {
+            id: 'rc-csa-1',
+            responseId: 'resp-csa-1',
+            postId: 'post-momo-scam-1',
+            userId: 'user-selorm-it',
+            userName: 'Selorm Dotse',
+            userHandle: 'selorm_tech',
+            userAvatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'Super impressive response speed! The link is already showing 404/Suspended Domain warning on MTN and Telecel.',
+            createdAt: '2026-08-20T02:45:00Z',
+            likesCount: 42
+          },
+          {
+            id: 'rc-csa-2',
+            responseId: 'resp-csa-1',
+            postId: 'post-momo-scam-1',
+            userId: 'user-fatima-tamale',
+            userName: 'Fatima Alhassan',
+            userHandle: 'fatima_tamale',
+            userAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=80',
+            isVerified: false,
+            content: 'Thank you CSA. I will share this on our market women WhatsApp group so nobody falls victim.',
+            createdAt: '2026-08-20T03:05:00Z',
+            likesCount: 25
+          }
+        ],
         official: true,
         verified: true,
         responderName: 'Dr. Albert Antwi-Boasiako',
@@ -979,7 +1162,52 @@ export const INITIAL_POSTS: CivicPost[] = [
         institutionName: 'Ghana Water Company Limited (GWCL)',
         institutionLogo: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?w=150&auto=format&fit=crop&q=80',
         responseType: 'ACTION_TAKEN',
+        statementTitle: 'Technical Update on Main Distribution Line Repair at Kotokuraba, Cape Coast',
+        referenceNumber: 'GWCL/CR/OPS/2026/08-19',
         message: 'GWCL Central Region maintenance unit has isolated the Kotokuraba distribution valve to stop the overflow. Replacement ductile iron pipe sections are being installed today. Full pressure restoration estimated by 6:00 PM.',
+        fullStatement: 'The Ghana Water Company Limited (GWCL) Central Regional Management wishes to update customers in the Cape Coast Metropolis regarding the burst 16-inch high-density transmission line near Kotokuraba Market.\n\nCivil and mechanical engineering teams have successfully excavated the fractured joint, drained the trench, and fitted a new heavy-duty flange adaptor with ductile iron pipe segments.\n\nWater supply will be gradually repressurized starting at 4:30 PM to avoid air-lock ruptures. Tanker services have been deployed to Cape Coast Teaching Hospital and St. Augustine\'s College in the interim.',
+        actionTimeline: [
+          { step: 'Isolation of Sector Valve 4B', status: 'completed', timestamp: '17:15 GMT', description: 'Overflow halted to protect roadway asphalt from water softening.' },
+          { step: 'Excavation & Damaged Pipe Segment Removal', status: 'completed', timestamp: '18:30 GMT', description: 'Trench shoring and pipe cutting completed.' },
+          { step: 'Installation of New 16-inch Ductile Iron Joint', status: 'in_progress', timestamp: '19:00 GMT', description: 'Pressure testing and tightening flange bolts.' },
+          { step: 'System Flushing & Gradual Pressure Restoration', status: 'scheduled', timestamp: '20:30 GMT', description: 'Full supply back to Kotokuraba, Abura, and Pedu.' }
+        ],
+        resolutionStatus: 'IN_PROGRESS',
+        documents: [
+          { title: 'GWCL Cape Coast Water Supply Schedule (PDF)', url: '#', fileType: 'PDF', size: '540 KB' }
+        ],
+        hotlines: ['0800-400-00 (GWCL Toll Free)', '0332-132415 (Cape Coast District Office)', '0244-334455 (WhatsApp Faults)'],
+        helpfulCount: 45,
+        unhelpfulCount: 1,
+        commentsCount: 2,
+        commentsList: [
+          {
+            id: 'rc-gwcl-1',
+            responseId: 'resp-gwcl-1',
+            postId: 'post-cape-coast-water-1',
+            userId: 'user-mensah-cc',
+            userName: 'Ekow Mensah',
+            userHandle: 'ekow_capecoast',
+            userAvatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=120&auto=format&fit=crop&q=80',
+            isVerified: false,
+            content: 'Crews are truly on site working in the pit right now. Appreciate the transparent timeline.',
+            createdAt: '2026-08-19T19:30:00Z',
+            likesCount: 19
+          },
+          {
+            id: 'rc-gwcl-2',
+            responseId: 'resp-gwcl-1',
+            postId: 'post-cape-coast-water-1',
+            userId: 'user-dr-owusu',
+            userName: 'Dr. Emmanuel Owusu',
+            userHandle: 'drowusu_kumasi',
+            userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'Please ensure water tanker reaches the pediatric ward at Cape Coast Hospital as well.',
+            createdAt: '2026-08-19T19:45:00Z',
+            likesCount: 15
+          }
+        ],
         official: true,
         verified: true,
         responderName: 'Proscovia Ofori',

@@ -715,9 +715,9 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
 
             {/* Selected Tags */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              {selectedInstitutions.map(inst => (
+              {selectedInstitutions.map((inst, idx) => (
                 <div
-                  key={inst.id}
+                  key={inst.id ? `${inst.id}-${idx}` : `sel-inst-${idx}`}
                   className="px-2.5 py-1 bg-emerald-950 text-emerald-300 border border-emerald-700/80 rounded-lg text-xs flex items-center gap-1.5 shadow-xs"
                 >
                   <span className="font-semibold">{inst.shortName || inst.acronym}</span>
@@ -762,9 +762,9 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                                 i.shortName.toLowerCase().includes(institutionSearch.toLowerCase()) ||
                                 i.acronym.toLowerCase().includes(institutionSearch.toLowerCase()))
                           )
-                          .map(inst => (
+                          .map((inst, idx) => (
                             <button
-                              key={inst.id}
+                              key={inst.id ? `${inst.id}-${idx}` : `inst-opt-${idx}`}
                               type="button"
                               onClick={() => {
                                 setSelectedInstitutions(prev => [...prev, inst]);

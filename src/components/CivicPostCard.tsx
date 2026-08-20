@@ -23,8 +23,9 @@ import {
   Send,
   Eye,
   BellPlus,
-  BellCheck,
-  BadgeCheck
+  BellRing,
+  BadgeCheck,
+  ArrowRight
 } from 'lucide-react';
 import { CivicPost, InstitutionResponse, CommunityEvidence } from '../types';
 import { api } from '../services/api';
@@ -38,6 +39,8 @@ interface CivicPostCardProps {
   onPostUpdated: () => void;
   userRole?: 'citizen' | 'institution_rep' | 'journalist' | 'moderator';
   onOpenInstitutionResponse?: (post: CivicPost) => void;
+  onViewOfficialResponse?: (post: CivicPost, response: InstitutionResponse) => void;
+  onViewResponseFeedPost?: (post: CivicPost, response: InstitutionResponse) => void;
 }
 
 export const CivicPostCard: React.FC<CivicPostCardProps> = ({
@@ -48,7 +51,9 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
   onOpenCluster,
   onPostUpdated,
   userRole,
-  onOpenInstitutionResponse
+  onOpenInstitutionResponse,
+  onViewOfficialResponse,
+  onViewResponseFeedPost
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -187,7 +192,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           >
             {post.userFollowed ? (
               <>
-                <BellCheck className="w-3.5 h-3.5 text-amber-400" />
+                <BellRing className="w-3.5 h-3.5 text-amber-400" />
                 <span>Following Issue</span>
               </>
             ) : (
@@ -343,8 +348,8 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       {/* Media Gallery */}
       {visualMedia.length > 0 && (
         <div className={`grid gap-2 rounded-xl overflow-hidden ${visualMedia.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {visualMedia.map(m => (
-            <div key={m.id} className="relative bg-slate-950 rounded-xl overflow-hidden aspect-video border border-slate-800">
+          {visualMedia.map((m, idx) => (
+            <div key={m.id ? `${m.id}-${idx}` : `media-${idx}`} className="relative bg-slate-950 rounded-xl overflow-hidden aspect-video border border-slate-800">
               {m.type === 'image' && (
                 <img
                   src={m.url}
@@ -380,50 +385,80 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
-            {post.institutionTags.map(tag => (
-              <div
-                key={tag.institutionId}
-                className="px-2.5 py-1 bg-slate-800/90 border border-slate-700 rounded-lg text-xs flex items-center gap-1.5"
-              >
-                <span className="font-semibold text-slate-200">@{tag.shortName || tag.acronym}</span>
-                <span
-                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                    tag.alertStatus === 'ACKNOWLEDGED'
-                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
-                      : tag.alertStatus === 'DELIVERED'
-                      ? 'bg-sky-950 text-sky-300 border border-sky-800/60'
-                      : 'bg-amber-950 text-amber-300 border border-amber-800/60'
+            {post.institutionTags.map((tag, idx) => {
+              const matchingResp = post.officialResponses?.find(
+                r => r.institutionId === tag.institutionId || r.institutionName.toLowerCase().includes(tag.shortName.toLowerCase())
+              );
+              return (
+                <div
+                  key={`${tag.institutionId || 'inst'}-${idx}`}
+                  onClick={() => {
+                    if (matchingResp && onViewOfficialResponse) {
+                      onViewOfficialResponse(post, matchingResp);
+                    }
+                  }}
+                  className={`px-2.5 py-1 bg-slate-800/90 border border-slate-700 rounded-lg text-xs flex items-center gap-1.5 transition-all ${
+                    matchingResp
+                      ? 'hover:border-emerald-500 hover:bg-slate-800 cursor-pointer ring-1 ring-emerald-500/30'
+                      : ''
                   }`}
+                  title={matchingResp ? 'Click to view full official statement from this institution' : undefined}
                 >
-                  {tag.alertStatus === 'ACKNOWLEDGED'
-                    ? '✓ Acknowledged'
-                    : tag.alertStatus === 'DELIVERED'
-                    ? '⚡ Dispatched'
-                    : '✉️ Tagged'}
-                </span>
-              </div>
-            ))}
+                  <span className="font-semibold text-slate-200">@{tag.shortName || tag.acronym}</span>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                      tag.alertStatus === 'ACKNOWLEDGED'
+                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                        : tag.alertStatus === 'DELIVERED'
+                        ? 'bg-sky-950 text-sky-300 border border-sky-800/60'
+                        : 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                    }`}
+                  >
+                    {tag.alertStatus === 'ACKNOWLEDGED'
+                      ? '✓ Acknowledged'
+                      : tag.alertStatus === 'DELIVERED'
+                      ? '⚡ Dispatched'
+                      : '✉️ Tagged'}
+                  </span>
+                  {matchingResp && (
+                    <span className="text-[10px] text-emerald-400 font-semibold flex items-center">
+                      • Statement 📄
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Official State Institution Responses Section (Premium Social-Media Premium Layout) */}
+      {/* Official State Institution Responses Section (Summary card that links to Reverse Full Statement View) */}
       {post.officialResponses && post.officialResponses.length > 0 && (
         <div className="space-y-3 pt-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-            <BadgeCheck className="w-4 h-4 text-emerald-400" />
-            <span>Official State Institution Public Statement & Updates</span>
+          <div className="flex items-center justify-between gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+            <div className="flex items-center gap-1.5">
+              <BadgeCheck className="w-4 h-4 text-emerald-400" />
+              <span>Official State Institution Response Summary</span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-normal lowercase tracking-normal">
+              (click card or button for full communiqué)
+            </span>
           </div>
 
-          {post.officialResponses.map(resp => (
+          {post.officialResponses.map((resp, idx) => (
             <div
-              key={resp.id}
-              className="bg-slate-950/90 border-l-4 border-l-emerald-500 border-y border-r border-slate-800 rounded-2xl p-4 shadow-xl space-y-3"
+              key={resp.id ? `${resp.id}-${idx}` : `resp-${resp.institutionId}-${idx}`}
+              onClick={() => {
+                if (onViewOfficialResponse) {
+                  onViewOfficialResponse(post, resp);
+                }
+              }}
+              className="group bg-slate-950/90 border-l-4 border-l-emerald-500 border-y border-r border-slate-800 hover:border-emerald-500/80 rounded-2xl p-4 shadow-xl space-y-3 transition-all cursor-pointer hover:shadow-emerald-950/30"
             >
               {/* Institution Premium Header */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 flex items-center justify-center shadow-md">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 flex items-center justify-center shadow-md shrink-0">
                     <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
                       <Building2 className="w-5 h-5 text-emerald-400" />
                     </div>
@@ -431,7 +466,9 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
 
                   <div>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-extrabold text-sm text-white">{resp.institutionName}</span>
+                      <span className="font-extrabold text-sm text-white group-hover:text-emerald-300 transition-colors">
+                        {resp.institutionName}
+                      </span>
                       <BadgeCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/80">
                         VERIFIED STATE DESK
@@ -451,24 +488,75 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                   <span className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider block">
                     {resp.responseType.replace(/_/g, ' ')}
                   </span>
-                  <span className="text-[10px] text-slate-500 mt-1 block">
+                  <span className="text-[10px] text-slate-500 mt-1 block font-mono">
                     {new Date(resp.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} •{' '}
                     {new Date(resp.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               </div>
 
-              {/* Formatted Official Message Box */}
-              <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl p-3.5 text-sm text-slate-100 leading-relaxed font-sans shadow-inner whitespace-pre-line">
+              {/* Statement Title if available */}
+              {resp.statementTitle && (
+                <h5 className="font-bold text-sm text-slate-100 group-hover:text-emerald-200 transition-colors">
+                  "{resp.statementTitle}"
+                </h5>
+              )}
+
+              {/* Formatted Official Message Box (Summary) */}
+              <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl p-3.5 text-sm text-slate-200 leading-relaxed font-sans shadow-inner whitespace-pre-line line-clamp-3 group-hover:border-slate-700">
                 {resp.message}
               </div>
 
-              {/* Action Footer for Official Response */}
-              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900">
-                <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Tracked & Logged under Ghana Data & Public Standards
-                </span>
-                <span className="text-slate-500">Public Record ID: #{resp.id.slice(0, 8)}</span>
+              {/* Action Footer for Official Response with "View Full Statement & Replies" CTA */}
+              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900 flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Official Accountability Record
+                  </span>
+                  {resp.commentsCount !== undefined && resp.commentsCount > 0 && (
+                    <span className="text-slate-400 flex items-center gap-1">
+                      💬 {resp.commentsCount} citizen replies
+                    </span>
+                  )}
+                  {resp.helpfulCount !== undefined && resp.helpfulCount > 0 && (
+                    <span className="text-emerald-400/80 flex items-center gap-1">
+                      👍 {resp.helpfulCount} found helpful
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (onViewResponseFeedPost) {
+                        onViewResponseFeedPost(post, resp);
+                      } else if (onViewOfficialResponse) {
+                        onViewOfficialResponse(post, resp);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold border border-slate-700 text-xs transition-colors"
+                    title="View this response formatted as a standalone reverse-hierarchy post in the feed"
+                  >
+                    <span>View Response Feed Post</span>
+                    <ArrowRight className="w-3 h-3 text-emerald-400" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (onViewOfficialResponse) {
+                        onViewOfficialResponse(post, resp);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-semibold border border-emerald-500/40 text-xs transition-colors"
+                  >
+                    <span>Full Communiqué</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -482,8 +570,8 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
             <Camera className="w-3.5 h-3.5 text-sky-400" />
             Community Evidence & Field Updates ({post.communityEvidence.length}):
           </div>
-          {post.communityEvidence.map(ev => (
-            <div key={ev.id} className="text-xs text-slate-300 bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
+          {post.communityEvidence.map((ev, idx) => (
+            <div key={ev.id ? `${ev.id}-${idx}` : `ev-${idx}`} className="text-xs text-slate-300 bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
               <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
                 <span className="font-medium text-slate-300">{ev.userName}</span>
                 <span>{new Date(ev.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -497,8 +585,8 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       {/* Hashtags */}
       {post.hashtags && post.hashtags.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
-          {post.hashtags.map(tag => (
-            <span key={tag} className="text-emerald-400/90 hover:text-emerald-300 cursor-pointer">
+          {post.hashtags.map((tag, idx) => (
+            <span key={`${tag}-${idx}`} className="text-emerald-400/90 hover:text-emerald-300 cursor-pointer">
               {tag.startsWith('#') ? tag : `#${tag}`}
             </span>
           ))}
@@ -611,8 +699,8 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
 
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {post.commentsList && post.commentsList.length > 0 ? (
-              post.commentsList.map(c => (
-                <div key={c.id} className="p-2 bg-slate-800/50 rounded-lg text-xs space-y-0.5">
+              post.commentsList.map((c, idx) => (
+                <div key={c.id ? `${c.id}-${idx}` : `c-${idx}`} className="p-2 bg-slate-800/50 rounded-lg text-xs space-y-0.5">
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span className="font-semibold text-slate-300">@{c.userHandle}</span>
                     <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

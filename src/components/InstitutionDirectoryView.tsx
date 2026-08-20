@@ -100,14 +100,14 @@ export const InstitutionDirectoryView: React.FC<InstitutionDirectoryViewProps> =
 
       {/* Institutions Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filtered.map(inst => {
+        {filtered.map((inst, idx) => {
           const taggedPostsCount = posts.filter(p =>
             p.institutionTags.some(t => t.institutionId === inst.id)
           ).length;
 
           return (
             <div
-              key={inst.id}
+              key={inst.id ? `${inst.id}-${idx}` : `dir-inst-${idx}`}
               className="bg-slate-900/90 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 sm:p-5 shadow-md flex flex-col justify-between space-y-3 transition-all"
             >
               <div className="space-y-2">

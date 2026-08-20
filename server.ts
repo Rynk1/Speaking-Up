@@ -181,22 +181,67 @@ function rowToPost(row: any): CivicPost {
     userConfirmed: true,
     userBookmarked: false,
     userReposted: false,
-    officialResponses: responseRows.map(r => ({
-      id: r.id,
-      postId: r.post_id,
-      institutionId: r.institution_id,
-      institutionName: r.institution_name,
-      institutionLogo: r.institution_logo || undefined,
-      responseType: r.response_type,
-      message: r.message,
-      official: Boolean(r.official),
-      verified: Boolean(r.verified),
-      responderName: r.responder_name,
-      responderTitle: r.responder_title,
-      redirectedToInstitutionId: r.redirected_to_institution_id || undefined,
-      redirectedToInstitutionName: r.redirected_to_institution_name || undefined,
-      createdAt: r.created_at
-    })),
+    officialResponses: responseRows.map(r => {
+      let timeline = undefined;
+      try {
+        if (r.action_timeline_json) timeline = JSON.parse(r.action_timeline_json);
+      } catch (e) {}
+
+      let docs = [];
+      try {
+        if (r.documents_json) docs = JSON.parse(r.documents_json);
+      } catch (e) {}
+
+      let hots = [];
+      try {
+        if (r.hotlines_json) hots = JSON.parse(r.hotlines_json);
+      } catch (e) {}
+
+      let respComments: any[] = [];
+      try {
+        respComments = db.prepare('SELECT * FROM response_comments WHERE response_id = ? ORDER BY created_at ASC').all(r.id) as any[];
+      } catch (e) {}
+
+      return {
+        id: r.id,
+        postId: r.post_id,
+        institutionId: r.institution_id,
+        institutionName: r.institution_name,
+        institutionLogo: r.institution_logo || undefined,
+        responseType: r.response_type,
+        message: r.message,
+        statementTitle: r.statement_title || undefined,
+        fullStatement: r.full_statement || r.message,
+        referenceNumber: r.reference_number || undefined,
+        actionTimeline: timeline,
+        resolutionStatus: r.resolution_status || 'IN_PROGRESS',
+        documents: docs,
+        hotlines: hots,
+        helpfulCount: r.helpful_count || 0,
+        unhelpfulCount: r.unhelpful_count || 0,
+        commentsCount: respComments.length,
+        commentsList: respComments.map(c => ({
+          id: c.id,
+          responseId: c.response_id,
+          postId: c.post_id,
+          userId: c.user_id,
+          userName: c.user_name,
+          userHandle: c.user_handle,
+          userAvatar: c.user_avatar || undefined,
+          isVerified: Boolean(c.is_verified),
+          content: c.content,
+          createdAt: c.created_at,
+          likesCount: c.likes_count || 0
+        })),
+        official: Boolean(r.official),
+        verified: Boolean(r.verified),
+        responderName: r.responder_name,
+        responderTitle: r.responder_title,
+        redirectedToInstitutionId: r.redirected_to_institution_id || undefined,
+        redirectedToInstitutionName: r.redirected_to_institution_name || undefined,
+        createdAt: r.created_at
+      };
+    }),
     communityEvidence: evidenceRows.map(e => ({
       id: e.id,
       postId: e.post_id,
@@ -867,6 +912,13 @@ async function startServer() {
       institutionId,
       responseType,
       message,
+      statementTitle,
+      fullStatement,
+      referenceNumber,
+      actionTimeline,
+      resolutionStatus,
+      documents,
+      hotlines,
       responderName,
       responderTitle,
       redirectedToInstitutionId
@@ -887,9 +939,11 @@ async function startServer() {
     db.prepare(`
       INSERT INTO institution_responses (
         id, post_id, institution_id, institution_name, institution_logo, response_type, message,
+        statement_title, full_statement, reference_number, action_timeline_json, resolution_status,
+        documents_json, hotlines_json, helpful_count, unhelpful_count,
         official, verified, responder_name, responder_title, redirected_to_institution_id,
         redirected_to_institution_name, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, 1, ?, ?, ?, ?, ?)
     `).run(
       responseId,
       postId,
@@ -898,6 +952,13 @@ async function startServer() {
       instRow.logo || null,
       responseType || 'WE_ARE_AWARE',
       message,
+      statementTitle || null,
+      fullStatement || message,
+      referenceNumber || `REF-${instRow.acronym}-${Date.now().toString().slice(-6)}`,
+      actionTimeline ? JSON.stringify(actionTimeline) : null,
+      resolutionStatus || 'IN_PROGRESS',
+      documents ? JSON.stringify(documents) : null,
+      hotlines ? JSON.stringify(hotlines) : null,
       responderName || req.user?.name || 'Official Spokesperson',
       responderTitle || `Representative, ${instRow.short_name}`,
       redirectedToInstitutionId || null,
@@ -936,6 +997,17 @@ async function startServer() {
       institutionLogo: instRow.logo,
       responseType: responseType || 'WE_ARE_AWARE',
       message,
+      statementTitle,
+      fullStatement: fullStatement || message,
+      referenceNumber: referenceNumber || `REF-${instRow.acronym}-${Date.now().toString().slice(-6)}`,
+      actionTimeline,
+      resolutionStatus: resolutionStatus || 'IN_PROGRESS',
+      documents: documents || [],
+      hotlines: hotlines || [],
+      helpfulCount: 0,
+      unhelpfulCount: 0,
+      commentsCount: 0,
+      commentsList: [],
       official: true,
       verified: true,
       responderName: responderName || req.user?.name || 'Official Spokesperson',
@@ -944,6 +1016,205 @@ async function startServer() {
       redirectedToInstitutionName: redirectedName,
       createdAt: now
     });
+  });
+
+  // GET /api/responses/:id - Get full response with comments & parent post
+  app.get('/api/responses/:id', (req, res) => {
+    const responseId = req.params.id;
+    const r = db.prepare('SELECT * FROM institution_responses WHERE id = ?').get(responseId) as any;
+    if (!r) return res.status(404).json({ error: 'Response statement not found' });
+
+    let timeline = undefined;
+    try {
+      if (r.action_timeline_json) timeline = JSON.parse(r.action_timeline_json);
+    } catch (e) {}
+
+    let docs = [];
+    try {
+      if (r.documents_json) docs = JSON.parse(r.documents_json);
+    } catch (e) {}
+
+    let hots = [];
+    try {
+      if (r.hotlines_json) hots = JSON.parse(r.hotlines_json);
+    } catch (e) {}
+
+    const respComments = db.prepare('SELECT * FROM response_comments WHERE response_id = ? ORDER BY created_at ASC').all(responseId) as any[];
+
+    // Fetch original post
+    const postRow = db.prepare('SELECT * FROM posts WHERE id = ?').get(r.post_id) as any;
+    const originalPost = postRow ? rowToPost(postRow) : null;
+
+    // Fetch other responses to this post
+    const relatedResponseRows = db.prepare('SELECT * FROM institution_responses WHERE post_id = ? AND id != ?').all(r.post_id, responseId) as any[];
+    const relatedResponses = relatedResponseRows.map(rel => ({
+      id: rel.id,
+      postId: rel.post_id,
+      institutionId: rel.institution_id,
+      institutionName: rel.institution_name,
+      institutionLogo: rel.institution_logo || undefined,
+      responseType: rel.response_type,
+      message: rel.message,
+      statementTitle: rel.statement_title || undefined,
+      fullStatement: rel.full_statement || rel.message,
+      referenceNumber: rel.reference_number || undefined,
+      resolutionStatus: rel.resolution_status || 'IN_PROGRESS',
+      official: Boolean(rel.official),
+      verified: Boolean(rel.verified),
+      responderName: rel.responder_name,
+      responderTitle: rel.responder_title,
+      createdAt: rel.created_at
+    }));
+
+    res.json({
+      response: {
+        id: r.id,
+        postId: r.post_id,
+        institutionId: r.institution_id,
+        institutionName: r.institution_name,
+        institutionLogo: r.institution_logo || undefined,
+        responseType: r.response_type,
+        message: r.message,
+        statementTitle: r.statement_title || undefined,
+        fullStatement: r.full_statement || r.message,
+        referenceNumber: r.reference_number || undefined,
+        actionTimeline: timeline,
+        resolutionStatus: r.resolution_status || 'IN_PROGRESS',
+        documents: docs,
+        hotlines: hots,
+        helpfulCount: r.helpful_count || 0,
+        unhelpfulCount: r.unhelpful_count || 0,
+        commentsCount: respComments.length,
+        commentsList: respComments.map(c => ({
+          id: c.id,
+          responseId: c.response_id,
+          postId: c.post_id,
+          userId: c.user_id,
+          userName: c.user_name,
+          userHandle: c.user_handle,
+          userAvatar: c.user_avatar || undefined,
+          isVerified: Boolean(c.is_verified),
+          content: c.content,
+          createdAt: c.created_at,
+          likesCount: c.likes_count || 0
+        })),
+        official: Boolean(r.official),
+        verified: Boolean(r.verified),
+        responderName: r.responder_name,
+        responderTitle: r.responder_title,
+        redirectedToInstitutionId: r.redirected_to_institution_id || undefined,
+        redirectedToInstitutionName: r.redirected_to_institution_name || undefined,
+        createdAt: r.created_at
+      },
+      originalPost,
+      relatedResponses
+    });
+  });
+
+  // POST /api/responses/:id/comments - Add citizen comment directly to state statement
+  app.post('/api/responses/:id/comments', (req: AuthenticatedRequest, res) => {
+    const responseId = req.params.id;
+    const { content, userName, userHandle } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Comment content cannot be empty' });
+    }
+
+    const r = db.prepare('SELECT id, post_id, institution_name FROM institution_responses WHERE id = ?').get(responseId) as any;
+    if (!r) return res.status(404).json({ error: 'Response statement not found' });
+
+    const commentId = `resp-comment-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const userId = req.user?.id || 'user-citizen';
+    const authorName = userName || req.user?.name || 'Concerned Citizen';
+    const authorHandle = userHandle || req.user?.handle || 'citizen_gh';
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO response_comments (
+        id, response_id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, content, likes_count, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)
+    `).run(
+      commentId,
+      responseId,
+      r.post_id,
+      userId,
+      authorName,
+      authorHandle,
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+      content.trim(),
+      now
+    );
+
+    res.status(201).json({
+      id: commentId,
+      responseId,
+      postId: r.post_id,
+      userId,
+      userName: authorName,
+      userHandle: authorHandle,
+      userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+      isVerified: true,
+      content: content.trim(),
+      createdAt: now,
+      likesCount: 0
+    });
+  });
+
+  // POST /api/responses/:id/vote - Upvote clarity/helpfulness of official statement
+  app.post('/api/responses/:id/vote', (req: AuthenticatedRequest, res) => {
+    const responseId = req.params.id;
+    const { voteType } = req.body; // 'helpful' | 'unhelpful'
+    const userId = req.user?.id || req.body.userId || 'guest-user';
+    const now = new Date().toISOString();
+
+    if (!['helpful', 'unhelpful'].includes(voteType)) {
+      return res.status(400).json({ error: 'Invalid vote type' });
+    }
+
+    const existing = db.prepare('SELECT vote_type FROM response_votes WHERE user_id = ? AND response_id = ?').get(userId, responseId) as any;
+
+    if (existing) {
+      if (existing.vote_type === voteType) {
+        // Remove vote
+        db.prepare('DELETE FROM response_votes WHERE user_id = ? AND response_id = ?').run(userId, responseId);
+        if (voteType === 'helpful') {
+          db.prepare('UPDATE institution_responses SET helpful_count = MAX(0, helpful_count - 1) WHERE id = ?').run(responseId);
+        } else {
+          db.prepare('UPDATE institution_responses SET unhelpful_count = MAX(0, unhelpful_count - 1) WHERE id = ?').run(responseId);
+        }
+      } else {
+        // Switch vote
+        db.prepare('UPDATE response_votes SET vote_type = ?, created_at = ? WHERE user_id = ? AND response_id = ?').run(voteType, now, userId, responseId);
+        if (voteType === 'helpful') {
+          db.prepare('UPDATE institution_responses SET helpful_count = helpful_count + 1, unhelpful_count = MAX(0, unhelpful_count - 1) WHERE id = ?').run(responseId);
+        } else {
+          db.prepare('UPDATE institution_responses SET unhelpful_count = unhelpful_count + 1, helpful_count = MAX(0, helpful_count - 1) WHERE id = ?').run(responseId);
+        }
+      }
+    } else {
+      // New vote
+      db.prepare('INSERT INTO response_votes (user_id, response_id, vote_type, created_at) VALUES (?, ?, ?, ?)').run(userId, responseId, voteType, now);
+      if (voteType === 'helpful') {
+        db.prepare('UPDATE institution_responses SET helpful_count = helpful_count + 1 WHERE id = ?').run(responseId);
+      } else {
+        db.prepare('UPDATE institution_responses SET unhelpful_count = unhelpful_count + 1 WHERE id = ?').run(responseId);
+      }
+    }
+
+    const updated = db.prepare('SELECT helpful_count, unhelpful_count FROM institution_responses WHERE id = ?').get(responseId) as any;
+    res.json({
+      helpfulCount: updated?.helpful_count || 0,
+      unhelpfulCount: updated?.unhelpful_count || 0,
+      userVote: existing?.vote_type === voteType ? null : voteType
+    });
+  });
+
+  // POST /api/responses/comments/:commentId/like - Like a statement comment
+  app.post('/api/responses/comments/:commentId/like', (req, res) => {
+    const commentId = req.params.commentId;
+    db.prepare('UPDATE response_comments SET likes_count = likes_count + 1 WHERE id = ?').run(commentId);
+    const row = db.prepare('SELECT likes_count FROM response_comments WHERE id = ?').get(commentId) as any;
+    res.json({ success: true, likesCount: row?.likes_count || 1 });
   });
 
   // GET /api/clusters
@@ -1115,9 +1386,8 @@ Rules:
 
   // POST /api/ai/generate-share-copy
   app.post('/api/ai/generate-share-copy', async (req, res) => {
+    const { postTitle = 'Civic Issue', category = 'Community Concern', location = 'Ghana', confirmationsCount = 0, institutionsTagged = 'Ghana Civic Authorities' } = req.body || {};
     try {
-      const { postTitle, category, location, confirmationsCount, institutionsTagged } = req.body;
-
       if (!process.env.GEMINI_API_KEY) {
         return res.json({
           whatsappCopy: `🚨 CIVIC ALERT: ${postTitle}\n📍 Location: ${location}\n👥 ${confirmationsCount} citizens independently observed this issue.\n🏛️ Tagged: ${institutionsTagged}\n🔗 Track on Ghana Civic Network`,

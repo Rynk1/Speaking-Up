@@ -14,9 +14,12 @@ import {
   SlidersHorizontal,
   Flame,
   CheckCircle2,
-  X
+  X,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { NotificationItem } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
 interface NavbarProps {
   currentView: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar';
@@ -49,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
+  const { theme, toggleTheme } = useTheme();
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -293,6 +297,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Theme Toggle Button */}
+            <button
+              id="theme-toggle-btn"
+              onClick={toggleTheme}
+              className="p-2 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 rounded-lg border border-slate-700 transition-all flex items-center justify-center group"
+              title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+              aria-label="Toggle theme mode"
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-400 group-hover:rotate-45 transition-transform duration-300" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-700 group-hover:-rotate-12 transition-transform duration-300" />
+              )}
+            </button>
 
             {/* Notifications Dropdown */}
             <div className="relative" ref={notifRef}>

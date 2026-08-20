@@ -100,9 +100,9 @@ ${window.location.origin}/app/post/${post.id}
             Emerging Investigative Clusters:
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {clusters.map(c => (
+            {clusters.map((c, idx) => (
               <div
-                key={c.id}
+                key={c.id ? `${c.id}-${idx}` : `j-cluster-${idx}`}
                 onClick={() => onOpenCluster(c.id)}
                 className="bg-slate-900/90 border border-slate-800 hover:border-slate-700 p-3.5 rounded-xl cursor-pointer transition-all space-y-2 group shadow-sm"
               >
@@ -155,9 +155,9 @@ ${window.location.origin}/app/post/${post.id}
 
       {/* Stories List */}
       <div className="space-y-3">
-        {displayed.map(post => (
+        {displayed.map((post, idx) => (
           <div
-            key={post.id}
+            key={post.id ? `${post.id}-${idx}` : `j-post-${idx}`}
             className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3 hover:border-slate-700 transition-all shadow-md"
           >
             <div className="flex items-start justify-between gap-2">

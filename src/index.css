@@ -1,1 +1,304 @@
 @import "tailwindcss";
+
+@layer base {
+  :root,
+  [data-theme="dark"],
+  .dark {
+    color-scheme: dark;
+    --theme-mode: 'dark';
+
+    /* Canvas and Surfaces */
+    --bg-canvas: #020617; /* slate-950 */
+    --bg-surface: #0f172a; /* slate-900 */
+    --bg-surface-elevated: #1e293b; /* slate-800 */
+    --bg-surface-hover: #334155; /* slate-700 */
+    --bg-surface-active: #475569; /* slate-600 */
+    --bg-header: rgba(15, 23, 42, 0.95);
+    --bg-input: #1e293b;
+    --bg-modal: #0f172a;
+    --bg-dropdown: #0f172a;
+    --bg-backdrop: rgba(2, 6, 23, 0.85);
+
+    /* Typography Tokens */
+    --text-heading: #ffffff;
+    --text-primary: #f8fafc; /* slate-50 */
+    --text-secondary: #cbd5e1; /* slate-300 */
+    --text-muted: #94a3b8; /* slate-400 */
+    --text-faint: #64748b; /* slate-500 */
+
+    /* Border Tokens */
+    --border-subtle: #1e293b; /* slate-800 */
+    --border-default: #334155; /* slate-700 */
+    --border-strong: #475569; /* slate-600 */
+    --border-focus: #10b981; /* emerald-500 */
+
+    /* Status & Civic Badges (Dark Tokens) */
+    --badge-neutral-bg: #1e293b;
+    --badge-neutral-text: #cbd5e1;
+    --badge-neutral-border: #334155;
+
+    --badge-emerald-bg: rgba(6, 78, 59, 0.6);
+    --badge-emerald-text: #6ee7b7;
+    --badge-emerald-border: rgba(6, 95, 70, 0.6);
+
+    --badge-amber-bg: rgba(120, 53, 15, 0.6);
+    --badge-amber-text: #fcd34d;
+    --badge-amber-border: rgba(146, 64, 14, 0.6);
+
+    --badge-red-bg: rgba(127, 29, 29, 0.6);
+    --badge-red-text: #fca5a5;
+    --badge-red-border: rgba(153, 27, 27, 0.6);
+
+    --badge-sky-bg: rgba(12, 74, 110, 0.6);
+    --badge-sky-text: #7dd3fc;
+    --badge-sky-border: rgba(3, 105, 161, 0.6);
+
+    --badge-purple-bg: rgba(88, 28, 135, 0.6);
+    --badge-purple-text: #d8b4fe;
+    --badge-purple-border: rgba(107, 33, 168, 0.6);
+
+    /* Emergency Alert Banner (Dark) */
+    --banner-emergency-bg: #451a03;
+    --banner-emergency-text: #fef3c7;
+    --banner-emergency-subtext: rgba(254, 243, 199, 0.9);
+    --banner-emergency-border: rgba(146, 64, 14, 0.8);
+    --banner-emergency-badge-bg: rgba(120, 53, 15, 0.6);
+    --banner-emergency-badge-border: rgba(180, 83, 9, 0.5);
+
+    /* Shadows */
+    --shadow-card: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+    --shadow-dropdown: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  }
+
+  [data-theme="light"],
+  .light {
+    color-scheme: light;
+    --theme-mode: 'light';
+
+    /* Canvas and Surfaces (Light Tokens) */
+    --bg-canvas: #f8fafc; /* crisp clean slate-50 */
+    --bg-surface: #ffffff; /* pure white cards */
+    --bg-surface-elevated: #f1f5f9; /* soft slate-100 */
+    --bg-surface-hover: #e2e8f0; /* slate-200 */
+    --bg-surface-active: #cbd5e1; /* slate-300 */
+    --bg-header: rgba(255, 255, 255, 0.97);
+    --bg-input: #ffffff;
+    --bg-modal: #ffffff;
+    --bg-dropdown: #ffffff;
+    --bg-backdrop: rgba(15, 23, 42, 0.5);
+
+    /* Typography Tokens */
+    --text-heading: #0f172a; /* high contrast slate-900 */
+    --text-primary: #0f172a; /* slate-900 */
+    --text-secondary: #334155; /* slate-700 */
+    --text-muted: #64748b; /* slate-500 */
+    --text-faint: #94a3b8; /* slate-400 */
+
+    /* Border Tokens */
+    --border-subtle: #e2e8f0; /* slate-200 */
+    --border-default: #cbd5e1; /* slate-300 */
+    --border-strong: #94a3b8; /* slate-400 */
+    --border-focus: #059669; /* emerald-600 */
+
+    /* Status & Civic Badges (Light Tokens) */
+    --badge-neutral-bg: #f1f5f9;
+    --badge-neutral-text: #334155;
+    --badge-neutral-border: #cbd5e1;
+
+    --badge-emerald-bg: #ecfdf5;
+    --badge-emerald-text: #065f46;
+    --badge-emerald-border: #a7f3d0;
+
+    --badge-amber-bg: #fffbeb;
+    --badge-amber-text: #92400e;
+    --badge-amber-border: #fde68a;
+
+    --badge-red-bg: #fef2f2;
+    --badge-red-text: #991b1b;
+    --badge-red-border: #fecaca;
+
+    --badge-sky-bg: #f0f9ff;
+    --badge-sky-text: #075985;
+    --badge-sky-border: #bae6fd;
+
+    --badge-purple-bg: #faf5ff;
+    --badge-purple-text: #6b21a8;
+    --badge-purple-border: #e9d5ff;
+
+    /* Emergency Alert Banner (Light) */
+    --banner-emergency-bg: #fffbeb;
+    --banner-emergency-text: #78350f;
+    --banner-emergency-subtext: #92400e;
+    --banner-emergency-border: #fde68a;
+    --banner-emergency-badge-bg: #fef3c7;
+    --banner-emergency-badge-border: #fcd34d;
+
+    /* Shadows */
+    --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+    --shadow-dropdown: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
+
+/* Light Theme Class Overrides: maps existing semantic colors cleanly in light mode */
+.light {
+  /* Surface Overrides */
+  .bg-slate-950 {
+    background-color: var(--bg-canvas) !important;
+  }
+  .bg-slate-900 {
+    background-color: var(--bg-surface) !important;
+  }
+  .bg-slate-900\/95,
+  .bg-slate-900\/90,
+  .bg-slate-900\/80 {
+    background-color: var(--bg-header) !important;
+  }
+  .bg-slate-950\/80,
+  .bg-slate-950\/90 {
+    background-color: var(--bg-backdrop) !important;
+  }
+  .bg-slate-800,
+  .bg-slate-800\/90,
+  .bg-slate-800\/80,
+  .bg-slate-800\/50,
+  .bg-slate-800\/60 {
+    background-color: var(--bg-surface-elevated) !important;
+  }
+  .hover\:bg-slate-800:hover,
+  .hover\:bg-slate-700\/80:hover,
+  .hover\:bg-slate-700:hover {
+    background-color: var(--bg-surface-hover) !important;
+  }
+
+  /* Text Overrides */
+  .text-white {
+    color: var(--text-heading) !important;
+  }
+  .text-slate-100 {
+    color: var(--text-primary) !important;
+  }
+  .text-slate-200 {
+    color: var(--text-secondary) !important;
+  }
+  .text-slate-300 {
+    color: var(--text-secondary) !important;
+  }
+  .text-slate-400 {
+    color: var(--text-muted) !important;
+  }
+  .text-slate-500 {
+    color: var(--text-faint) !important;
+  }
+
+  /* Border Overrides */
+  .border-slate-800,
+  .border-slate-800\/80,
+  .border-slate-800\/60 {
+    border-color: var(--border-subtle) !important;
+  }
+  .border-slate-700,
+  .border-slate-700\/80 {
+    border-color: var(--border-default) !important;
+  }
+
+  /* Badge / Status Container Overrides in Light Theme */
+  .bg-amber-950 {
+    background-color: var(--badge-amber-bg) !important;
+  }
+  .text-amber-100,
+  .text-amber-200,
+  .text-amber-300 {
+    color: var(--badge-amber-text) !important;
+  }
+  .border-amber-800,
+  .border-amber-700 {
+    border-color: var(--badge-amber-border) !important;
+  }
+
+  .bg-emerald-950,
+  .bg-emerald-950\/60 {
+    background-color: var(--badge-emerald-bg) !important;
+  }
+  .text-emerald-300,
+  .text-emerald-400 {
+    color: var(--badge-emerald-text) !important;
+  }
+  .border-emerald-800,
+  .border-emerald-800\/60,
+  .border-emerald-800\/40 {
+    border-color: var(--badge-emerald-border) !important;
+  }
+
+  .bg-red-950,
+  .bg-red-950\/80 {
+    background-color: var(--badge-red-bg) !important;
+  }
+  .text-red-300,
+  .text-red-200 {
+    color: var(--badge-red-text) !important;
+  }
+  .border-red-800 {
+    border-color: var(--badge-red-border) !important;
+  }
+
+  .bg-sky-950,
+  .bg-sky-950\/60 {
+    background-color: var(--badge-sky-bg) !important;
+  }
+  .text-sky-300,
+  .text-sky-400 {
+    color: var(--badge-sky-text) !important;
+  }
+  .border-sky-800,
+  .border-sky-800\/60 {
+    border-color: var(--badge-sky-border) !important;
+  }
+
+  .bg-purple-950,
+  .bg-purple-950\/60 {
+    background-color: var(--badge-purple-bg) !important;
+  }
+  .text-purple-300,
+  .text-purple-400 {
+    color: var(--badge-purple-text) !important;
+  }
+  .border-purple-800,
+  .border-purple-800\/60 {
+    border-color: var(--badge-purple-border) !important;
+  }
+
+  /* Form Inputs */
+  input,
+  textarea,
+  select {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-default) !important;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-muted) !important;
+  }
+}
+
+/* Custom Scrollbar for both themes */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}

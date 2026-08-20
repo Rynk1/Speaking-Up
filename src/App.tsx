@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Radio,
   MapPin,
@@ -22,11 +22,15 @@ import {
   Sparkles,
   SlidersHorizontal,
   ChevronDown,
-  Info
+  Info,
+  ShieldCheck,
+  FileCheck2,
+  ArrowRight
 } from 'lucide-react';
 import {
   CivicPost,
   Institution,
+  InstitutionResponse,
   IssueCluster,
   NationalAnalytics,
   NotificationItem,
@@ -39,12 +43,14 @@ import { EmergencyBanner } from './components/EmergencyBanner';
 import { Navbar } from './components/Navbar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { CivicPostCard } from './components/CivicPostCard';
+import { OfficialResponseFeedPostCard } from './components/OfficialResponseFeedPostCard';
 import { SpeakUpComposer } from './components/SpeakUpComposer';
 import { SharePreviewModal } from './components/SharePreviewModal';
 import { AddEvidenceModal } from './components/AddEvidenceModal';
 import { InstitutionResponseModal } from './components/InstitutionResponseModal';
 import { ReportAbuseModal } from './components/ReportAbuseModal';
 import { CommunityIssueClusterModal } from './components/CommunityIssueClusterModal';
+import { OfficialStatementModal } from './components/OfficialStatementModal';
 import { NationalMapView } from './components/NationalMapView';
 import { InstitutionDirectoryView } from './components/InstitutionDirectoryView';
 import { InstitutionDashboardView } from './components/InstitutionDashboardView';
@@ -77,7 +83,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
 
-  // Modals
+  // Modals & Focused States
   const [isSpeakUpOpen, setIsSpeakUpOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [sharePost, setSharePost] = useState<CivicPost | null>(null);
@@ -85,6 +91,32 @@ export default function App() {
   const [responsePost, setResponsePost] = useState<CivicPost | null>(null);
   const [abusePostId, setAbusePostId] = useState<string | null>(null);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
+  const [selectedStatement, setSelectedStatement] = useState<{ post: CivicPost; response: InstitutionResponse } | null>(null);
+  const [focusedResponseId, setFocusedResponseId] = useState<string | null>(null);
+
+  // Navigate directly to Response Feed Post (Reverse Hierarchy)
+  const handleViewResponseFeedPost = useCallback((post: CivicPost, response: InstitutionResponse) => {
+    setFeedTab('official_responded');
+    setFocusedResponseId(response.id);
+    setCurrentView('feed');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  // Hash deep-link listener
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#response-')) {
+        const respId = hash.replace('#response-', '');
+        setFeedTab('official_responded');
+        setFocusedResponseId(respId);
+        setCurrentView('feed');
+      }
+    };
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
 
   // Fetch all initial data
   const loadAllData = useCallback(async () => {
@@ -171,6 +203,52 @@ export default function App() {
     return true;
   });
 
+  // Extract and format all official responses as standalone reverse-hierarchy feed post items
+  const officialResponseFeedItems = useMemo(() => {
+    const items: { post: CivicPost; response: InstitutionResponse }[] = [];
+    posts.forEach(post => {
+      if (post.officialResponses && post.officialResponses.length > 0) {
+        // Search & filter checks for response items
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchTitle = post.title.toLowerCase().includes(q);
+          const matchContent = post.content.toLowerCase().includes(q);
+          const matchLocation =
+            post.location.district.toLowerCase().includes(q) ||
+            post.location.region.toLowerCase().includes(q) ||
+            (post.location.landmark && post.location.landmark.toLowerCase().includes(q));
+          const matchResp = post.officialResponses.some(
+            r =>
+              r.statementTitle?.toLowerCase().includes(q) ||
+              r.message.toLowerCase().includes(q) ||
+              r.institutionName.toLowerCase().includes(q) ||
+              r.responderName?.toLowerCase().includes(q)
+          );
+          if (!matchTitle && !matchContent && !matchLocation && !matchResp) return;
+        }
+
+        if (filterCategory !== 'ALL' && post.category !== filterCategory) return;
+        if (filterRegion !== 'ALL' && post.location.region !== filterRegion) return;
+        if (filterUrgency !== 'ALL' && post.urgency !== filterUrgency) return;
+
+        post.officialResponses.forEach(response => {
+          items.push({ post, response });
+        });
+      }
+    });
+
+    // If focused response ID, prioritize it
+    items.sort((a, b) => {
+      if (focusedResponseId) {
+        if (a.response.id === focusedResponseId) return -1;
+        if (b.response.id === focusedResponseId) return 1;
+      }
+      return new Date(b.response.createdAt).getTime() - new Date(a.response.createdAt).getTime();
+    });
+
+    return items;
+  }, [posts, searchQuery, filterCategory, filterRegion, filterUrgency, focusedResponseId]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950 pb-20 lg:pb-8">
       {/* Emergency Disclaimer Banner */}
@@ -226,9 +304,9 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2">
-                  {clusters.map(cluster => (
+                  {clusters.map((cluster, idx) => (
                     <div
-                      key={cluster.id}
+                      key={cluster.id ? `${cluster.id}-${idx}` : `cluster-${idx}`}
                       onClick={() => setSelectedClusterId(cluster.id)}
                       className="p-2.5 bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800/80 rounded-xl cursor-pointer transition-colors space-y-1"
                     >
@@ -261,9 +339,9 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5 text-xs">
-                  {institutions.slice(0, 4).map(inst => (
+                  {institutions.slice(0, 4).map((inst, idx) => (
                     <div
-                      key={inst.id}
+                      key={inst.id ? `${inst.id}-${idx}` : `inst-${idx}`}
                       onClick={() => {
                         setSelectedInstitutionId(inst.id);
                         setCurrentView('institutions');
@@ -326,20 +404,26 @@ export default function App() {
 
                 <button
                   id="feed-tab-official"
-                  onClick={() => setFeedTab('official_responded')}
+                  onClick={() => {
+                    setFeedTab('official_responded');
+                    setFocusedResponseId(null);
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
                     feedTab === 'official_responded'
-                      ? 'bg-amber-600 text-slate-950 font-bold shadow-sm'
+                      ? 'bg-emerald-600 text-white font-bold shadow-sm'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                   }`}
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Official Responses</span>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>Official Responses ({officialResponseFeedItems.length})</span>
                 </button>
 
                 <button
                   id="feed-tab-all"
-                  onClick={() => setFeedTab('all')}
+                  onClick={() => {
+                    setFeedTab('all');
+                    setFocusedResponseId(null);
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
                     feedTab === 'all'
                       ? 'bg-slate-800 text-white'
@@ -403,6 +487,64 @@ export default function App() {
                   <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
                   <span>Loading live citizen reports from all regions...</span>
                 </div>
+              ) : feedTab === 'official_responded' ? (
+                /* OFFICIAL STATE RESPONSES STREAM (REVERSE FLOW FEED POSTS) */
+                <div className="space-y-4">
+                  {/* Focused Banner if navigating directly to a response */}
+                  {focusedResponseId && (
+                    <div className="p-3 bg-emerald-950/70 border border-emerald-800/80 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-md">
+                      <div className="flex items-center gap-2 text-emerald-300 font-medium min-w-0">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span className="truncate">Viewing focused official response feed post in reverse flow</span>
+                      </div>
+                      <button
+                        onClick={() => setFocusedResponseId(null)}
+                        className="px-2.5 py-1 bg-emerald-900/60 hover:bg-emerald-900 text-emerald-200 rounded-lg text-[11px] font-semibold transition-colors shrink-0"
+                      >
+                        Show all ({officialResponseFeedItems.length})
+                      </button>
+                    </div>
+                  )}
+
+                  {officialResponseFeedItems.length === 0 ? (
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center space-y-3 shadow-md">
+                      <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
+                        <FileCheck2 className="w-6 h-6 text-emerald-400" />
+                      </div>
+                      <h3 className="font-bold text-sm text-slate-200">No official responses match your filter</h3>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                        State institutions provide direct public updates and field action communiqués. Try adjusting your category or region filter.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setFilterCategory('ALL');
+                          setFilterRegion('ALL');
+                          setSearchQuery('');
+                          setFocusedResponseId(null);
+                        }}
+                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg"
+                      >
+                        Reset filters
+                      </button>
+                    </div>
+                  ) : (
+                    officialResponseFeedItems.map((item, idx) => (
+                      <OfficialResponseFeedPostCard
+                        key={`resp-feed-${item.response.id}-${idx}`}
+                        post={item.post}
+                        response={item.response}
+                        currentUser={currentUser}
+                        onOpenStatementModal={(p, r) => setSelectedStatement({ post: p, response: r })}
+                        onJumpToOriginalPost={p => {
+                          setFeedTab('all');
+                          setFocusedResponseId(null);
+                          setSearchQuery(p.title);
+                        }}
+                        onPostUpdated={refreshPosts}
+                      />
+                    ))
+                  )}
+                </div>
               ) : filteredPosts.length === 0 ? (
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center space-y-3 shadow-md">
                   <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
@@ -426,9 +568,9 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {filteredPosts.map(post => (
+                  {filteredPosts.map((post, idx) => (
                     <CivicPostCard
-                      key={post.id}
+                      key={post.id ? `${post.id}-${idx}` : `post-${idx}`}
                       post={post}
                       onOpenShare={p => setSharePost(p)}
                       onOpenAddEvidence={p => setEvidencePost(p)}
@@ -437,6 +579,8 @@ export default function App() {
                       onPostUpdated={refreshPosts}
                       userRole={userRole}
                       onOpenInstitutionResponse={p => setResponsePost(p)}
+                      onViewOfficialResponse={(p, r) => setSelectedStatement({ post: p, response: r })}
+                      onViewResponseFeedPost={handleViewResponseFeedPost}
                     />
                   ))}
                 </div>
@@ -540,9 +684,9 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {clusters.map(cluster => (
+              {clusters.map((cluster, idx) => (
                 <div
-                  key={cluster.id}
+                  key={cluster.id ? `${cluster.id}-${idx}` : `cluster-card-${idx}`}
                   onClick={() => setSelectedClusterId(cluster.id)}
                   className="bg-slate-900/90 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 sm:p-5 cursor-pointer transition-all shadow-md flex flex-col justify-between space-y-3 group"
                 >
@@ -608,6 +752,8 @@ export default function App() {
             setSelectedInstitutionId={setSelectedInstitutionId}
             onOpenResponseModal={p => setResponsePost(p)}
             onPostUpdated={refreshPosts}
+            onViewOfficialResponse={(p, r) => setSelectedStatement({ post: p, response: r })}
+            onViewResponseFeedPost={handleViewResponseFeedPost}
           />
         )}
 
@@ -702,6 +848,24 @@ export default function App() {
           setSearchQuery(p.title);
         }}
       />
+
+      {/* 7. Official State Institution Full Statement Modal (Reverse Hierarchy & Replies Thread) */}
+      {selectedStatement && (
+        <OfficialStatementModal
+          post={selectedStatement.post}
+          response={selectedStatement.response}
+          currentUser={currentUser}
+          onClose={() => setSelectedStatement(null)}
+          onPostUpdated={() => refreshPosts()}
+          onOpenAnotherResponse={(newResp) => {
+            setSelectedStatement({
+              post: selectedStatement.post,
+              response: newResp
+            });
+          }}
+          onViewAsFeedPost={handleViewResponseFeedPost}
+        />
+      )}
     </div>
   );
 }

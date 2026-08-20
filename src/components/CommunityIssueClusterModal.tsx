@@ -128,9 +128,9 @@ export const CommunityIssueClusterModal: React.FC<CommunityIssueClusterModalProp
                 State Institutions Tagged in this Cluster:
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                {cluster.primaryInstitutions.map(instName => (
+                {(cluster.primaryInstitutions || []).map((instName, idx) => (
                   <div
-                    key={instName}
+                    key={`${instName}-${idx}`}
                     className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-200 flex items-center gap-2"
                   >
                     <span className="font-semibold">{instName}</span>
@@ -151,9 +151,9 @@ export const CommunityIssueClusterModal: React.FC<CommunityIssueClusterModalProp
               </div>
 
               <div className="space-y-2.5">
-                {posts.map(post => (
+                {posts.map((post, idx) => (
                   <div
-                    key={post.id}
+                    key={post.id ? `${post.id}-${idx}` : `post-${idx}`}
                     onClick={() => {
                       onSelectPost(post);
                       onClose();

@@ -128,42 +128,42 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
       case 'ACTION_TAKEN':
         return {
           label: 'Direct Action Taken / Teams Active',
-          badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+          badgeBg: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
           borderLeft: 'border-l-emerald-500',
           icon: CheckCircle2
         };
       case 'INVESTIGATING':
         return {
           label: 'Investigation & Assessment Underway',
-          badgeBg: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+          badgeBg: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30',
           borderLeft: 'border-l-amber-500',
           icon: Clock
         };
       case 'PUBLIC_GUIDANCE':
         return {
           label: 'Official Public Safety Guidance',
-          badgeBg: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
+          badgeBg: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30',
           borderLeft: 'border-l-sky-500',
           icon: ShieldCheck
         };
       case 'WE_ARE_AWARE':
         return {
           label: 'Acknowledged & Logged for Dispatch',
-          badgeBg: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+          badgeBg: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30',
           borderLeft: 'border-l-blue-500',
           icon: Info
         };
       case 'OUTSIDE_MANDATE':
         return {
           label: 'Referral to Authorized Institution',
-          badgeBg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+          badgeBg: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30',
           borderLeft: 'border-l-purple-500',
           icon: Building2
         };
       default:
         return {
           label: 'Official State Communiqué',
-          badgeBg: 'bg-slate-500/10 text-slate-300 border-slate-500/30',
+          badgeBg: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30',
           borderLeft: 'border-l-emerald-500',
           icon: FileText
         };
@@ -178,40 +178,40 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
   return (
     <article
       id={`official-response-post-${response.id}`}
-      className={`bg-slate-900 border-l-4 ${typeMeta.borderLeft} border-y border-r border-slate-800 hover:border-slate-700/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 transition-all duration-200`}
+      className={`bg-white dark:bg-slate-900 border-l-4 ${typeMeta.borderLeft} border-y border-r border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700/90 rounded-2xl p-3.5 sm:p-5 shadow-xl space-y-3.5 sm:space-y-4 transition-all duration-200`}
     >
       {/* 1. TOP HEADER: Official Institution Identity & Verified State Desk */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0">
+      <div className="flex items-start justify-between gap-2.5 sm:gap-3">
+        <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
           {response.institutionLogo ? (
             <img
               src={response.institutionLogo}
               alt={response.institutionName}
-              className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl object-cover ring-2 ring-emerald-500/30 shrink-0 shadow-md"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover ring-2 ring-emerald-500/30 shrink-0 shadow-md"
             />
           ) : (
-            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-700 flex items-center justify-center text-white shrink-0 shadow-md">
-              <Building2 className="w-6 h-6" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-700 flex items-center justify-center text-white shrink-0 shadow-md">
+              <Building2 className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
           )}
 
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h3 className="font-extrabold text-slate-100 text-sm sm:text-base tracking-tight truncate">
+              <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm sm:text-base tracking-tight truncate">
                 {response.institutionName}
               </h3>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 shrink-0">
-                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/80 shrink-0">
+                <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                 VERIFIED STATE AUTHORITY
               </span>
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap mt-0.5">
-              <span className="font-medium text-slate-300">{response.responderName}</span>
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap mt-0.5">
+              <span className="font-medium text-slate-800 dark:text-slate-300">{response.responderName}</span>
               <span>•</span>
-              <span className="text-slate-400 truncate">{response.responderTitle}</span>
+              <span className="text-slate-600 dark:text-slate-400 truncate">{response.responderTitle}</span>
               <span>•</span>
-              <span className="text-slate-500 font-mono text-[11px]">
+              <span className="text-slate-500 dark:text-slate-500 font-mono text-[11px]">
                 {new Date(response.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
                 {new Date(response.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </span>
@@ -227,7 +227,7 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           </span>
 
           {response.resolutionStatus && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
               STATUS: {response.resolutionStatus}
             </span>
           )}
@@ -239,11 +239,11 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
         {/* Title and Reference Number */}
         <div className="flex items-start justify-between gap-2 flex-wrap">
           {response.statementTitle ? (
-            <h4 className="font-bold text-slate-100 text-sm sm:text-base leading-snug tracking-tight">
+            <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm sm:text-base leading-snug tracking-tight">
               "{response.statementTitle}"
             </h4>
           ) : (
-            <h4 className="font-bold text-slate-100 text-sm sm:text-base leading-snug tracking-tight">
+            <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm sm:text-base leading-snug tracking-tight">
               Official State Directive on Citizen Report #{post.id.slice(0, 8)}
             </h4>
           )}
@@ -252,18 +252,18 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
             <button
               id={`copy-ref-${response.id}`}
               onClick={handleCopyRef}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[11px] border border-slate-700 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[11px] border border-slate-300 dark:border-slate-700 transition-colors"
               title="Copy official reference number"
             >
-              <FileCheck2 className="w-3 h-3 text-emerald-400" />
+              <FileCheck2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
               <span>{response.referenceNumber}</span>
-              <span className="text-slate-400 text-[10px]">{copiedRef ? '✓' : '(copy)'}</span>
+              <span className="text-slate-500 dark:text-slate-400 text-[10px]">{copiedRef ? '✓' : '(copy)'}</span>
             </button>
           )}
         </div>
 
         {/* Statement Message Excerpt */}
-        <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-slate-200 leading-relaxed font-sans shadow-inner whitespace-pre-line space-y-2">
+        <div className="bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 sm:p-4 text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-sans shadow-inner whitespace-pre-line space-y-2">
           <p className={isExpanded ? '' : 'line-clamp-4'}>
             {response.fullStatement || response.message}
           </p>
@@ -271,7 +271,7 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           {(response.fullStatement || response.message.length > 220) && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="text-emerald-400 hover:text-emerald-300 text-xs font-semibold flex items-center gap-1 pt-1"
+              className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 text-xs font-semibold flex items-center gap-1 pt-1"
             >
               {isExpanded ? (
                 <>
@@ -290,14 +290,14 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
 
         {/* Live Operational Step Preview */}
         {currentStep && (
-          <div className="p-2.5 rounded-xl bg-slate-950/50 border border-slate-800 flex items-center justify-between text-xs text-slate-300 gap-2">
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 gap-2">
             <div className="flex items-center gap-2 truncate">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span className="text-slate-400 font-medium shrink-0">Live Action Step:</span>
-              <span className="font-semibold text-slate-200 truncate">{currentStep.step}</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-slate-500 dark:text-slate-400 font-medium shrink-0">Live Action Step:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{currentStep.step}</span>
             </div>
             {currentStep.timestamp && (
-              <span className="text-[11px] font-mono text-slate-400 shrink-0">{currentStep.timestamp}</span>
+              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 shrink-0">{currentStep.timestamp}</span>
             )}
           </div>
         )}
@@ -335,17 +335,17 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
       {/* 3. REVERSE HIERARCHY EMBEDDED CARD: The Original Citizen Issue */}
       <div
         id={`response-embedded-original-issue-${post.id}`}
-        className="p-3.5 sm:p-4 rounded-xl bg-slate-950/90 border border-slate-800 hover:border-emerald-500/40 transition-colors space-y-2.5"
+        className="p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 transition-colors space-y-2.5"
       >
         <div className="flex items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-1.5 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-            <ArrowRight className="w-3.5 h-3.5 text-emerald-400 rotate-180 shrink-0" />
+          <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+            <ArrowRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 rotate-180 shrink-0" />
             <span>In Direct Response To Citizen Report</span>
           </div>
 
           <button
             onClick={() => onJumpToOriginalPost?.(post)}
-            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+            className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 font-bold flex items-center gap-1"
           >
             <span>Jump to original report</span>
             <ExternalLink className="w-3 h-3" />
@@ -357,34 +357,34 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
             <img
               src={post.media[0].url}
               alt={post.title}
-              className="w-full sm:w-24 h-20 rounded-lg object-cover border border-slate-800 shrink-0"
+              className="w-full sm:w-24 h-20 rounded-lg object-cover border border-slate-200 dark:border-slate-800 shrink-0"
             />
           )}
 
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap text-xs">
-              <span className="font-bold text-slate-200">{post.authorName}</span>
-              <span className="text-slate-400">@{post.authorHandle}</span>
-              <span className="text-slate-500">•</span>
-              <span className="text-slate-400 flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-emerald-400" />
+              <span className="font-bold text-slate-900 dark:text-slate-200">{post.authorName}</span>
+              <span className="text-slate-500 dark:text-slate-400">@{post.authorHandle}</span>
+              <span className="text-slate-400 dark:text-slate-500">•</span>
+              <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                 {post.location.landmark || post.location.district}, {post.location.region}
               </span>
-              <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px] font-medium">
+              <span className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-medium">
                 {post.category}
               </span>
             </div>
 
-            <h5 className="font-bold text-slate-100 text-xs sm:text-sm line-clamp-1">
+            <h5 className="font-bold text-slate-900 dark:text-slate-100 text-xs sm:text-sm line-clamp-1">
               {post.title}
             </h5>
 
-            <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+            <p className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2 leading-relaxed">
               {post.content}
             </p>
 
-            <div className="flex items-center gap-3 pt-0.5 text-[11px] text-slate-400">
-              <span className="text-emerald-400 font-medium">👥 {post.engagement.confirmations} citizen confirmations</span>
+            <div className="flex items-center gap-3 pt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">👥 {post.engagement.confirmations} citizen confirmations</span>
               <span>💬 {post.engagement.comments} comments</span>
             </div>
           </div>
@@ -392,17 +392,17 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
       </div>
 
       {/* 4. INTERACTION & ACTION BAR (Vote, Reply, Share, Full Modal) */}
-      <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2 flex-wrap text-xs">
+      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap text-xs">
         {/* Helpfulness Rating and Comments toggler */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Helpful Upvote */}
           <button
             id={`vote-helpful-btn-${response.id}`}
             onClick={e => handleVote(e, 'helpful')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium border transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl font-medium border transition-colors ${
               helpfulVote === 'helpful'
                 ? 'bg-emerald-600 text-white border-emerald-600'
-                : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-emerald-950/60 hover:text-emerald-300 hover:border-emerald-700'
+                : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 hover:text-emerald-700 dark:hover:text-emerald-300 hover:border-emerald-500'
             }`}
             title="Mark this official statement as helpful & transparent"
           >
@@ -414,10 +414,10 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           <button
             id={`vote-unhelpful-btn-${response.id}`}
             onClick={e => handleVote(e, 'unhelpful')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl font-medium border transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl font-medium border transition-colors ${
               helpfulVote === 'unhelpful'
                 ? 'bg-rose-600 text-white border-rose-600'
-                : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-700'
+                : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-rose-950/60 hover:text-rose-700 dark:hover:text-rose-300 hover:border-rose-500'
             }`}
             title="Mark statement as unclear or inadequate"
           >
@@ -429,35 +429,35 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           <button
             id={`toggle-comments-btn-${response.id}`}
             onClick={() => setShowComments(!showComments)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium border transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl font-medium border transition-colors ${
               showComments
-                ? 'bg-slate-700 text-white border-slate-600'
-                : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700'
+                ? 'bg-slate-700 dark:bg-slate-700 text-white border-slate-600'
+                : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
+            <MessageSquare className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
             <span>Replies ({comments.length || response.commentsCount || 0})</span>
           </button>
         </div>
 
         {/* Share and Open Statement Modal Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             id={`share-response-btn-${response.id}`}
             onClick={handleCopyLink}
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-medium border border-slate-700 transition-colors flex items-center gap-1.5"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium border border-slate-300 dark:border-slate-700 transition-colors flex items-center gap-1.5"
             title="Copy link to this response post"
           >
-            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
             <span className="hidden sm:inline">{copiedLink ? 'Link Copied!' : 'Share'}</span>
           </button>
 
           <button
             id={`open-statement-modal-btn-${response.id}`}
             onClick={() => onOpenStatementModal(post, response)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs shadow-md transition-all"
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs shadow-md transition-all"
           >
-            <span>Full Communiqué & Timeline</span>
+            <span>Full Communiqué</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -467,11 +467,11 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
       {showComments && (
         <div
           id={`response-comments-thread-${response.id}`}
-          className="pt-3 border-t border-slate-800 space-y-3"
+          className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3"
         >
           {/* Reply Composer */}
           <form onSubmit={handleCommentSubmit} className="flex items-start gap-2">
-            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300 shrink-0 border border-slate-700">
+            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0 border border-slate-300 dark:border-slate-700">
               {currentUser?.name ? currentUser.name.charAt(0) : 'C'}
             </div>
             <div className="flex-1 space-y-1.5">
@@ -481,7 +481,7 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
                 value={newCommentText}
                 onChange={e => setNewCommentText(e.target.value)}
                 placeholder={`Reply to ${response.institutionName} regarding this statement...`}
-                className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500"
               />
               <div className="flex justify-end">
                 <button
@@ -499,30 +499,30 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           {/* List of Replies */}
           <div className="space-y-2">
             {comments.length === 0 ? (
-              <p className="text-center py-3 text-xs text-slate-500">
+              <p className="text-center py-3 text-xs text-slate-500 dark:text-slate-400">
                 No replies yet. Be the first citizen to ask or verify progress with this agency!
               </p>
             ) : (
               comments.map(c => (
                 <div
                   key={c.id}
-                  className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1 text-xs"
+                  className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 space-y-1 text-xs"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-slate-200">{c.userName}</span>
-                      <span className="text-slate-500">@{c.userHandle}</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-200">{c.userName}</span>
+                      <span className="text-slate-500 dark:text-slate-400">@{c.userHandle}</span>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-mono">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                       {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p className="text-slate-300">{c.content}</p>
+                  <p className="text-slate-800 dark:text-slate-300">{c.content}</p>
                   <div className="flex items-center gap-2 pt-0.5 text-[11px] text-slate-500">
                     <button
                       onClick={() => handleLikeComment(c.id)}
-                      className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${
-                        c.userLiked ? 'text-emerald-400 font-semibold' : ''
+                      className={`flex items-center gap-1 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors ${
+                        c.userLiked ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : ''
                       }`}
                     >
                       <Heart className={`w-3 h-3 ${c.userLiked ? 'fill-current' : ''}`} />

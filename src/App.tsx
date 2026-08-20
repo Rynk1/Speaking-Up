@@ -270,19 +270,19 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-1.5 sm:px-6 py-3 sm:py-6">
         {/* VIEW 1: LIVE FEED & CITIZEN REPORTS */}
         {currentView === 'feed' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
             {/* Left Sidebar (Desktop Only) */}
             <aside className="hidden lg:block lg:col-span-3 space-y-4">
               {/* Civic Discovery Card */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
-                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
+                <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
                   <Megaphone className="w-4 h-4" />
                   <span>ZERO FOLLOWERS NEEDED</span>
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
                   On Ghana Civic Network, your voice reaches nearby residents and verified state authorities regardless of your follower count.
                 </p>
                 <button
@@ -295,10 +295,10 @@ export default function App() {
               </div>
 
               {/* Active Community Issue Clusters Widget */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                   <span className="flex items-center gap-1.5">
-                    <Flame className="w-3.5 h-3.5 text-amber-400" />
+                    <Flame className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                     Hot Community Clusters
                   </span>
                 </div>
@@ -308,15 +308,15 @@ export default function App() {
                     <div
                       key={cluster.id ? `${cluster.id}-${idx}` : `cluster-${idx}`}
                       onClick={() => setSelectedClusterId(cluster.id)}
-                      className="p-2.5 bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800/80 rounded-xl cursor-pointer transition-colors space-y-1"
+                      className="p-2.5 bg-slate-50 dark:bg-slate-950/60 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800/80 rounded-xl cursor-pointer transition-colors space-y-1"
                     >
-                      <div className="text-[10px] font-bold text-amber-400">{cluster.category}</div>
-                      <div className="text-xs font-semibold text-slate-200 line-clamp-2 leading-snug">
+                      <div className="text-[10px] font-bold text-amber-700 dark:text-amber-400">{cluster.category}</div>
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug">
                         {cluster.title}
                       </div>
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-1">
                         <span>{cluster.district}</span>
-                        <span className="text-emerald-400 font-semibold">{cluster.totalConfirmations} confirmed</span>
+                        <span className="text-emerald-700 dark:text-emerald-400 font-semibold">{cluster.totalConfirmations} confirmed</span>
                       </div>
                     </div>
                   ))}
@@ -324,15 +324,15 @@ export default function App() {
               </div>
 
               {/* Verified Authorities Quick Links */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2.5 shadow-md">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-2.5 shadow-md">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                   <span className="flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     Top Verified Desks
                   </span>
                   <button
                     onClick={() => setCurrentView('institutions')}
-                    className="text-[10px] text-emerald-400 hover:underline capitalize"
+                    className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline capitalize"
                   >
                     Directory
                   </button>
@@ -346,10 +346,10 @@ export default function App() {
                         setSelectedInstitutionId(inst.id);
                         setCurrentView('institutions');
                       }}
-                      className="p-2 rounded-lg bg-slate-950/40 hover:bg-slate-800 cursor-pointer flex items-center justify-between transition-colors"
+                      className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex items-center justify-between transition-colors"
                     >
-                      <div className="font-semibold text-slate-300">{inst.shortName}</div>
-                      <span className="text-[9px] px-1.5 py-0.2 bg-slate-800 text-slate-400 rounded">
+                      <div className="font-semibold text-slate-800 dark:text-slate-300">{inst.shortName}</div>
+                      <span className="text-[9px] px-1.5 py-0.2 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded font-mono">
                         {inst.alertMethod === 'DIRECT_API' ? '⚡ API' : '💬 WhatsApp'}
                       </span>
                     </div>
@@ -359,43 +359,43 @@ export default function App() {
             </aside>
 
             {/* Central Feed Stream */}
-            <div className="lg:col-span-6 space-y-4">
+            <div className="lg:col-span-6 space-y-3.5 sm:space-y-4">
               {/* Mobile Quick Action Banner */}
-              <div className="lg:hidden bg-gradient-to-r from-slate-900 via-emerald-950/30 to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-md">
-                <div>
-                  <div className="font-bold text-xs sm:text-sm text-white">Have a civic issue in your area?</div>
-                  <div className="text-[11px] text-slate-400">Zero followers needed to alert public & authorities</div>
+              <div className="lg:hidden bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-2.5 shadow-md">
+                <div className="min-w-0">
+                  <div className="font-bold text-xs sm:text-sm text-white truncate">Have a civic issue in your area?</div>
+                  <div className="text-[10px] sm:text-[11px] text-emerald-200 truncate">Zero followers needed to alert public & authorities</div>
                 </div>
                 <button
                   onClick={() => setIsSpeakUpOpen(true)}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md shrink-0"
+                  className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1 shadow-md shrink-0 transition-transform active:scale-95"
                 >
                   <Plus className="w-3.5 h-3.5" /> SPEAK UP
                 </button>
               </div>
 
               {/* Feed Tabs Bar */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-1.5 flex items-center gap-1 overflow-x-auto shadow-md">
+              <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-1 sm:p-1.5 flex items-center gap-1 overflow-x-auto shadow-sm">
                 <button
                   id="feed-tab-hot"
                   onClick={() => setFeedTab('nearby_hot')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 sm:gap-1.5 ${
                     feedTab === 'nearby_hot'
                       ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <Flame className="w-3.5 h-3.5 text-amber-300" />
+                  <Flame className="w-3.5 h-3.5 text-amber-400 dark:text-amber-300" />
                   <span>Nearby & Community Hot</span>
                 </button>
 
                 <button
                   id="feed-tab-urgent"
                   onClick={() => setFeedTab('urgent')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 sm:gap-1.5 ${
                     feedTab === 'urgent'
                       ? 'bg-red-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <AlertTriangle className="w-3.5 h-3.5" />
@@ -408,10 +408,10 @@ export default function App() {
                     setFeedTab('official_responded');
                     setFocusedResponseId(null);
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 sm:gap-1.5 ${
                     feedTab === 'official_responded'
                       ? 'bg-emerald-600 text-white font-bold shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
@@ -424,10 +424,10 @@ export default function App() {
                     setFeedTab('all');
                     setFocusedResponseId(null);
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
                     feedTab === 'all'
-                      ? 'bg-slate-800 text-white'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white font-bold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   All Recent ({posts.length})
@@ -437,7 +437,7 @@ export default function App() {
               {/* Feed Filters Strip */}
               <div className="flex items-center justify-between gap-2 text-xs flex-wrap px-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-slate-400 text-[11px] font-medium flex items-center gap-1">
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium flex items-center gap-1">
                     <Filter className="w-3 h-3" /> Filter:
                   </span>
 
@@ -445,7 +445,7 @@ export default function App() {
                   <select
                     value={filterRegion}
                     onChange={e => setFilterRegion(e.target.value)}
-                    className="p-1.5 bg-slate-900 text-slate-300 text-xs rounded-lg border border-slate-800 focus:outline-none focus:border-emerald-500"
+                    className="p-1.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-300 text-xs rounded-lg border border-slate-300 dark:border-slate-800 focus:outline-none focus:border-emerald-500"
                   >
                     <option value="ALL">All Ghana Regions</option>
                     {GHANA_REGIONS.map(r => (
@@ -459,7 +459,7 @@ export default function App() {
                   <select
                     value={filterCategory}
                     onChange={e => setFilterCategory(e.target.value)}
-                    className="p-1.5 bg-slate-900 text-slate-300 text-xs rounded-lg border border-slate-800 focus:outline-none focus:border-emerald-500"
+                    className="p-1.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-300 text-xs rounded-lg border border-slate-300 dark:border-slate-800 focus:outline-none focus:border-emerald-500"
                   >
                     <option value="ALL">All Categories</option>
                     <option value="Flooding & Drainage">Flooding & Drainage</option>
@@ -473,7 +473,7 @@ export default function App() {
 
                 <button
                   onClick={refreshPosts}
-                  className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-slate-800 flex items-center gap-1 text-xs"
+                  className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1 text-xs"
                   title="Refresh feed"
                 >
                   <RefreshCw className="w-3 h-3" />
@@ -483,23 +483,23 @@ export default function App() {
 
               {/* Feed Items Stream */}
               {loadingPosts ? (
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 sm:p-12 text-center text-slate-500 dark:text-slate-400 text-sm flex items-center justify-center gap-2 shadow-sm">
+                  <Loader2 className="w-5 h-5 animate-spin text-emerald-600 dark:text-emerald-400" />
                   <span>Loading live citizen reports from all regions...</span>
                 </div>
               ) : feedTab === 'official_responded' ? (
                 /* OFFICIAL STATE RESPONSES STREAM (REVERSE FLOW FEED POSTS) */
-                <div className="space-y-4">
+                <div className="space-y-3.5 sm:space-y-4">
                   {/* Focused Banner if navigating directly to a response */}
                   {focusedResponseId && (
-                    <div className="p-3 bg-emerald-950/70 border border-emerald-800/80 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-md">
-                      <div className="flex items-center gap-2 text-emerald-300 font-medium min-w-0">
-                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-800/80 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-sm">
+                      <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-medium min-w-0">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         <span className="truncate">Viewing focused official response feed post in reverse flow</span>
                       </div>
                       <button
                         onClick={() => setFocusedResponseId(null)}
-                        className="px-2.5 py-1 bg-emerald-900/60 hover:bg-emerald-900 text-emerald-200 rounded-lg text-[11px] font-semibold transition-colors shrink-0"
+                        className="px-2.5 py-1 bg-emerald-200 dark:bg-emerald-900/60 hover:bg-emerald-300 dark:hover:bg-emerald-900 text-emerald-900 dark:text-emerald-200 rounded-lg text-[11px] font-bold transition-colors shrink-0"
                       >
                         Show all ({officialResponseFeedItems.length})
                       </button>
@@ -507,12 +507,12 @@ export default function App() {
                   )}
 
                   {officialResponseFeedItems.length === 0 ? (
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center space-y-3 shadow-md">
-                      <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
-                        <FileCheck2 className="w-6 h-6 text-emerald-400" />
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 sm:p-10 text-center space-y-3 shadow-sm">
+                      <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
+                        <FileCheck2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                       </div>
-                      <h3 className="font-bold text-sm text-slate-200">No official responses match your filter</h3>
-                      <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                      <h3 className="font-bold text-sm text-slate-900 dark:text-slate-200">No official responses match your filter</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                         State institutions provide direct public updates and field action communiqués. Try adjusting your category or region filter.
                       </p>
                       <button
@@ -522,7 +522,7 @@ export default function App() {
                           setSearchQuery('');
                           setFocusedResponseId(null);
                         }}
-                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg"
+                        className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 text-xs font-semibold rounded-lg"
                       >
                         Reset filters
                       </button>
@@ -546,12 +546,12 @@ export default function App() {
                   )}
                 </div>
               ) : filteredPosts.length === 0 ? (
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center space-y-3 shadow-md">
-                  <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 sm:p-10 text-center space-y-3 shadow-sm">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
                     <Search className="w-6 h-6" />
                   </div>
-                  <h3 className="font-bold text-sm text-slate-200">No civic reports match your filter</h3>
-                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-slate-200">No civic reports match your filter</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                     Try adjusting your category or region filter, or be the first to report what's happening in your area.
                   </p>
                   <button
@@ -561,13 +561,13 @@ export default function App() {
                       setSearchQuery('');
                       setFeedTab('all');
                     }}
-                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg"
+                    className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 text-xs font-semibold rounded-lg"
                   >
                     Reset all filters
                   </button>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3.5 sm:space-y-4">
                   {filteredPosts.map((post, idx) => (
                     <CivicPostCard
                       key={post.id ? `${post.id}-${idx}` : `post-${idx}`}
@@ -590,39 +590,39 @@ export default function App() {
             {/* Right Sidebar: Regional Pulse & Quick Analytics (Desktop) */}
             <aside className="hidden lg:block lg:col-span-3 space-y-4">
               {/* National Radar Pulse Mini */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                   <span className="flex items-center gap-1.5">
-                    <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
+                    <BarChart3 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     National Civic Pulse
                   </span>
                   <button
                     onClick={() => setCurrentView('radar')}
-                    className="text-[10px] text-emerald-400 hover:underline capitalize"
+                    className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline capitalize"
                   >
                     Full Radar
                   </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
-                    <div className="text-[10px] text-slate-400">Total Reports</div>
-                    <div className="text-base font-extrabold text-white">{analytics?.totalPosts || posts.length}</div>
+                  <div className="bg-slate-50 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">Total Reports</div>
+                    <div className="text-base font-extrabold text-slate-900 dark:text-white">{analytics?.totalPosts || posts.length}</div>
                   </div>
-                  <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
-                    <div className="text-[10px] text-slate-400">Confirmations</div>
-                    <div className="text-base font-extrabold text-emerald-400">
+                  <div className="bg-slate-50 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">Confirmations</div>
+                    <div className="text-base font-extrabold text-emerald-700 dark:text-emerald-400">
                       {analytics?.totalConfirmations || 840}
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs">
-                  <div className="text-[11px] font-semibold text-slate-300">Fast-Growing Issues:</div>
-                  <div className="p-2 bg-red-950/30 border border-red-900/40 rounded-lg text-[11px] text-red-200">
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 space-y-1.5 text-xs">
+                  <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Fast-Growing Issues:</div>
+                  <div className="p-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-lg text-[11px] text-red-800 dark:text-red-200">
                     🔴 Accra & Kumasi Storm Drains
                   </div>
-                  <div className="p-2 bg-amber-950/30 border border-amber-900/40 rounded-lg text-[11px] text-amber-200">
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-lg text-[11px] text-amber-800 dark:text-amber-200">
                     🟡 Tema Motorway kilometer 8 Potholes
                   </div>
                 </div>
@@ -631,15 +631,15 @@ export default function App() {
               {/* National Map Teaser Card */}
               <div
                 onClick={() => setCurrentView('map')}
-                className="bg-gradient-to-br from-slate-900 to-emerald-950/50 border border-slate-800 hover:border-emerald-700/80 rounded-2xl p-4 cursor-pointer transition-all space-y-2 shadow-md group"
+                className="bg-gradient-to-br from-slate-50 to-emerald-50 dark:from-slate-900 dark:to-emerald-950/50 border border-slate-200 dark:border-slate-800 hover:border-emerald-500 rounded-2xl p-4 cursor-pointer transition-all space-y-2 shadow-md group"
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-emerald-400 flex items-center gap-1">
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5" /> Interactive Map
                   </span>
-                  <span className="text-[10px] text-slate-400 group-hover:text-white">Open Map →</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white">Open Map →</span>
                 </div>
-                <p className="text-xs text-slate-300 leading-snug">
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-snug">
                   Explore geo-located civic observations across all 16 regions of Ghana in real time.
                 </p>
               </div>

@@ -50,6 +50,7 @@ import { InstitutionDirectoryView } from './components/InstitutionDirectoryView'
 import { InstitutionDashboardView } from './components/InstitutionDashboardView';
 import { JournalistDeskView } from './components/JournalistDeskView';
 import { NationalAnalyticsView } from './components/NationalAnalyticsView';
+import { AuthModal } from './components/AuthModal';
 import { GHANA_REGIONS } from '../server/seedData';
 
 export default function App() {
@@ -59,6 +60,7 @@ export default function App() {
   >('feed');
   const [userRole, setUserRole] = useState<'citizen' | 'institution_rep' | 'journalist' | 'moderator'>('citizen');
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>('ghana-police-service');
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Search & Filters for Feed
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,6 +79,7 @@ export default function App() {
 
   // Modals
   const [isSpeakUpOpen, setIsSpeakUpOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [sharePost, setSharePost] = useState<CivicPost | null>(null);
   const [evidencePost, setEvidencePost] = useState<CivicPost | null>(null);
   const [responsePost, setResponsePost] = useState<CivicPost | null>(null);
@@ -635,6 +638,17 @@ export default function App() {
       />
 
       {/* MODALS */}
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onAuthSuccess={(user) => {
+          setCurrentUser(user);
+          setUserRole(user.role);
+          if (user.institutionId) setSelectedInstitutionId(user.institutionId);
+        }}
+      />
+
       {/* 1. Speak Up Multimodal Composer Modal */}
       <SpeakUpComposer
         isOpen={isSpeakUpOpen}

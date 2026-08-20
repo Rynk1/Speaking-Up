@@ -1220,22 +1220,68 @@ async function startServer() {
   // GET /api/clusters
   app.get('/api/clusters', (req, res) => {
     const rows = db.prepare('SELECT * FROM issue_clusters').all() as any[];
-    const clusters: IssueCluster[] = rows.map(r => ({
+    const clusters: IssueCluster[] = rows.map(r => {
+      const clusterPosts = db.prepare('SELECT id FROM posts WHERE issue_cluster_id = ?').all(r.id) as any[];
+      return {
+        id: r.id,
+        title: r.title,
+        category: r.category as CivicCategory,
+        region: r.region as GhanaRegionName,
+        district: r.district,
+        summary: r.summary,
+        totalConfirmations: r.total_confirmations,
+        trendScore: r.trend_score,
+        status: r.status,
+        primaryInstitutions: JSON.parse(r.primary_institutions_json || '[]'),
+        postIds: clusterPosts.map(p => p.id),
+        firstReportedAt: r.created_at,
+        lastUpdatedAt: r.updated_at
+      };
+    });
+    res.json(clusters);
+  });
+
+  // GET /api/clusters/:id
+  app.get('/api/clusters/:id', (req, res) => {
+    const clusterId = req.params.id;
+    const r = db.prepare('SELECT * FROM issue_clusters WHERE id = ?').get(clusterId) as any;
+    if (!r) {
+      return res.status(404).json({ error: 'Issue cluster not found' });
+    }
+
+    // Retrieve posts explicitly belonging to this cluster
+    let postRows = db.prepare("SELECT * FROM posts WHERE issue_cluster_id = ? AND moderation_status = 'approved' ORDER BY created_at DESC").all(clusterId) as any[];
+
+    // If no posts have issue_cluster_id set, match posts by region & category to populate cluster timeline
+    if (postRows.length === 0) {
+      postRows = db.prepare("SELECT * FROM posts WHERE category = ? AND region = ? AND moderation_status = 'approved' ORDER BY created_at DESC").all(r.category, r.region) as any[];
+    }
+
+    // If still empty, return top recent approved posts in that region or overall
+    if (postRows.length === 0) {
+      postRows = db.prepare("SELECT * FROM posts WHERE moderation_status = 'approved' ORDER BY created_at DESC LIMIT 5").all() as any[];
+    }
+
+    const posts = postRows.map(rowToPost);
+
+    const cluster: IssueCluster = {
       id: r.id,
       title: r.title,
       category: r.category as CivicCategory,
       region: r.region as GhanaRegionName,
       district: r.district,
       summary: r.summary,
-      totalConfirmations: r.total_confirmations,
+      totalConfirmations: r.total_confirmations || posts.reduce((acc, p) => acc + p.engagement.confirmations, 0),
+      postCount: posts.length,
       trendScore: r.trend_score,
       status: r.status,
       primaryInstitutions: JSON.parse(r.primary_institutions_json || '[]'),
-      postIds: [],
+      postIds: posts.map(p => p.id),
       firstReportedAt: r.created_at,
       lastUpdatedAt: r.updated_at
-    }));
-    res.json(clusters);
+    };
+
+    res.json({ cluster, posts });
   });
 
   // GET /api/analytics

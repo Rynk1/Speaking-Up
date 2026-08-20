@@ -21,7 +21,10 @@ import {
   Clock,
   UserCheck,
   Send,
-  Eye
+  Eye,
+  BellPlus,
+  BellCheck,
+  BadgeCheck
 } from 'lucide-react';
 import { CivicPost, InstitutionResponse, CommunityEvidence } from '../types';
 import { api } from '../services/api';
@@ -53,6 +56,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isFollowingIssue, setIsFollowingIssue] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -69,6 +73,19 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       console.error('Error confirming post:', err);
     } finally {
       setIsConfirming(false);
+    }
+  };
+
+  const handleToggleFollowIssue = async () => {
+    if (isFollowingIssue) return;
+    setIsFollowingIssue(true);
+    try {
+      await api.toggleFollowIssue(post.id);
+      onPostUpdated();
+    } catch (err) {
+      console.error('Error following issue:', err);
+    } finally {
+      setIsFollowingIssue(false);
     }
   };
 
@@ -148,15 +165,39 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       id={`civic-post-${post.id}`}
       className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg transition-all hover:border-slate-700/80 space-y-3.5 relative"
     >
-      {/* Zero Follower Megaphone Badge */}
+      {/* Zero Follower Megaphone Badge & Issue Followership Banner */}
       <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 text-[11px]">
         <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span>Community Megaphone Discovery</span>
-          <span className="text-slate-400 text-[10px] hidden sm:inline">• Surfaced by local civic relevance</span>
+          <span className="text-slate-400 text-[10px] hidden sm:inline">• Zero User Followers Needed</span>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Issue Followership CTA */}
+          <button
+            onClick={handleToggleFollowIssue}
+            disabled={isFollowingIssue}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+              post.userFollowed
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+            }`}
+            title="Follow this specific civic issue to get push updates whenever state bodies respond"
+          >
+            {post.userFollowed ? (
+              <>
+                <BellCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span>Following Issue</span>
+              </>
+            ) : (
+              <>
+                <BellPlus className="w-3.5 h-3.5 text-amber-400" />
+                <span>Follow Issue ({post.engagement.followersCount || 0})</span>
+              </>
+            )}
+          </button>
+
           {getUrgencyBadge()}
 
           {/* Menu Dropdown */}
@@ -366,32 +407,68 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         </div>
       )}
 
-      {/* Official State Institution Responses Section */}
+      {/* Official State Institution Responses Section (Premium Social-Media Premium Layout) */}
       {post.officialResponses && post.officialResponses.length > 0 && (
-        <div className="bg-gradient-to-br from-slate-900 to-emerald-950/40 border border-emerald-700/60 rounded-xl p-3 sm:p-4 space-y-2">
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+            <BadgeCheck className="w-4 h-4 text-emerald-400" />
+            <span>Official State Institution Public Statement & Updates</span>
+          </div>
+
           {post.officialResponses.map(resp => (
-            <div key={resp.id} className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-slate-950">
-                    <ShieldCheck className="w-3.5 h-3.5" />
+            <div
+              key={resp.id}
+              className="bg-slate-950/90 border-l-4 border-l-emerald-500 border-y border-r border-slate-800 rounded-2xl p-4 shadow-xl space-y-3"
+            >
+              {/* Institution Premium Header */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 flex items-center justify-center shadow-md">
+                    <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+                      <Building2 className="w-5 h-5 text-emerald-400" />
+                    </div>
                   </div>
-                  <span className="font-bold text-emerald-300">{resp.institutionName}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold bg-emerald-900/80 text-emerald-200 border border-emerald-700/50">
+
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-extrabold text-sm text-white">{resp.institutionName}</span>
+                      <BadgeCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/80">
+                        VERIFIED STATE DESK
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                      <span>{resp.responderName}</span>
+                      <span>•</span>
+                      <span className="text-slate-300 font-medium">{resp.responderTitle}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Badge & Timestamp */}
+                <div className="text-right shrink-0">
+                  <span className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider block">
                     {resp.responseType.replace(/_/g, ' ')}
                   </span>
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    {new Date(resp.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} •{' '}
+                    {new Date(resp.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
-                <span className="text-[10px] text-slate-400">
-                  {new Date(resp.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
               </div>
 
-              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800">
-                "{resp.message}"
-              </p>
+              {/* Formatted Official Message Box */}
+              <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl p-3.5 text-sm text-slate-100 leading-relaxed font-sans shadow-inner whitespace-pre-line">
+                {resp.message}
+              </div>
 
-              <div className="text-[11px] text-slate-400">
-                Official statement by <strong>{resp.responderName}</strong> ({resp.responderTitle})
+              {/* Action Footer for Official Response */}
+              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900">
+                <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Tracked & Logged under Ghana Data & Public Standards
+                </span>
+                <span className="text-slate-500">Public Record ID: #{resp.id.slice(0, 8)}</span>
               </div>
             </div>
           ))}

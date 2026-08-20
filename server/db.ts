@@ -135,6 +135,17 @@ export function initDatabase() {
     );
   `);
 
+  // Create Issue Followers table (Issue Followershp - No User Followers Needed)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS issue_followers (
+      user_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, post_id),
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create Confirmations table ("I'm seeing this too")
   db.exec(`
     CREATE TABLE IF NOT EXISTS confirmations (

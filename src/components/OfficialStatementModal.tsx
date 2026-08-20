@@ -268,10 +268,10 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   onClose();
                 }}
                 title="View formatted as standalone reverse-hierarchy post in feed"
-                className="px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                className="px-2.5 py-1.5 bg-emerald-600/10 dark:bg-emerald-600/20 hover:bg-emerald-600/20 dark:hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold"
               >
                 <ArrowRight className="w-3.5 h-3.5 rotate-45" />
-                <span className="hidden sm:inline">Feed Post View</span>
+                <span>Open Feed Post View</span>
               </button>
             )}
             <button
@@ -520,15 +520,29 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
           </div>
 
           {/* REVERSE CONTEXT: "In Response To Citizen Issue Report" */}
-          <div id="statement-parent-post-context" className="p-5 bg-slate-50/80 dark:bg-slate-900/60 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+          <div id="statement-parent-post-context" className="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-900/60 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                 <ArrowRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 rotate-180" />
                 In Direct Response To Citizen Issue
               </span>
-              <span className="text-xs text-slate-500">
-                {post.location.landmark || post.location.district}, {post.location.region}
-              </span>
+              <div className="flex items-center gap-2">
+                {onViewAsFeedPost && (
+                  <button
+                    onClick={() => {
+                      onViewAsFeedPost(post, response);
+                      onClose();
+                    }}
+                    className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <span>View as Feed Post</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <span className="text-xs text-slate-500 hidden sm:inline">
+                  {post.location.landmark || post.location.district}, {post.location.region}
+                </span>
+              </div>
             </div>
 
             <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row gap-3.5 items-start">
@@ -773,17 +787,31 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0">
-          <div className="text-xs text-slate-500 flex items-center gap-1.5">
+        <div className="p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0 flex-wrap">
+          <div className="text-xs text-slate-500 flex items-center gap-1.5 min-w-0">
             <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>Audited & verified public record on SpeakUp Ghana National Platform</span>
+            <span className="truncate">Audited & verified public record on SpeakUp Ghana National Platform</span>
           </div>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors"
-          >
-            Close Statement
-          </button>
+          <div className="flex items-center gap-2">
+            {onViewAsFeedPost && (
+              <button
+                onClick={() => {
+                  onViewAsFeedPost(post, response);
+                  onClose();
+                }}
+                className="px-3.5 py-2 rounded-xl bg-emerald-600/10 dark:bg-emerald-950/60 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors flex items-center gap-1.5"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Open Post in Feed</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors"
+            >
+              Close Statement
+            </button>
+          </div>
         </div>
       </div>
     </div>

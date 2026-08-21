@@ -262,8 +262,8 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           )}
         </div>
 
-        {/* Statement Message Excerpt */}
-        <div className="bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 sm:p-4 text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-sans shadow-inner whitespace-pre-line space-y-2">
+        {/* Statement Message Text & Response Media (No outer background card) */}
+        <div className="text-xs sm:text-sm text-slate-900 dark:text-slate-100 leading-relaxed font-sans whitespace-pre-line space-y-2.5 px-0.5">
           <p className={isExpanded ? '' : 'line-clamp-4'}>
             {response.fullStatement || response.message}
           </p>
@@ -271,7 +271,7 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           {(response.fullStatement || response.message.length > 220) && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 text-xs font-semibold flex items-center gap-1 pt-1"
+              className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 text-xs font-semibold flex items-center gap-1 pt-0.5"
             >
               {isExpanded ? (
                 <>
@@ -285,6 +285,26 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
                 </>
               )}
             </button>
+          )}
+
+          {/* Attached Response Media (Images / Videos / Audio if present) */}
+          {(response as any).media && (response as any).media.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              {(response as any).media.map((m: any, idx: number) => (
+                <div key={m.id || idx} className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                  {m.type === 'video' ? (
+                    <video src={m.url} controls className="w-full h-48 object-cover" />
+                  ) : m.type === 'audio' ? (
+                    <div className="p-3 bg-slate-100 dark:bg-slate-800 flex items-center gap-2">
+                      <audio src={m.url} controls className="w-full" />
+                    </div>
+                  ) : (
+                    <img src={m.url} alt={m.caption || 'Official response attachment'} className="w-full h-48 object-cover" />
+                  )}
+                  {m.caption && <p className="text-[11px] text-slate-500 dark:text-slate-400 p-1.5">{m.caption}</p>}
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

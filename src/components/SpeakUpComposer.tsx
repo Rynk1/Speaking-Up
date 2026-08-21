@@ -368,28 +368,28 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto animate-in fade-in">
       <div
         id="speak-up-composer-modal"
-        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl text-slate-100 shadow-2xl overflow-hidden my-4 max-h-[92vh] flex flex-col"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-2xl text-slate-900 dark:text-slate-100 shadow-2xl overflow-hidden my-4 max-h-[92vh] flex flex-col"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/90">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/30">
               <Megaphone className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="font-bold text-sm sm:text-base text-white flex items-center gap-2">
+              <h2 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
                 SPEAK UP
-                <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+                <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
                   Zero Followers Needed
                 </span>
               </h2>
-              <p className="text-[11px] text-slate-400">Your observation will reach nearby citizens & relevant state bodies</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Your observation will reach nearby citizens & relevant state bodies</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            className="p-1.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -398,23 +398,23 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {submitError && (
-            <div className="p-3 bg-red-950/70 border border-red-800 text-red-200 text-xs rounded-xl flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <div className="p-3 bg-red-50 dark:bg-red-950/70 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-xs rounded-xl flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
               <span>{submitError}</span>
             </div>
           )}
 
           {/* Quick Voice Bar */}
-          <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="bg-slate-50 dark:bg-slate-800/80 rounded-xl p-3 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isRecording ? 'bg-red-600 text-white animate-ping' : 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'}`}>
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isRecording ? 'bg-red-600 text-white animate-ping' : 'bg-emerald-600/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'}`}>
                 <Mic className="w-4 h-4" />
               </div>
               <div>
-                <div className="font-semibold text-xs text-slate-200">
+                <div className="font-semibold text-xs text-slate-800 dark:text-slate-200">
                   {isRecording ? `Recording Audio... ${recordDuration}s` : 'Can’t type? Just speak.'}
                 </div>
-                <div className="text-[11px] text-slate-400">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
                   {isRecording ? 'Tap stop when done. We will transcribe & route.' : 'Hold or tap to speak in English, Twi, Ga, Ewe or Dagbani'}
                 </div>
               </div>
@@ -445,10 +445,10 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
 
           {/* Audio preview if recorded */}
           {recordedAudioUrl && (
-            <div className="bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/80 flex items-center justify-between gap-2">
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs text-slate-300 font-medium">Recorded Voice Note ({recordDuration || 8}s)</span>
+                <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-xs text-slate-800 dark:text-slate-300 font-medium">Recorded Voice Note ({recordDuration || 8}s)</span>
                 <audio ref={audioPlayerRef} src={recordedAudioUrl} className="hidden" onEnded={() => setIsPlayingAudio(false)} />
               </div>
               <div className="flex items-center gap-2">
@@ -465,7 +465,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                       }
                     }
                   }}
-                  className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded-md flex items-center gap-1"
+                  className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs rounded-md flex items-center gap-1"
                 >
                   {isPlayingAudio ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                   {isPlayingAudio ? 'Pause' : 'Play'}
@@ -476,7 +476,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                     setRecordedAudioUrl(null);
                     setMediaList(prev => prev.filter(m => m.type !== 'audio'));
                   }}
-                  className="p-1 text-slate-400 hover:text-red-400"
+                  className="p-1 text-slate-400 hover:text-red-500"
                   title="Remove audio"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -487,7 +487,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
 
           {/* Main Description Input */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               What is happening? Describe what you personally observed:
             </label>
             <textarea
@@ -496,7 +496,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
               value={content}
               onChange={e => setContent(e.target.value)}
               placeholder="e.g. Broken water pipeline flooding the road near Kejetia market, or 3-day power outage in Ahodwo clinics, or deep pothole on Accra-Tema motorway..."
-              className="w-full p-3 bg-slate-800 text-sm text-slate-100 placeholder-slate-500 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 resize-none transition-all"
+              className="w-full p-3 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 resize-none transition-all"
             />
           </div>
 
@@ -506,42 +506,42 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
               type="button"
               onClick={() => handleAnalyzeWithAI()}
               disabled={isAnalyzingAI || !content.trim()}
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+              className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 font-medium flex items-center gap-1.5 disabled:opacity-50 transition-colors"
             >
               {isAnalyzingAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
               <span>Auto-detect Category, Urgency & Suggested State Bodies with AI</span>
             </button>
 
             {aiSuggestions && (
-              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3 text-emerald-400" /> AI suggestions applied
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> AI suggestions applied
               </span>
             )}
           </div>
 
           {/* AI Recommendation Box if available */}
           {aiSuggestions && (
-            <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-xs space-y-1.5">
-              <div className="font-semibold text-emerald-300 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs space-y-1.5">
+              <div className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 AI Routing Intelligence:
               </div>
-              <p className="text-slate-300 text-[11px]">
+              <p className="text-slate-700 dark:text-slate-300 text-[11px]">
                 Identified issue: <strong>{aiSuggestions.category}</strong> ({aiSuggestions.urgency} urgency)
               </p>
               {aiSuggestions.refinedText && (
-                <div className="mt-2 pt-2 border-t border-emerald-900/60">
-                  <div className="flex items-center justify-between text-[11px] text-slate-300 mb-1">
-                    <span className="font-medium text-emerald-200">Refined Civic Summary:</span>
+                <div className="mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-900/60">
+                  <div className="flex items-center justify-between text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                    <span className="font-medium text-emerald-800 dark:text-emerald-200">Refined Civic Summary:</span>
                     <button
                       type="button"
                       onClick={() => setUseRefinedText(!useRefinedText)}
-                      className="text-[10px] text-emerald-400 underline"
+                      className="text-[10px] text-emerald-600 dark:text-emerald-400 underline"
                     >
                       {useRefinedText ? 'Use exact words' : 'Use refined summary'}
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 italic bg-slate-900/60 p-2 rounded">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 italic bg-white dark:bg-slate-900/60 p-2 rounded border border-emerald-100 dark:border-transparent">
                     "{useRefinedText ? aiSuggestions.refinedText : content}"
                   </p>
                 </div>
@@ -552,17 +552,17 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           {/* Media Attachments Strip */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Camera className="w-3.5 h-3.5 text-emerald-400" />
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 Add Photos / Video Evidence:
               </label>
 
-              <label className="text-[11px] text-slate-400 flex items-center gap-1 cursor-pointer">
+              <label className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={blurFaces}
                   onChange={e => setBlurFaces(e.target.checked)}
-                  className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                  className="rounded border-slate-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span>Blur faces for privacy</span>
               </label>
@@ -581,9 +581,9 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-dashed border-slate-600 rounded-xl text-xs text-slate-300 flex items-center gap-1.5 transition-colors"
+                className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-colors"
               >
-                <ImageIcon className="w-4 h-4 text-emerald-400" />
+                <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 Upload Photo / Video
               </button>
 
@@ -609,31 +609,31 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                     }
                   ]);
                 }}
-                className="px-2.5 py-2 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 rounded-xl text-[11px] text-slate-400 flex items-center gap-1"
+                className="px-2.5 py-2 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1"
               >
                 <Camera className="w-3.5 h-3.5" /> + Camera Snapshot
               </button>
 
               {/* Previews */}
               {mediaList.map(m => (
-                <div key={m.id} className="relative w-14 h-14 rounded-lg overflow-hidden border border-slate-700 bg-slate-800 flex-shrink-0">
+                <div key={m.id} className="relative w-14 h-14 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex-shrink-0">
                   {m.type === 'image' && (
                     <img src={m.url} alt="Evidence" className={`w-full h-full object-cover ${blurFaces ? 'blur-xs' : ''}`} />
                   )}
                   {m.type === 'video' && (
-                    <div className="w-full h-full bg-slate-950 flex items-center justify-center text-slate-400">
+                    <div className="w-full h-full bg-slate-900 dark:bg-slate-950 flex items-center justify-center text-slate-400">
                       <Video className="w-5 h-5" />
                     </div>
                   )}
                   {m.type === 'audio' && (
-                    <div className="w-full h-full bg-emerald-950 flex items-center justify-center text-emerald-400">
+                    <div className="w-full h-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
                       <Mic className="w-5 h-5" />
                     </div>
                   )}
                   <button
                     type="button"
                     onClick={() => setMediaList(prev => prev.filter(x => x.id !== m.id))}
-                    className="absolute top-0.5 right-0.5 w-4 h-4 bg-slate-900/90 text-slate-300 rounded-full flex items-center justify-center text-[10px] hover:text-red-400"
+                    className="absolute top-0.5 right-0.5 w-4 h-4 bg-slate-900/90 text-slate-100 rounded-full flex items-center justify-center text-[10px] hover:text-red-400"
                   >
                     ×
                   </button>
@@ -643,10 +643,10 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           </div>
 
           {/* Location & Region Picker */}
-          <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-800 space-y-2.5">
+          <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 Where is this happening?
               </label>
 
@@ -654,7 +654,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                 type="button"
                 onClick={handleGetLocation}
                 disabled={isLocating}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 flex items-center gap-1"
               >
                 {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
                 <span>Auto-detect GPS</span>
@@ -663,11 +663,11 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               <div>
-                <span className="text-[11px] text-slate-400 mb-1 block">Ghana Region:</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-1 block">Ghana Region:</span>
                 <select
                   value={region}
                   onChange={e => setRegion(e.target.value as GhanaRegionName)}
-                  className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-500"
+                  className="w-full p-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-emerald-500"
                 >
                   {GHANA_REGIONS.map(r => (
                     <option key={r} value={r}>
@@ -678,25 +678,25 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
               </div>
 
               <div>
-                <span className="text-[11px] text-slate-400 mb-1 block">District / Municipality:</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-1 block">District / Municipality:</span>
                 <input
                   type="text"
                   value={district}
                   onChange={e => setDistrict(e.target.value)}
                   placeholder="e.g. Accra Metro, Tema, Kumasi..."
-                  className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-500"
+                  className="w-full p-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
 
             <div>
-              <span className="text-[11px] text-slate-400 mb-1 block">Specific Landmark / Street (Helps responders locate fast):</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-1 block">Specific Landmark / Street (Helps responders locate fast):</span>
               <input
                 type="text"
                 value={landmark}
                 onChange={e => setLandmark(e.target.value)}
                 placeholder="e.g. Near Odawna market entrance, beside Total fuel station"
-                className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 text-xs focus:outline-none focus:border-emerald-500"
+                className="w-full p-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:border-emerald-500"
               />
             </div>
           </div>
@@ -704,11 +704,11 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           {/* Institutional Tagging Engine (Core Innovation) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 Who Should Know About This? (Tag State Bodies):
               </label>
-              <span className="text-[10px] text-slate-400">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400">
                 {selectedInstitutions.length} tagged (max 5)
               </span>
             </div>
@@ -718,7 +718,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
               {selectedInstitutions.map((inst, idx) => (
                 <div
                   key={inst.id ? `${inst.id}-${idx}` : `sel-inst-${idx}`}
-                  className="px-2.5 py-1 bg-emerald-950 text-emerald-300 border border-emerald-700/80 rounded-lg text-xs flex items-center gap-1.5 shadow-xs"
+                  className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/80 rounded-lg text-xs flex items-center gap-1.5 shadow-xs"
                 >
                   <span className="font-semibold">{inst.shortName || inst.acronym}</span>
                   <span className="text-[10px] opacity-75">
@@ -727,7 +727,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedInstitutions(prev => prev.filter(i => i.id !== inst.id))}
-                    className="hover:text-red-400 ml-1 font-bold"
+                    className="hover:text-red-500 ml-1 font-bold"
                   >
                     ×
                   </button>
@@ -739,19 +739,19 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowInstDropdown(!showInstDropdown)}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs text-slate-300 flex items-center gap-1"
+                    className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1"
                   >
-                    <Plus className="w-3 h-3 text-emerald-400" /> + Add Institution
+                    <Plus className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> + Add Institution
                   </button>
 
                   {showInstDropdown && (
-                    <div className="absolute left-0 bottom-full mb-1 w-72 max-h-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 z-50 overflow-y-auto">
+                    <div className="absolute left-0 bottom-full mb-1 w-72 max-h-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-2 z-50 overflow-y-auto">
                       <input
                         type="text"
                         value={institutionSearch}
                         onChange={e => setInstitutionSearch(e.target.value)}
                         placeholder="Search Police, NADMO, ECG, PURC..."
-                        className="w-full p-1.5 bg-slate-800 text-xs text-slate-100 rounded-md border border-slate-700 mb-1.5"
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 rounded-md border border-slate-200 dark:border-slate-700 mb-1.5"
                       />
                       <div className="space-y-1">
                         {institutionsList
@@ -770,13 +770,13 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                                 setSelectedInstitutions(prev => [...prev, inst]);
                                 setShowInstDropdown(false);
                               }}
-                              className="w-full text-left p-1.5 hover:bg-slate-800 rounded text-xs flex items-center justify-between"
+                              className="w-full text-left p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-xs flex items-center justify-between"
                             >
                               <div>
-                                <div className="font-semibold text-slate-200">{inst.shortName}</div>
-                                <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{inst.mandate}</div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-200">{inst.shortName}</div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[180px]">{inst.mandate}</div>
                               </div>
-                              <span className="text-[9px] text-emerald-400 bg-emerald-950 px-1 py-0.5 rounded">
+                              <span className="text-[9px] text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-1 py-0.5 rounded">
                                 Verified
                               </span>
                             </button>
@@ -787,19 +787,19 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
                 </div>
               )}
             </div>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Note: Tagging alerts the institution through configured channels, but does not replace formal legal filings.
             </p>
           </div>
 
           {/* Category & Urgency & Privacy settings */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-800 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs">
             <div>
-              <span className="text-[11px] text-slate-400 mb-1 block">Category:</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-1 block">Category:</span>
               <select
                 value={category}
                 onChange={e => setCategory(e.target.value as CivicCategory)}
-                className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700"
+                className="w-full p-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700"
               >
                 {CATEGORIES.map(cat => (
                   <option key={cat} value={cat}>
@@ -810,11 +810,11 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
             </div>
 
             <div>
-              <span className="text-[11px] text-slate-400 mb-1 block">Urgency:</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-1 block">Urgency:</span>
               <select
                 value={urgency}
                 onChange={e => setUrgency(e.target.value as UrgencyLevel)}
-                className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 font-semibold"
+                className="w-full p-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold"
               >
                 <option value="NORMAL">Normal Priority</option>
                 <option value="HIGH">High (Active Public Disruption)</option>
@@ -824,11 +824,11 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
             </div>
 
             <div>
-              <span className="text-[11px] text-slate-400 mb-1 block">Privacy / Identity:</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-1 block">Privacy / Identity:</span>
               <select
                 value={authorVisibility}
                 onChange={e => setAuthorVisibility(e.target.value as AuthorVisibility)}
-                className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700"
+                className="w-full p-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700"
               >
                 <option value="public">Public Identity (Visible)</option>
                 <option value="pseudonymous">Pseudonymous (@handle only)</option>
@@ -840,9 +840,9 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
         </form>
 
         {/* Footer Actions */}
-        <div className="px-5 py-3.5 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Lock className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-900/95 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <Lock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>Protected by Ghana Data Protection Act</span>
           </div>
 
@@ -850,7 +850,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors"
+              className="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg transition-colors"
             >
               Cancel
             </button>

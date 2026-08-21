@@ -35,11 +35,11 @@ export const api = {
   },
 
   // Auth endpoints
-  async login(email: string, password: string): Promise<{ token: string; user: any }> {
+  async login(identifier: string, password: string): Promise<{ token: string; user: any }> {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ identifier, password })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -50,7 +50,19 @@ export const api = {
     return data;
   },
 
-  async register(data: { email: string; password: string; name: string; handle?: string; role?: string; phone?: string; institutionId?: string }): Promise<{ token: string; user: any }> {
+  async checkDuplicate(params: { email?: string; phone?: string }): Promise<{ exists: boolean; conflictType?: string; authProvider?: string; suggestedAction?: string; message: string }> {
+    const res = await fetch('/api/auth/check-duplicate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) {
+      return { exists: false, message: 'Available' };
+    }
+    return res.json();
+  },
+
+  async register(data: { email: string; password: string; name: string; handle?: string; phone?: string }): Promise<{ token: string; user: any }> {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -63,6 +75,53 @@ export const api = {
     const result = await res.json();
     this.setToken(result.token);
     return result;
+  },
+
+  async googleAuth(payload: { email: string; name: string; avatar?: string; googleId?: string; credential?: string }): Promise<{ token: string; user: any }> {
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Google authentication failed');
+    }
+    const data = await res.json();
+    this.setToken(data.token);
+    return data;
+  },
+
+  async sendPhoneOtp(phone: string): Promise<{ success: boolean; message: string; phone: string; isExistingUser: boolean; demoOtp?: string }> {
+    const res = await fetch('/api/auth/phone/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to send mobile verification code');
+    }
+    return res.json();
+  },
+
+  async verifyPhoneOtp(phone: string, otpCode: string, name?: string): Promise<{ token: string; user: any }> {
+    const res = await fetch('/api/auth/phone/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, otpCode, name })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Invalid mobile verification code');
+    }
+    const data = await res.json();
+    this.setToken(data.token);
+    return data;
+  },
+
+  async logout(): Promise<void> {
+    this.clearToken();
   },
 
   async getCurrentUser(): Promise<any> {
@@ -296,11 +355,16 @@ export const api = {
 
   // Notifications
   async getNotifications(): Promise<NotificationItem[]> {
-    const res = await fetch('/api/notifications', {
-      headers: getAuthHeaders()
-    });
-    if (!res.ok) throw new Error('Failed to fetch notifications');
-    return res.json();
+    try {
+      const res = await fetch('/api/notifications', {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (err) {
+      console.warn('Unable to fetch notifications:', err);
+      return [];
+    }
   },
 
   async markNotificationRead(id: string): Promise<{ success: boolean }> {

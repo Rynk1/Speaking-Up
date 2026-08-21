@@ -16,7 +16,9 @@ import {
   CheckCircle2,
   X,
   Sun,
-  Moon
+  Moon,
+  LogOut,
+  Sparkles
 } from 'lucide-react';
 import { NotificationItem } from '../types';
 import { useTheme } from '../context/ThemeContext';
@@ -33,6 +35,9 @@ interface NavbarProps {
   setSelectedInstitutionId: (id: string) => void;
   notifications: NotificationItem[];
   onMarkNotificationRead: (id: string) => void;
+  currentUser?: any;
+  onOpenAuth?: (mode?: 'signin' | 'signup') => void;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -46,12 +51,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   selectedInstitutionId,
   setSelectedInstitutionId,
   notifications,
-  onMarkNotificationRead
+  onMarkNotificationRead,
+  currentUser,
+  onOpenAuth,
+  onLogout
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -63,6 +73,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       }
       if (roleRef.current && !roleRef.current.contains(e.target as Node)) {
         setShowRoleMenu(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -390,6 +403,70 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
             </div>
+
+            {/* User Account / Sign In CTA */}
+            {currentUser ? (
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center gap-2 p-1 pl-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 rounded-full border border-slate-300 dark:border-slate-700 transition-colors"
+                >
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 hidden md:inline max-w-[100px] truncate">
+                    {currentUser.name}
+                  </span>
+                  <img
+                    src={currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.handle || 'citizen'}`}
+                    alt={currentUser.name}
+                    className="w-7 h-7 rounded-full object-cover border border-emerald-500/50"
+                  />
+                </button>
+
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl p-3 z-50 animate-in fade-in zoom-in-95">
+                    <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                      <img
+                        src={currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.handle || 'citizen'}`}
+                        alt={currentUser.name}
+                        className="w-10 h-10 rounded-full object-cover border border-emerald-500"
+                      />
+                      <div className="overflow-hidden">
+                        <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                          {currentUser.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {currentUser.email || currentUser.phone || currentUser.handle}
+                        </div>
+                        <span className="inline-block mt-0.5 px-1.5 py-0.2 text-[9px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-400 rounded border border-emerald-300 dark:border-emerald-800/40">
+                          {currentUser.role === 'CITIZEN' || currentUser.role === 'citizen' ? 'Citizen Account' : currentUser.role}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          if (onLogout) onLogout();
+                        }}
+                        className="w-full py-2 px-2.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                id="navbar-signin-btn"
+                onClick={() => onOpenAuth && onOpenAuth('signin')}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
+            )}
 
           </div>
         </div>

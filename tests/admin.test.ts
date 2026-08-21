@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createApp } from '../server/app';
-import { db, initDatabase } from '../server/db';
+import { db, initDatabase } from '../server/database/db';
 import { seedDatabaseIfEmpty } from '../server/seedDatabase';
 import { config } from '../server/config';
 

@@ -39,7 +39,7 @@ describe('P³RE (Privacy-Preserving Public Representation Engine) Test Suite', (
     expect(result.publicText).toContain('[REDACTED PHONE]');
     expect(result.publicText).toContain('[REDACTED EMAIL]');
     expect(result.publicText).toContain('[REDACTED GHANA CARD]');
-  });
+  }, 15000);
 
   it('3. Generates and verifies short-lived signed access tokens for protected evidence', () => {
     const token = generateSignedAccessToken('sub-123', 'actor-inst-rep', 900);
@@ -64,7 +64,7 @@ describe('P³RE (Privacy-Preserving Public Representation Engine) Test Suite', (
     const sub = db.prepare('SELECT * FROM submissions WHERE id = ?').get(result.submissionId) as any;
     expect(sub).toBeDefined();
     expect(['PRIVACY_READY', 'PRIVACY_REVIEW_REQUIRED', 'PRIVACY_FAILED']).toContain(sub.privacy_status);
-  });
+  }, 15000);
 
   it('5. End-to-End P³RE Golden Journey: Citizen Submission -> P³RE Detection & Redaction -> Public Projection -> Evidence Access Logging', async () => {
     const citizenContent = `Flooding near Spintex Road. Call local assemblyman at 0271234567 or GHA-112233445-5.`;
@@ -102,5 +102,5 @@ describe('P³RE (Privacy-Preserving Public Representation Engine) Test Suite', (
     expect(log).toBeDefined();
     expect(log.action).toBe('VIEW_ORIGINAL');
     expect(log.result).toBe('ALLOWED');
-  });
+  }, 15000);
 });

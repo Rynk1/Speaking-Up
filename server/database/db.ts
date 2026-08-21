@@ -352,6 +352,37 @@ export function initDatabase() {
     }
   }
 
+  // User columns for Google and Mobile phone auth
+  const userCols = [
+    { name: 'phone', type: "TEXT" },
+    { name: 'auth_provider', type: "TEXT NOT NULL DEFAULT 'email'" },
+    { name: 'google_id', type: "TEXT" }
+  ];
+  for (const col of userCols) {
+    try {
+      db.exec(`ALTER TABLE users ADD COLUMN ${col.name} ${col.type}`);
+    } catch (e) {
+      // Already exists
+    }
+  }
+
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) WHERE phone IS NOT NULL AND phone != '';`);
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL AND google_id != '';`);
+  } catch (e) {
+    // Indexes exist
+  }
+
+  // Phone OTP verifications table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS phone_verifications (
+      phone TEXT PRIMARY KEY,
+      otp_code TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+
   // Response Comments table
   db.exec(`
     CREATE TABLE IF NOT EXISTS response_comments (

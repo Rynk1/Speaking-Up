@@ -10,7 +10,52 @@ import {
 export async function seedDatabaseIfEmpty() {
   const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as any).count;
   if (userCount > 0) {
-    console.log('Database already contains seed data.');
+    console.log('Database already contains seed data. Syncing any missing official responses...');
+    const insertResponseOrIgnore = db.prepare(`
+      INSERT OR IGNORE INTO institution_responses (
+        id, post_id, institution_id, institution_name, institution_logo, response_type, message,
+        statement_title, full_statement, reference_number, action_timeline_json, resolution_status,
+        documents_json, hotlines_json, helpful_count, unhelpful_count,
+        official, verified, responder_name, responder_title, redirected_to_institution_id,
+        redirected_to_institution_name, created_at
+      ) VALUES (
+        @id, @post_id, @institution_id, @institution_name, @institution_logo, @response_type, @message,
+        @statement_title, @full_statement, @reference_number, @action_timeline_json, @resolution_status,
+        @documents_json, @hotlines_json, @helpful_count, @unhelpful_count,
+        @official, @verified, @responder_name, @responder_title, @redirected_to_institution_id,
+        @redirected_to_institution_name, @created_at
+      )
+    `);
+
+    for (const p of INITIAL_POSTS) {
+      for (const r of p.officialResponses || []) {
+        insertResponseOrIgnore.run({
+          id: r.id,
+          post_id: p.id,
+          institution_id: r.institutionId,
+          institution_name: r.institutionName,
+          institution_logo: r.institutionLogo || null,
+          response_type: r.responseType,
+          message: r.message,
+          statement_title: r.statementTitle || null,
+          full_statement: r.fullStatement || r.message,
+          reference_number: r.referenceNumber || null,
+          action_timeline_json: r.actionTimeline ? JSON.stringify(r.actionTimeline) : null,
+          resolution_status: r.resolutionStatus || 'IN_PROGRESS',
+          documents_json: r.documents ? JSON.stringify(r.documents) : null,
+          hotlines_json: r.hotlines ? JSON.stringify(r.hotlines) : null,
+          helpful_count: r.helpfulCount || 0,
+          unhelpful_count: r.unhelpfulCount || 0,
+          official: r.official ? 1 : 0,
+          verified: r.verified ? 1 : 0,
+          responder_name: r.responderName,
+          responder_title: r.responderTitle,
+          redirected_to_institution_id: r.redirectedToInstitutionId || null,
+          redirected_to_institution_name: r.redirectedToInstitutionName || null,
+          created_at: r.createdAt || new Date().toISOString()
+        });
+      }
+    }
     return;
   }
 

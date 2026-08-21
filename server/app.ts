@@ -26,7 +26,15 @@ export function createApp() {
   const app = express();
 
   // Middleware
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      frameguard: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: false,
+      crossOriginOpenerPolicy: false,
+    })
+  );
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -76,88 +84,376 @@ export function createApp() {
   // Real-time SSE Stream
   app.get('/api/events', setupSSERoute);
 
+  // AUTH UTILITIES & NORMALIZERS
+  const normalizeEmail = (input?: string | null): string | null => {
+    if (!input) return null;
+    const trimmed = input.trim().toLowerCase();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const normalizePhone = (input?: string | null): string | null => {
+    if (!input) return null;
+    let cleaned = input.trim().replace(/[\s\-\(\)]/g, '');
+    if (!cleaned) return null;
+    // Ghana local format: 0244123456 -> +233244123456
+    if (/^0\d{9}$/.test(cleaned)) {
+      return `+233${cleaned.substring(1)}`;
+    }
+    // Ghana prefix without plus: 233244123456 -> +233244123456
+    if (/^233\d{9}$/.test(cleaned)) {
+      return `+${cleaned}`;
+    }
+    return cleaned;
+  };
+
+  // REAL-TIME DUPLICATE ACCOUNT CHECK ENDPOINT
+  app.post('/api/auth/check-duplicate', authLimiter, async (req, res) => {
+    try {
+      const { email, phone } = req.body;
+      const normEmail = normalizeEmail(email);
+      const normPhone = normalizePhone(phone);
+
+      let emailUser: any = null;
+      let phoneUser: any = null;
+
+      if (normEmail) {
+        emailUser = db.prepare('SELECT id, email, name, role, auth_provider FROM users WHERE LOWER(email) = ?').get(normEmail);
+      }
+      if (normPhone) {
+        phoneUser = db.prepare('SELECT id, phone, name, role, auth_provider FROM users WHERE phone = ?').get(normPhone);
+      }
+
+      if (emailUser || phoneUser) {
+        const matchUser = emailUser || phoneUser;
+        const isEmailConflict = !!emailUser;
+        const isPhoneConflict = !!phoneUser;
+
+        let conflictType = 'email';
+        if (isEmailConflict && isPhoneConflict) conflictType = 'both';
+        else if (isPhoneConflict) conflictType = 'phone';
+
+        let suggestedAction = 'signin';
+        if (matchUser.auth_provider === 'google') suggestedAction = 'google_signin';
+        else if (matchUser.auth_provider === 'phone' || isPhoneConflict) suggestedAction = 'phone_signin';
+
+        return res.json({
+          exists: true,
+          conflictType,
+          authProvider: matchUser.auth_provider || 'email',
+          suggestedAction,
+          message: isEmailConflict
+            ? `An account with ${normEmail} is already registered (${matchUser.auth_provider === 'google' ? 'Google Sign-In' : 'Email/Password'}).`
+            : `Mobile number ${normPhone} is already registered.`
+        });
+      }
+
+      res.json({ exists: false, message: 'Available' });
+    } catch (err: any) {
+      logger.error(`Duplicate check error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to verify account availability' });
+    }
+  });
+
   // AUTH ROUTES
   app.post('/api/auth/register', authLimiter, async (req, res) => {
     try {
-      const { email, password, name, handle, role, phone, institutionId } = req.body;
-      if (!email || !password || !name) {
-        return res.status(400).json({ error: 'Email, password, and name are required' });
+      const { email, password, name, handle, phone } = req.body;
+      const normEmail = normalizeEmail(email);
+      const normPhone = normalizePhone(phone);
+
+      if (!normEmail || !password || !name) {
+        return res.status(400).json({ error: 'Email, password, and full name are required' });
       }
 
-      const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+      const existingUser = db.prepare('SELECT id, auth_provider FROM users WHERE LOWER(email) = ?').get(normEmail) as any;
       if (existingUser) {
-        return res.status(400).json({ error: 'Email is already registered' });
+        if (existingUser.auth_provider === 'google') {
+          return res.status(400).json({
+            error: 'An account with this email is already registered via Google Sign-In. Please sign in with Google.',
+            suggestedAction: 'google_signin'
+          });
+        }
+        return res.status(400).json({
+          error: 'An account with this email already exists. Please sign in instead.',
+          suggestedAction: 'signin'
+        });
       }
 
-      const userHandle = handle ? sanitizePlainText(handle) : `@${name.toLowerCase().replace(/\s+/g, '')}_${Math.floor(Math.random() * 1000)}`;
+      if (normPhone) {
+        const existingPhone = db.prepare('SELECT id, auth_provider FROM users WHERE phone = ?').get(normPhone) as any;
+        if (existingPhone) {
+          return res.status(400).json({
+            error: 'An account with this mobile number already exists. Please sign in or use a different number.',
+            suggestedAction: 'phone_signin'
+          });
+        }
+      }
+
+      // ENFORCED: Public signup is strictly for CITIZENS (No admin or institutional signups)
+      const userRole = 'CITIZEN';
+      const userHandle = handle ? sanitizePlainText(handle) : `@${name.toLowerCase().replace(/[^a-z0-9]/g, '')}_${Math.floor(100 + Math.random() * 900)}`;
       const passwordHash = await bcrypt.hash(password, 10);
       const userId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const userRole = role || 'CITIZEN';
       const now = new Date().toISOString();
+      const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userHandle)}`;
 
       db.prepare(`
-        INSERT INTO users (id, email, password_hash, name, handle, avatar, role, is_verified, followers_count, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)
-      `).run(userId, email, passwordHash, sanitizePlainText(name), userHandle, `https://api.dicebear.com/7.x/bottts/svg?seed=${userHandle}`, userRole, now, now);
-
-      if (userRole === 'INSTITUTION_REP' && institutionId) {
-        db.prepare(`
-          INSERT INTO institution_verifications (id, user_id, institution_id, verification_status, created_at)
-          VALUES (?, ?, ?, 'PENDING', ?)
-        `).run(`ver-${Date.now()}`, userId, institutionId, now);
-      }
+        INSERT INTO users (id, email, password_hash, name, handle, avatar, role, is_verified, followers_count, phone, auth_provider, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, 'email', ?, ?)
+      `).run(userId, normEmail, passwordHash, sanitizePlainText(name.trim()), userHandle, avatarUrl, userRole, normPhone, now, now);
 
       const token = jwt.sign(
-        { id: userId, email, name: sanitizePlainText(name), handle: userHandle, role: userRole, institutionId },
+        { id: userId, email: normEmail, name: sanitizePlainText(name.trim()), handle: userHandle, role: userRole, phone: normPhone },
         config.jwtSecret,
         { expiresIn: '7d' }
       );
 
       res.status(201).json({
         token,
-        user: { id: userId, email, name: sanitizePlainText(name), handle: userHandle, role: userRole, institutionId }
+        user: { id: userId, email: normEmail, name: sanitizePlainText(name.trim()), handle: userHandle, role: userRole, avatar: avatarUrl, phone: normPhone }
       });
     } catch (err: any) {
       logger.error(`Registration error: ${err.message}`);
-      res.status(500).json({ error: 'Failed to register account' });
+      if (err.message && err.message.includes('UNIQUE constraint failed')) {
+        return res.status(400).json({ error: 'An account with these credentials already exists. Please sign in.' });
+      }
+      res.status(500).json({ error: 'Failed to register citizen account. Please try again.' });
     }
   });
 
   app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
-      const { email, password } = req.body;
-      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+      const { email, password, identifier } = req.body;
+      const rawId = (identifier || email || '').trim();
+      if (!rawId || !password) {
+        return res.status(400).json({ error: 'Email/mobile number and password are required' });
+      }
+
+      const normEmail = normalizeEmail(rawId);
+      const normPhone = normalizePhone(rawId);
+
+      // Check by email or phone
+      const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ? OR phone = ?').get(normEmail || rawId.toLowerCase(), normPhone || rawId) as any;
       if (!user) {
-        return res.status(401).json({ error: 'Invalid email or password' });
+        return res.status(401).json({ error: 'Invalid email/phone or password' });
+      }
+
+      if (!user.password_hash) {
+        return res.status(400).json({ error: `This account was created with ${user.auth_provider || 'Google/Phone'}. Please use that sign-in method.` });
       }
 
       const validPassword = await bcrypt.compare(password, user.password_hash);
       if (!validPassword) {
-        return res.status(401).json({ error: 'Invalid email or password' });
+        return res.status(401).json({ error: 'Invalid email/phone or password' });
       }
 
       const instVer = db.prepare('SELECT institution_id FROM institution_verifications WHERE user_id = ?').get(user.id) as any;
       const institutionId = instVer ? instVer.institution_id : undefined;
 
       const token = jwt.sign(
-        { id: user.id, email: user.email, name: user.name, handle: user.handle, role: user.role, institutionId },
+        { id: user.id, email: user.email, name: user.name, handle: user.handle, role: user.role, institutionId, phone: user.phone },
         config.jwtSecret,
         { expiresIn: '7d' }
       );
 
       res.json({
         token,
-        user: { id: user.id, email: user.email, name: user.name, handle: user.handle, role: user.role, institutionId }
+        user: { id: user.id, email: user.email, name: user.name, handle: user.handle, role: user.role, avatar: user.avatar, phone: user.phone, institutionId }
       });
     } catch (err: any) {
       logger.error(`Login error: ${err.message}`);
-      res.status(500).json({ error: 'Login failed' });
+      res.status(500).json({ error: 'Login failed. Please verify credentials.' });
+    }
+  });
+
+  // GOOGLE SIGN-IN / SIGN-UP (Automatic Account Unification & Deduplication)
+  app.post('/api/auth/google', authLimiter, async (req, res) => {
+    try {
+      const { email, name, avatar, googleId } = req.body;
+      const normEmail = normalizeEmail(email);
+      if (!normEmail) {
+        return res.status(400).json({ error: 'Valid Google email is required' });
+      }
+
+      let user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(normEmail) as any;
+      const now = new Date().toISOString();
+
+      if (user) {
+        // Link existing user without creating a duplicate record
+        if (avatar && (!user.avatar || user.avatar.includes('dicebear'))) {
+          db.prepare('UPDATE users SET avatar = ?, updated_at = ? WHERE id = ?').run(avatar, now, user.id);
+          user.avatar = avatar;
+        }
+        if (googleId && !user.google_id) {
+          db.prepare('UPDATE users SET google_id = ?, updated_at = ? WHERE id = ?').run(googleId, now, user.id);
+          user.google_id = googleId;
+        }
+      } else {
+        // Create new citizen user via Google
+        const displayName = name ? sanitizePlainText(name.trim()) : normEmail.split('@')[0];
+        const userHandle = `@${displayName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${Math.floor(100 + Math.random() * 900)}`;
+        const userId = `user-g-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const avatarUrl = avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userHandle)}`;
+        const dummyHash = await bcrypt.hash(`google-auth-${Date.now()}-${Math.random()}`, 10);
+
+        db.prepare(`
+          INSERT INTO users (id, email, password_hash, name, handle, avatar, role, is_verified, followers_count, auth_provider, google_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'CITIZEN', 1, 0, 'google', ?, ?, ?)
+        `).run(userId, normEmail, dummyHash, displayName, userHandle, avatarUrl, googleId || `g-${Date.now()}`, now, now);
+
+        user = {
+          id: userId,
+          email: normEmail,
+          name: displayName,
+          handle: userHandle,
+          avatar: avatarUrl,
+          role: 'CITIZEN'
+        };
+      }
+
+      const token = jwt.sign(
+        { id: user.id, email: user.email, name: user.name, handle: user.handle, role: user.role, phone: user.phone },
+        config.jwtSecret,
+        { expiresIn: '7d' }
+      );
+
+      res.json({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          handle: user.handle,
+          avatar: user.avatar,
+          role: user.role || 'CITIZEN',
+          phone: user.phone
+        }
+      });
+    } catch (err: any) {
+      logger.error(`Google auth error: ${err.message}`);
+      res.status(500).json({ error: 'Google authentication failed' });
+    }
+  });
+
+  // MOBILE PHONE OTP DISPATCH
+  app.post('/api/auth/phone/send-otp', authLimiter, async (req, res) => {
+    try {
+      const { phone } = req.body;
+      const cleanPhone = normalizePhone(phone);
+      if (!cleanPhone || cleanPhone.length < 8) {
+        return res.status(400).json({ error: 'Please provide a valid mobile number (e.g. 0244123456 or +233...)' });
+      }
+
+      // Generate a secure 6-digit OTP code
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO phone_verifications (phone, otp_code, expires_at, created_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(phone) DO UPDATE SET otp_code = excluded.otp_code, expires_at = excluded.expires_at, created_at = excluded.created_at
+      `).run(cleanPhone, otpCode, expiresAt, now);
+
+      logger.info(`[SMS Dispatch Simulation] Verification OTP for mobile ${cleanPhone}: ${otpCode}`);
+
+      // Check if user already exists for phone
+      const existingUser = db.prepare('SELECT id, name, email FROM users WHERE phone = ?').get(cleanPhone) as any;
+
+      res.json({
+        success: true,
+        message: `Verification code dispatched to ${cleanPhone}`,
+        phone: cleanPhone,
+        isExistingUser: !!existingUser,
+        demoOtp: otpCode // Provided for quick auto-fill testing in web container
+      });
+    } catch (err: any) {
+      logger.error(`Phone OTP send error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to send SMS verification code' });
+    }
+  });
+
+  // MOBILE PHONE OTP VERIFY & SIGN IN / SIGN UP (Deduplicated)
+  app.post('/api/auth/phone/verify-otp', authLimiter, async (req, res) => {
+    try {
+      const { phone, otpCode, name } = req.body;
+      const cleanPhone = normalizePhone(phone);
+      if (!cleanPhone || !otpCode) {
+        return res.status(400).json({ error: 'Phone number and 6-digit verification code are required' });
+      }
+
+      const verification = db.prepare('SELECT * FROM phone_verifications WHERE phone = ?').get(cleanPhone) as any;
+
+      if (!verification) {
+        return res.status(400).json({ error: 'No verification code requested for this number. Please request a code first.' });
+      }
+
+      if (new Date(verification.expires_at).getTime() < Date.now()) {
+        return res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
+      }
+
+      if (verification.otp_code !== otpCode.trim()) {
+        return res.status(400).json({ error: 'Invalid verification code. Please check and try again.' });
+      }
+
+      // Clear the used OTP
+      db.prepare('DELETE FROM phone_verifications WHERE phone = ?').run(cleanPhone);
+
+      const now = new Date().toISOString();
+      let user = db.prepare('SELECT * FROM users WHERE phone = ?').get(cleanPhone) as any;
+
+      if (!user) {
+        // Create new citizen user via Mobile
+        const displayName = name ? sanitizePlainText(name.trim()) : `Citizen ${cleanPhone.slice(-4)}`;
+        const userHandle = `@citizen_${cleanPhone.replace(/[^0-9]/g, '').slice(-6)}_${Math.floor(10 + Math.random() * 90)}`;
+        const dummyEmail = `${cleanPhone.replace(/[^0-9]/g, '')}@mobile.speakup.gov.gh`;
+        const userId = `user-p-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userHandle)}`;
+        const dummyHash = await bcrypt.hash(`phone-auth-${Date.now()}`, 10);
+
+        db.prepare(`
+          INSERT INTO users (id, email, password_hash, name, handle, avatar, role, is_verified, followers_count, phone, auth_provider, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'CITIZEN', 1, 0, ?, 'phone', ?, ?)
+        `).run(userId, dummyEmail, dummyHash, displayName, userHandle, avatarUrl, cleanPhone, now, now);
+
+        user = {
+          id: userId,
+          email: dummyEmail,
+          name: displayName,
+          handle: userHandle,
+          avatar: avatarUrl,
+          phone: cleanPhone,
+          role: 'CITIZEN'
+        };
+      }
+
+      const token = jwt.sign(
+        { id: user.id, email: user.email, name: user.name, handle: user.handle, role: user.role, phone: user.phone },
+        config.jwtSecret,
+        { expiresIn: '7d' }
+      );
+
+      res.json({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          handle: user.handle,
+          avatar: user.avatar,
+          phone: user.phone,
+          role: user.role || 'CITIZEN'
+        }
+      });
+    } catch (err: any) {
+      logger.error(`Phone verify error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to verify phone code' });
     }
   });
 
   app.get('/api/auth/me', (req: AuthenticatedRequest, res) => {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
-    const user = db.prepare('SELECT id, email, name, handle, role, avatar, is_verified FROM users WHERE id = ?').get(req.user.id);
+    const user = db.prepare('SELECT id, email, name, handle, role, avatar, phone, auth_provider, is_verified FROM users WHERE id = ?').get(req.user.id);
     res.json(user);
   });
 
@@ -233,7 +529,7 @@ export function createApp() {
   app.get('/api/posts', (req, res) => {
     try {
       const { category, region, district, urgency, search } = req.query;
-      let sql = 'SELECT * FROM posts WHERE moderation_status = "approved"';
+      let sql = "SELECT * FROM posts WHERE moderation_status = 'approved'";
       const params: any[] = [];
 
       if (category && category !== 'ALL') {
@@ -261,29 +557,44 @@ export function createApp() {
         const mediaRows = db.prepare('SELECT * FROM media WHERE post_id = ?').all(row.id) as any[];
         const responsesRows = db.prepare('SELECT * FROM institution_responses WHERE post_id = ? ORDER BY created_at DESC').all(row.id) as any[];
 
+        let hashtags: string[] = [];
+        try {
+          if (row.hashtags_json) {
+            hashtags = JSON.parse(row.hashtags_json);
+          }
+        } catch {
+          hashtags = [];
+        }
+
         return {
           id: row.id,
           title: row.title,
           content: row.content,
-          originalLanguage: row.original_language,
-          author: {
-            id: row.author_id,
-            name: row.author_name,
-            handle: row.author_handle,
-            avatar: row.author_avatar,
-            visibility: row.author_visibility,
-            isVerifiedCitizen: Boolean(row.is_verified_citizen)
-          },
+          originalLanguage: row.original_language || 'English',
+          translatedText: row.translated_text || undefined,
+          authorId: row.author_id,
+          authorName: row.author_name,
+          authorHandle: row.author_handle,
+          authorAvatar: row.author_avatar || undefined,
+          authorVisibility: row.author_visibility || 'public',
+          isVerifiedCitizen: Boolean(row.is_verified_citizen),
+          followersCount: 0,
           category: row.category,
-          subcategory: row.subcategory,
+          subcategory: row.subcategory || undefined,
           urgency: row.urgency,
           severity: row.severity,
+          hashtags,
+          issueClusterId: row.issue_cluster_id || undefined,
+          visibility: row.visibility || 'public',
+          moderationStatus: row.moderation_status || 'approved',
           location: {
             region: row.region,
             district: row.district,
             landmark: row.landmark,
             latitude: row.latitude || undefined,
-            longitude: row.longitude || undefined
+            longitude: row.longitude || undefined,
+            accuracy: row.location_accuracy || 'exact',
+            visibility: row.location_visibility || 'exact'
           },
           institutionTags: tagsRows.map(t => ({
             institutionId: t.institution_id,
@@ -295,9 +606,33 @@ export function createApp() {
             alertMethodUsed: t.alert_method_used,
             deliveryTimestamp: t.delivery_timestamp
           })),
-          media: mediaRows.map(m => ({ id: m.id, url: m.url, type: m.type })),
+          suggestedInstitutions: [],
+          media: mediaRows.map(m => ({
+            id: m.id,
+            type: m.type || 'image',
+            url: m.url,
+            thumbnailUrl: m.thumbnail_url,
+            caption: m.caption,
+            uploadedAt: m.uploaded_at
+          })),
+          credibilitySignals: {
+            confirmationsCount: row.confirmations_count || 0,
+            evidenceCount: 0,
+            hasMedia: mediaRows.length > 0,
+            hasLocation: Boolean(row.region && row.district),
+            institutionalAwarenessScore: responsesRows.length > 0 ? 90 : 50
+          },
+          engagement: {
+            views: row.views_count || 1,
+            reposts: row.reposts_count || 0,
+            shares: row.shares_count || 0,
+            confirmations: row.confirmations_count || 0,
+            comments: row.comments_count || 0,
+            followersCount: 0
+          },
           officialResponses: responsesRows.map(r => ({
             id: r.id,
+            postId: r.post_id || row.id,
             institutionId: r.institution_id,
             institutionName: r.institution_name,
             institutionLogo: r.institution_logo,
@@ -315,11 +650,14 @@ export function createApp() {
             responderTitle: r.responder_title,
             createdAt: r.created_at
           })),
+          communityEvidence: [],
+          commentsList: [],
           confirmationsCount: row.confirmations_count,
           repostsCount: row.reposts_count,
           sharesCount: row.shares_count,
           commentsCount: row.comments_count,
           createdAt: row.created_at,
+          updatedAt: row.updated_at || row.created_at,
           reportLifecycleStatus: row.report_lifecycle_status || 'PUBLISHED',
           accountabilityStatus: row.accountability_status || 'NOT_ROUTED'
         };
@@ -556,17 +894,40 @@ export function createApp() {
   });
 
   // NOTIFICATIONS
-  app.get('/api/notifications', requireAuth, (req: AuthenticatedRequest, res) => {
-    const notifs = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 30').all(req.user!.id) as any[];
-    res.json(notifs.map(n => ({
-      id: n.id,
-      type: n.type,
-      title: n.title,
-      message: n.message,
-      postId: n.post_id,
-      read: Boolean(n.read),
-      createdAt: n.created_at
-    })));
+  app.get('/api/notifications', (req: AuthenticatedRequest, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      let userId: string | null = null;
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        try {
+          const decoded = jwt.verify(token, config.jwtSecret) as any;
+          userId = decoded.id;
+        } catch {
+          // invalid token, fallback to guest
+        }
+      }
+
+      let notifs: any[] = [];
+      if (userId) {
+        notifs = db.prepare("SELECT * FROM notifications WHERE user_id = ? OR user_id IS NULL OR user_id = 'all' ORDER BY created_at DESC LIMIT 30").all(userId) as any[];
+      } else {
+        notifs = db.prepare("SELECT * FROM notifications WHERE user_id IS NULL OR user_id = 'user-current' OR user_id = 'all' ORDER BY created_at DESC LIMIT 20").all() as any[];
+      }
+
+      res.json(notifs.map(n => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        postId: n.post_id,
+        read: Boolean(n.read),
+        createdAt: n.created_at
+      })));
+    } catch (err: any) {
+      logger.error(`Notifications fetch error: ${err.message}`);
+      res.json([]);
+    }
   });
 
   // AI SERVICES

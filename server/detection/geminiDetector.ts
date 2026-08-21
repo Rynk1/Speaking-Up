@@ -61,8 +61,8 @@ Key Rules:
 3. Identify private citizen names that should be redacted for public projection.
 4. Do NOT attempt legal conclusions or guilt determination.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+    const callPromise = ai.models.generateContent({
+      model: 'gemini-2.5-flash',
       contents: `Analyze this sanitized civic report for contextual privacy risks:\n"""${aiSafeText}"""`,
       config: {
         systemInstruction: systemPrompt,
@@ -82,6 +82,12 @@ Key Rules:
         }
       }
     });
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Gemini API timeout')), 3500)
+    );
+
+    const response = (await Promise.race([callPromise, timeoutPromise])) as any;
 
     const parsed = JSON.parse(response.text || '{}');
     const suggestedFindings: DetectedFinding[] = [];

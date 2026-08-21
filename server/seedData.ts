@@ -566,6 +566,51 @@ export const INITIAL_POSTS: CivicPost[] = [
         responderName: 'George Ayisi',
         responderTitle: 'Director of Communications, NADMO',
         createdAt: '2026-08-20T03:10:00Z'
+      },
+      {
+        id: 'resp-ama-1',
+        postId: 'post-circle-flood-1',
+        institutionId: 'ama-accra',
+        institutionName: 'Accra Metropolitan Assembly (AMA)',
+        institutionLogo: 'https://images.unsplash.com/photo-1477959858617-67f30bc75b82?w=150&auto=format&fit=crop&q=80',
+        responseType: 'ACTION_TAKEN',
+        statementTitle: 'Emergency Desilting Unit & Public Waste Evacuation Operations — Odawna / Circle Enclave',
+        referenceNumber: 'AMA/WMD/EMERG/2026/08-19',
+        message: 'AMA Waste Management Department and Metro Public Health inspectors have deployed 4 heavy excavators and 8 tipper trucks to clear solid waste blockages at the Odaw culvert choke points.',
+        fullStatement: 'The Accra Metropolitan Assembly (AMA), in partnership with the Ministry of Sanitation and Water Resources, has mobilized emergency desilting crews to remove heavy silt and plastic debris obstructing water throughput at the Odawna rail interchange.\n\nFour long-boom hydraulic excavators are currently scooping trapped refuse along the main drain artery. Public health taskforce officers are on site distributing water purification tablets to shop owners and enforcing temporary closure of food vending kiosks in the flooded area to prevent water-borne disease outbreaks.\n\nTraders and commuters are directed to cooperate with Metro City Guards deployed to maintain order.',
+        actionTimeline: [
+          { step: 'Sanitation Rapid Assessment Team Deployed', status: 'completed', timestamp: '03:15 GMT', description: 'Identified major plastic refuse damming under the railway culvert.' },
+          { step: '4 Long-Boom Excavators & Tipper Trucks Activated', status: 'in_progress', timestamp: '03:45 GMT', description: 'Debris removal actively ongoing along Odaw canal banks.' },
+          { step: 'Public Health Disinfection & Water Purification Aid', status: 'in_progress', timestamp: '04:00 GMT', description: 'Sanitation inspectors assisting affected market vendors.' }
+        ],
+        resolutionStatus: 'IN_PROGRESS',
+        documents: [
+          { title: 'AMA Flood Mitigation & Silt Clearance Protocol (PDF)', url: '#', fileType: 'PDF', size: '1.1 MB' }
+        ],
+        hotlines: ['0302-663948 (AMA Rapid Call Centre)', '0244-123456 (Metro Sanitation Desk)'],
+        helpfulCount: 34,
+        unhelpfulCount: 2,
+        commentsCount: 1,
+        commentsList: [
+          {
+            id: 'rc-ama-1',
+            responseId: 'resp-ama-1',
+            postId: 'post-circle-flood-1',
+            userId: 'user-kofi-mensah',
+            userName: 'Kofi Mensah',
+            userHandle: 'kofimensah_gh',
+            userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'The excavators just arrived at the railway bridge. Big relief to see AMA taking action on the silt blockage.',
+            createdAt: '2026-08-20T04:15:00Z',
+            likesCount: 8
+          }
+        ],
+        official: true,
+        verified: true,
+        responderName: 'Hon. Elizabeth Sackey',
+        responderTitle: 'Chief Executive, Accra Metropolitan Assembly',
+        createdAt: '2026-08-20T04:00:00Z'
       }
     ],
     communityEvidence: [
@@ -721,6 +766,51 @@ export const INITIAL_POSTS: CivicPost[] = [
         responderName: 'Ing. Christian Nti',
         responderTitle: 'Chief Executive, GHA',
         createdAt: '2026-08-18T14:20:00Z'
+      },
+      {
+        id: 'resp-gps-1',
+        postId: 'post-motorway-pothole-1',
+        institutionId: 'ghana-police-service',
+        institutionName: 'Ghana Police Service (Motor Traffic & Transport Department)',
+        institutionLogo: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=150&auto=format&fit=crop&q=80',
+        responseType: 'ACTION_TAKEN',
+        statementTitle: 'Traffic Advisory & Emergency Patrol Staging — Accra-Tema Motorway Km 13',
+        referenceNumber: 'GPS/HQ/MTTD/OPS-2026-088',
+        message: 'MTTD Tema Regional Command has deployed static highway patrol cars with high-intensity blue-and-red flashing beacons 500m ahead of the crater to slow westbound vehicles.',
+        fullStatement: 'The Motor Traffic and Transport Department (MTTD) of the Ghana Police Service has established a 24-hour tactical traffic control cordon around the damaged motorway asphalt section near the Tema Abattoir overhead.\n\nTwo patrol pickup vehicles equipped with emergency light bars and high-visibility LED arrow boards have been stationed to safely channel traffic into the inner and outer lanes away from the center-lane crater. Two tow trucks are also on standby to assist stranded motorists with punctured tyres free of charge.\n\nDrivers are strongly advised to adhere strictly to the 50 km/h temporary speed restriction and avoid reckless overtaking.',
+        actionTimeline: [
+          { step: 'Emergency Highway Safety Perimeter Established', status: 'completed', timestamp: '09:15 GMT', description: 'Beacon cruisers stationed with high-intensity flares.' },
+          { step: 'Free Motorist Recovery & Tow Truck Staged', status: 'completed', timestamp: '10:00 GMT', description: 'Assisting vehicles with damaged tyres to safety.' },
+          { step: 'Joint Traffic Control with GHA Contractors', status: 'in_progress', timestamp: '14:30 GMT', description: 'Coordinating single-lane bypass during asphalt pouring.' }
+        ],
+        resolutionStatus: 'IN_PROGRESS',
+        documents: [
+          { title: 'MTTD Motorway Safety Advisory & Diversion Guide (PDF)', url: '#', fileType: 'PDF', size: '750 KB' }
+        ],
+        hotlines: ['18555 (MTTD Highway Emergency Dispatch)', '191 (Police Emergency)'],
+        helpfulCount: 41,
+        unhelpfulCount: 0,
+        commentsCount: 1,
+        commentsList: [
+          {
+            id: 'rc-gps-1',
+            responseId: 'resp-gps-1',
+            postId: 'post-motorway-pothole-1',
+            userId: 'user-yaw-boateng',
+            userName: 'Kwame Boateng',
+            userHandle: 'kwame_motorway',
+            userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
+            isVerified: true,
+            content: 'The flashing police beacons made a huge difference tonight, could see the danger from far away.',
+            createdAt: '2026-08-18T20:30:00Z',
+            likesCount: 19
+          }
+        ],
+        official: true,
+        verified: true,
+        responderName: 'DSP Alexander Obeng',
+        responderTitle: 'Director of Public Affairs, MTTD Ghana Police',
+        createdAt: '2026-08-18T16:00:00Z'
       }
     ],
     communityEvidence: [],

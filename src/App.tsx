@@ -89,6 +89,7 @@ export default function App() {
   // Modals & Focused States
   const [isSpeakUpOpen, setIsSpeakUpOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [sharePost, setSharePost] = useState<CivicPost | null>(null);
   const [evidencePost, setEvidencePost] = useState<CivicPost | null>(null);
   const [responsePost, setResponsePost] = useState<CivicPost | null>(null);
@@ -125,19 +126,29 @@ export default function App() {
   const loadAllData = useCallback(async () => {
     try {
       setLoadingPosts(true);
-      const [fetchedPosts, fetchedInsts, fetchedClusters, fetchedAnalytics, fetchedNotifs] =
+      const [fetchedPosts, fetchedInsts, fetchedClusters, fetchedAnalytics, fetchedNotifs, user] =
         await Promise.all([
           api.getPosts(),
           api.getInstitutions(),
           api.getClusters(),
           api.getAnalytics(),
-          api.getNotifications()
+          api.getNotifications(),
+          api.getCurrentUser().catch(() => null)
         ]);
       setPosts(fetchedPosts);
       setInstitutions(fetchedInsts);
       setClusters(fetchedClusters);
       setAnalytics(fetchedAnalytics);
       setNotifications(fetchedNotifs);
+      if (user) {
+        setCurrentUser(user);
+        if (user.role) {
+          const roleLower = user.role.toLowerCase();
+          if (['citizen', 'institution_rep', 'journalist', 'moderator', 'admin'].includes(roleLower)) {
+            setUserRole(roleLower as any);
+          }
+        }
+      }
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -263,7 +274,14 @@ export default function App() {
       <Navbar
         currentView={currentView}
         setCurrentView={setCurrentView}
-        onOpenSpeakUp={() => setIsSpeakUpOpen(true)}
+        onOpenSpeakUp={() => {
+          if (!currentUser) {
+            setAuthMode('signin');
+            setIsAuthOpen(true);
+          } else {
+            setIsSpeakUpOpen(true);
+          }
+        }}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         userRole={userRole}
@@ -272,6 +290,16 @@ export default function App() {
         setSelectedInstitutionId={setSelectedInstitutionId}
         notifications={notifications}
         onMarkNotificationRead={handleMarkNotificationRead}
+        currentUser={currentUser}
+        onOpenAuth={(mode) => {
+          setAuthMode(mode || 'signin');
+          setIsAuthOpen(true);
+        }}
+        onLogout={() => {
+          api.logout();
+          setCurrentUser(null);
+          setUserRole('citizen');
+        }}
       />
 
       {/* Main Content Area */}
@@ -810,10 +838,16 @@ export default function App() {
       {/* Auth Modal */}
       <AuthModal
         isOpen={isAuthOpen}
+        initialMode={authMode}
         onClose={() => setIsAuthOpen(false)}
         onAuthSuccess={(user) => {
           setCurrentUser(user);
-          setUserRole(user.role);
+          if (user.role) {
+            const roleLower = user.role.toLowerCase();
+            if (['citizen', 'institution_rep', 'journalist', 'moderator', 'admin'].includes(roleLower)) {
+              setUserRole(roleLower as any);
+            }
+          }
           if (user.institutionId) setSelectedInstitutionId(user.institutionId);
         }}
       />

@@ -404,8 +404,8 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
             </p>
 
             <div className="flex items-center gap-3 pt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">👥 {post.engagement.confirmations} citizen confirmations</span>
-              <span>💬 {post.engagement.comments} comments</span>
+              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">👥 {post.engagement?.confirmations ?? post.confirmationsCount ?? 0} citizen confirmations</span>
+              <span>💬 {post.engagement?.comments ?? post.commentsCount ?? 0} comments</span>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -9,7 +9,15 @@ import {
   Clock,
   CheckCircle2,
   Flame,
-  AlertTriangle
+  AlertTriangle,
+  Radio,
+  Search,
+  Filter,
+  Users,
+  MessageSquare,
+  Sparkles,
+  Zap,
+  ArrowUpRight
 } from 'lucide-react';
 import { NationalAnalytics, Institution } from '../types';
 
@@ -22,35 +30,51 @@ export const NationalAnalyticsView: React.FC<NationalAnalyticsViewProps> = ({
   analytics,
   institutions
 }) => {
+  const [selectedThreatFilter, setSelectedThreatFilter] = useState<'ALL' | 'CRITICAL' | 'HIGH' | 'NORMAL'>('ALL');
+  const [instSearchQuery, setInstSearchQuery] = useState('');
+
   if (!analytics) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400 text-sm animate-pulse">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500 dark:text-slate-400 text-sm animate-pulse shadow-sm">
         Loading national civic metrics and early warning signals...
       </div>
     );
   }
 
+  const filteredInstitutions = institutions.filter(inst => {
+    if (!instSearchQuery.trim()) return true;
+    const q = instSearchQuery.toLowerCase();
+    return (
+      inst.officialName.toLowerCase().includes(q) ||
+      inst.shortName.toLowerCase().includes(q) ||
+      inst.acronym.toLowerCase().includes(q) ||
+      inst.mandate.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="space-y-5 animate-in fade-in">
       {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-white">
         <div>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
-              <BarChart3 className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shadow-inner">
+              <Radio className="w-5 h-5 text-emerald-400 animate-pulse" />
             </div>
-            <h2 className="font-extrabold text-lg sm:text-xl text-white tracking-tight">
-              National Civic Radar & Institutional Performance
-            </h2>
+            <div>
+              <h2 className="font-black text-lg sm:text-2xl text-white tracking-tight flex items-center gap-2">
+                National Civic Radar & Threat Observatory
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 mt-0.5">
+                Real-time civic intelligence, regional threat velocity, and state institutional accountability matrix for Ghana
+              </p>
+            </div>
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-            Real-time public transparency analytics: community velocity, regional hotspots, and official institutional accountability metrics across Ghana.
-          </p>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
-          <span className="px-3 py-1 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded-lg font-bold flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> Live Telemetry
+        <div className="flex items-center gap-2 text-xs shrink-0">
+          <span className="px-3 py-1.5 bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 rounded-xl font-bold flex items-center gap-2 shadow-md">
+            <Activity className="w-4 h-4 text-emerald-400 animate-pulse" /> Live Telemetry Feed
           </span>
         </div>
       </div>
@@ -183,42 +207,82 @@ export const NationalAnalyticsView: React.FC<NationalAnalyticsViewProps> = ({
       </div>
 
       {/* Institutional Response Transparency Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
-        <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          State Institutions Responsiveness Index
-        </h3>
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              State Institutions Responsiveness & Channel Directory Index
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Live status of state bodies, public statement counts, and verified alert channels across Ghana
+            </p>
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={instSearchQuery}
+              onChange={e => setInstSearchQuery(e.target.value)}
+              placeholder="Search state agency..."
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+        </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-800 text-[11px] text-slate-400 uppercase">
-                <th className="pb-2 font-semibold">Institution</th>
-                <th className="pb-2 font-semibold">Category</th>
-                <th className="pb-2 font-semibold text-center">Alert Channel</th>
-                <th className="pb-2 font-semibold text-right">Status</th>
+              <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 uppercase">
+                <th className="pb-2.5 font-bold">Institution</th>
+                <th className="pb-2.5 font-bold">Domain Mandate</th>
+                <th className="pb-2.5 font-bold text-center">Alert Channel</th>
+                <th className="pb-2.5 font-bold text-center">Responses</th>
+                <th className="pb-2.5 font-bold text-right">Verification</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 text-slate-300">
-              {institutions.map((inst, idx) => (
-                <tr key={inst.id ? `${inst.id}-${idx}` : `inst-row-${idx}`} className="hover:bg-slate-800/40">
-                  <td className="py-2.5">
-                    <div className="font-bold text-slate-200">{inst.shortName}</div>
-                    <div className="text-[10px] text-slate-400">{inst.officialName}</div>
-                  </td>
-                  <td className="py-2.5">{inst.category}</td>
-                  <td className="py-2.5 text-center">
-                    <span className="px-2 py-0.5 text-[10px] bg-slate-800 rounded border border-slate-700 text-slate-300">
-                      {inst.alertMethod === 'DIRECT_API' ? '⚡ Direct Platform API' : inst.alertMethod === 'WHATSAPP_LINE' ? '💬 WhatsApp Desk' : '✉️ Official Email'}
-                    </span>
-                  </td>
-                  <td className="py-2.5 text-right">
-                    <span className="text-emerald-400 font-semibold flex items-center justify-end gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Verified
-                    </span>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-slate-800 dark:text-slate-300">
+              {filteredInstitutions.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-slate-500 dark:text-slate-400 text-xs">
+                    No state agency matches "{instSearchQuery}"
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredInstitutions.map((inst, idx) => (
+                  <tr key={inst.id ? `${inst.id}-${idx}` : `inst-row-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="py-3">
+                      <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                        <span>{inst.shortName}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded">
+                          {inst.acronym}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">{inst.officialName}</div>
+                    </td>
+                    <td className="py-3 max-w-xs">
+                      <div className="font-medium text-slate-700 dark:text-slate-300">{inst.category}</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1">{inst.mandate}</div>
+                    </td>
+                    <td className="py-3 text-center">
+                      <span className="px-2.5 py-1 text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg border border-slate-300 dark:border-slate-700 inline-flex items-center gap-1">
+                        {inst.alertMethod === 'DIRECT_API' ? '⚡ Direct Platform API' : inst.alertMethod === 'WHATSAPP_LINE' ? '💬 WhatsApp Desk' : '✉️ Official Email'}
+                      </span>
+                    </td>
+                    <td className="py-3 text-center">
+                      <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold rounded text-xs border border-emerald-200 dark:border-emerald-800/60">
+                        {inst.officialResponsesCount || 0}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xs inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Official Desk
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

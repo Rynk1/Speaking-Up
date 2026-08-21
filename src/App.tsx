@@ -70,7 +70,7 @@ export default function App() {
 
   // Search & Filters for Feed
   const [searchQuery, setSearchQuery] = useState('');
-  const [feedTab, setFeedTab] = useState<'nearby_hot' | 'urgent' | 'official_responded' | 'all'>('nearby_hot');
+  const [feedTab, setFeedTab] = useState<'nearby_hot' | 'official_responded' | 'all'>('nearby_hot');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [filterRegion, setFilterRegion] = useState<string>('ALL');
   const [filterUrgency, setFilterUrgency] = useState<string>('ALL');
@@ -188,9 +188,6 @@ export default function App() {
     }
 
     // Feed tab
-    if (feedTab === 'urgent' && post.urgency !== 'CRITICAL' && post.urgency !== 'HIGH') {
-      return false;
-    }
     if (feedTab === 'official_responded' && (!post.officialResponses || post.officialResponses.length === 0)) {
       return false;
     }
@@ -301,6 +298,12 @@ export default function App() {
                     <Flame className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                     Hot Community Clusters
                   </span>
+                  <button
+                    onClick={() => setCurrentView('clusters')}
+                    className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline capitalize flex items-center gap-0.5 font-bold"
+                  >
+                    See all <ArrowRight className="w-3 h-3" />
+                  </button>
                 </div>
 
                 <div className="space-y-2">
@@ -390,19 +393,6 @@ export default function App() {
                 </button>
 
                 <button
-                  id="feed-tab-urgent"
-                  onClick={() => setFeedTab('urgent')}
-                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 sm:gap-1.5 ${
-                    feedTab === 'urgent'
-                      ? 'bg-red-600 text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>Urgent Threats</span>
-                </button>
-
-                <button
                   id="feed-tab-official"
                   onClick={() => {
                     setFeedTab('official_responded');
@@ -440,6 +430,20 @@ export default function App() {
                   <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium flex items-center gap-1">
                     <Filter className="w-3 h-3" /> Filter:
                   </span>
+
+                  {/* Threat / Urgency Level selector */}
+                  <select
+                    id="filter-urgency-select"
+                    value={filterUrgency}
+                    onChange={e => setFilterUrgency(e.target.value)}
+                    className="p-1.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-300 text-xs rounded-lg border border-slate-300 dark:border-slate-800 focus:outline-none focus:border-emerald-500 font-semibold"
+                  >
+                    <option value="ALL">All Threat Levels</option>
+                    <option value="CRITICAL">🔴 Critical Threat (Emergency)</option>
+                    <option value="HIGH">🟠 High Priority Threat</option>
+                    <option value="NORMAL">🟡 Moderate Priority</option>
+                    <option value="LOW">🟢 Low / Minor Threat</option>
+                  </select>
 
                   {/* Region selector */}
                   <select
@@ -598,9 +602,9 @@ export default function App() {
                   </span>
                   <button
                     onClick={() => setCurrentView('radar')}
-                    className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline capitalize"
+                    className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline capitalize flex items-center gap-0.5 font-bold"
                   >
-                    Full Radar
+                    See all <ArrowRight className="w-3 h-3" />
                   </button>
                 </div>
 

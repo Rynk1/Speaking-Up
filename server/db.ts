@@ -354,6 +354,171 @@ export function initDatabase() {
     );
   `);
 
+  // ==========================================
+  // P³RE (PRIVACY-PRESERVING PUBLIC REPRESENTATION ENGINE) TABLES
+  // ==========================================
+
+  // 1. Submissions (Canonical Citizen Submissions)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS submissions (
+      id TEXT PRIMARY KEY,
+      author_id TEXT NOT NULL,
+      post_type TEXT NOT NULL DEFAULT 'CIVIC_REPORT',
+      claim_type TEXT NOT NULL DEFAULT 'OBSERVATION',
+      visibility TEXT NOT NULL DEFAULT 'public',
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      privacy_status TEXT NOT NULL DEFAULT 'PRIVACY_PROCESSING',
+      moderation_status TEXT NOT NULL DEFAULT 'approved',
+      verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 2. Submission Sources (Immutable Original References)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS submission_sources (
+      id TEXT PRIMARY KEY,
+      submission_id TEXT NOT NULL,
+      source_type TEXT NOT NULL, -- TEXT, IMAGE, VIDEO, AUDIO, DOCUMENT
+      storage_object_id TEXT NOT NULL,
+      mime_type TEXT,
+      size INTEGER,
+      sha256 TEXT,
+      content_text TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 3. Submission Public Projections (Sanitized Public Views Consumed by APIs)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS submission_public_projections (
+      id TEXT PRIMARY KEY,
+      submission_id TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      title TEXT NOT NULL,
+      text TEXT NOT NULL,
+      media_references_json TEXT DEFAULT '[]',
+      caption TEXT,
+      summary TEXT,
+      generated_by TEXT NOT NULL DEFAULT 'P3RE_AUTOMATED',
+      policy_version TEXT NOT NULL DEFAULT '1.0',
+      redaction_version TEXT NOT NULL DEFAULT '1.0',
+      status TEXT NOT NULL DEFAULT 'PRIVACY_READY',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 4. Submission Protected Evidence (Protected Evidence Packages)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS submission_protected_evidence (
+      id TEXT PRIMARY KEY,
+      submission_id TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      storage_object_id TEXT NOT NULL,
+      access_policy TEXT NOT NULL DEFAULT 'INSTITUTION_ONLY',
+      classification TEXT NOT NULL DEFAULT 'PROTECTED_CIVIC_EVIDENCE',
+      retention_policy TEXT NOT NULL DEFAULT 'STANDARD_LEGAL',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE,
+      FOREIGN KEY (source_id) REFERENCES submission_sources(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 5. Privacy Findings (Detected PII, OCR, Face, Plate, and Context Findings)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS privacy_findings (
+      id TEXT PRIMARY KEY,
+      submission_id TEXT NOT NULL,
+      source_id TEXT,
+      type TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 1.0,
+      severity TEXT NOT NULL DEFAULT 'MODERATE',
+      start_offset INTEGER,
+      end_offset INTEGER,
+      bounding_box_json TEXT,
+      detector TEXT NOT NULL,
+      detector_version TEXT NOT NULL DEFAULT '1.0',
+      policy_action TEXT NOT NULL DEFAULT 'REDACT',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 6. Privacy Policies (Data-driven Policy Engine Rules)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS privacy_policies (
+      id TEXT PRIMARY KEY,
+      policy_name TEXT NOT NULL,
+      version TEXT NOT NULL DEFAULT '1.0',
+      jurisdiction TEXT NOT NULL DEFAULT 'GHANA',
+      content_type TEXT NOT NULL,
+      finding_type TEXT NOT NULL,
+      audience TEXT NOT NULL,
+      action TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1
+    );
+  `);
+
+  // 7. Representation Versions (Auditable Derivative History)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS representation_versions (
+      id TEXT PRIMARY KEY,
+      submission_id TEXT NOT NULL,
+      representation_type TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      source_hash TEXT NOT NULL,
+      policy_version TEXT NOT NULL DEFAULT '1.0',
+      detector_version TEXT NOT NULL DEFAULT '1.0',
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 8. Evidence Access Logs (Institutional Access Audit Log)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS evidence_access_logs (
+      id TEXT PRIMARY KEY,
+      submission_id TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      institution_id TEXT,
+      action TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      ip TEXT,
+      reason TEXT,
+      result TEXT NOT NULL DEFAULT 'ALLOWED',
+      FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Insert Default P³RE Privacy Policies if missing
+  const policyCount = (db.prepare('SELECT COUNT(*) as count FROM privacy_policies').get() as any)?.count || 0;
+  if (policyCount === 0) {
+    const insertPolicy = db.prepare(`
+      INSERT INTO privacy_policies (id, policy_name, version, jurisdiction, content_type, finding_type, audience, action, enabled)
+      VALUES (?, ?, '1.0', 'GHANA', ?, ?, ?, ?, 1)
+    `);
+
+    const defaultPolicies = [
+      { id: 'pol-1', name: 'Private Citizen Name Policy', type: 'TEXT', finding: 'PERSON_NAME', audience: 'PUBLIC', action: 'REDACT' },
+      { id: 'pol-2', name: 'Phone Number Policy', type: 'TEXT', finding: 'PHONE_NUMBER', audience: 'PUBLIC', action: 'REDACT' },
+      { id: 'pol-3', name: 'Email Address Policy', type: 'TEXT', finding: 'EMAIL', audience: 'PUBLIC', action: 'REDACT' },
+      { id: 'pol-4', name: 'Ghana Card ID Policy', type: 'TEXT', finding: 'GOVERNMENT_ID', audience: 'PUBLIC', action: 'REDACT' },
+      { id: 'pol-5', name: 'Vehicle License Plate Policy', type: 'IMAGE', finding: 'LICENSE_PLATE', audience: 'PUBLIC', action: 'REDACT' },
+      { id: 'pol-6', name: 'Bystander Face Policy', type: 'IMAGE', finding: 'FACE', audience: 'PUBLIC', action: 'REDACT' },
+      { id: 'pol-7', name: 'Public Official Name Policy', type: 'TEXT', finding: 'PERSON_NAME', audience: 'INSTITUTION', action: 'ALLOW' },
+      { id: 'pol-8', name: 'Institution Evidence Full View', type: 'TEXT', finding: 'GOVERNMENT_ID', audience: 'INSTITUTION', action: 'ALLOW' }
+    ];
+
+    for (const p of defaultPolicies) {
+      insertPolicy.run(p.id, p.name, p.type, p.finding, p.audience, p.action);
+    }
+  }
+
   // Indexes for high performance queries
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_posts_region ON posts(region);

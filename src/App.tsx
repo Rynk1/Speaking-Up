@@ -795,6 +795,11 @@ export default function App() {
             onPostUpdated={refreshPosts}
             onViewOfficialResponse={(p, r) => setSelectedStatement({ post: p, response: r })}
             onViewResponseFeedPost={handleViewResponseFeedPost}
+            onOpenCluster={cId => setSelectedClusterId(cId)}
+            onSelectPost={p => {
+              setCurrentView('feed');
+              setSearchQuery(p.title);
+            }}
           />
         )}
 
@@ -803,6 +808,7 @@ export default function App() {
           <JournalistDeskView
             posts={posts}
             clusters={clusters}
+            institutions={institutions}
             onSelectPost={p => {
               setCurrentView('feed');
               setSearchQuery(p.title);

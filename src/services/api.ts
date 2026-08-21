@@ -386,5 +386,127 @@ export const api = {
     });
     if (!res.ok) throw new Error('Failed to generate share copy');
     return res.json();
+  },
+
+  // Admin & Moderation Services
+  async getAdminOverview(): Promise<any> {
+    const res = await fetch('/api/admin/overview', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch admin overview');
+    return res.json();
+  },
+
+  async getAdminUsers(params?: { search?: string; role?: string; isVerified?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') query.append(k, String(v));
+      });
+    }
+    const res = await fetch(`/api/admin/users?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch admin users');
+    return res.json();
+  },
+
+  async updateUserRole(userId: string, role: string): Promise<any> {
+    const res = await fetch(`/api/admin/users/${userId}/role`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ role })
+    });
+    if (!res.ok) throw new Error('Failed to update user role');
+    return res.json();
+  },
+
+  async updateUserVerification(userId: string, isVerified: boolean): Promise<any> {
+    const res = await fetch(`/api/admin/users/${userId}/verify`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ isVerified })
+    });
+    if (!res.ok) throw new Error('Failed to update user verification');
+    return res.json();
+  },
+
+  async getAdminPosts(params?: { moderationStatus?: string; category?: string; search?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') query.append(k, String(v));
+      });
+    }
+    const res = await fetch(`/api/admin/posts?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch admin posts');
+    return res.json();
+  },
+
+  async updatePostModeration(postId: string, data: { moderationStatus?: string; reportLifecycleStatus?: string }): Promise<any> {
+    const res = await fetch(`/api/admin/posts/${postId}/moderation`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to update post moderation');
+    return res.json();
+  },
+
+  async getAdminAbuseReports(status?: string): Promise<any[]> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    const res = await fetch(`/api/admin/abuse-reports${query}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch abuse reports');
+    return res.json();
+  },
+
+  async updateAbuseReport(reportId: string, status: string): Promise<any> {
+    const res = await fetch(`/api/admin/abuse-reports/${reportId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) throw new Error('Failed to update abuse report');
+    return res.json();
+  },
+
+  async manageInstitution(data: any): Promise<any> {
+    const res = await fetch('/api/admin/institutions', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to manage institution');
+    return res.json();
+  },
+
+  async getAdminJobs(status?: string): Promise<any[]> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    const res = await fetch(`/api/admin/jobs${query}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch admin jobs');
+    return res.json();
+  },
+
+  async retryAdminJob(jobId: string): Promise<any> {
+    const res = await fetch(`/api/admin/jobs/${jobId}/retry`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to retry background job');
+    return res.json();
+  },
+
+  async getAdminAuditLogs(): Promise<any[]> {
+    const res = await fetch('/api/admin/audit-logs', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch audit logs');
+    return res.json();
   }
 };

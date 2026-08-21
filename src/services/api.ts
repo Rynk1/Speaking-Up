@@ -182,12 +182,21 @@ export const api = {
     return res.json();
   },
 
-  async toggleRepost(postId: string): Promise<{ reposted: boolean; repostsCount: number }> {
+  async toggleRepost(postId: string): Promise<{ reposted: boolean; repostsCount: number; followersCount?: number }> {
     const res = await fetch(`/api/posts/${postId}/repost`, {
       method: 'POST',
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to toggle repost');
+    return res.json();
+  },
+
+  async sharePost(postId: string): Promise<{ success: boolean; sharesCount: number; followersCount: number }> {
+    const res = await fetch(`/api/posts/${postId}/share`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to record post share');
     return res.json();
   },
 

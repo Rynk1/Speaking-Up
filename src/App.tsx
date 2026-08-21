@@ -82,6 +82,7 @@ export default function App() {
   const [analytics, setAnalytics] = useState<NationalAnalytics | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Modals & Focused States
   const [isSpeakUpOpen, setIsSpeakUpOpen] = useState(false);
@@ -148,13 +149,18 @@ export default function App() {
 
   // Refresh posts specifically
   const refreshPosts = async () => {
+    setIsRefreshing(true);
     try {
       const updated = await api.getPosts();
       setPosts(updated);
       const updatedAnalytics = await api.getAnalytics();
       setAnalytics(updatedAnalytics);
+      const updatedClusters = await api.getClusters();
+      setClusters(updatedClusters);
     } catch (err) {
       console.error('Error refreshing posts:', err);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -425,10 +431,10 @@ export default function App() {
               </div>
 
               {/* Feed Filters Strip */}
-              <div className="flex items-center justify-between gap-2 text-xs flex-wrap px-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium flex items-center gap-1">
-                    <Filter className="w-3 h-3" /> Filter:
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm flex items-center justify-between gap-2 text-xs flex-wrap w-full">
+                <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium flex items-center gap-1 flex-shrink-0">
+                    <Filter className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Filter:
                   </span>
 
                   {/* Threat / Urgency Level selector */}
@@ -436,7 +442,7 @@ export default function App() {
                     id="filter-urgency-select"
                     value={filterUrgency}
                     onChange={e => setFilterUrgency(e.target.value)}
-                    className="p-1.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-300 text-xs rounded-lg border border-slate-300 dark:border-slate-800 focus:outline-none focus:border-emerald-500 font-semibold"
+                    className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 text-xs rounded-lg border border-slate-200 dark:border-slate-700/80 focus:outline-none focus:border-emerald-500 font-medium flex-1 min-w-[130px]"
                   >
                     <option value="ALL">All Threat Levels</option>
                     <option value="CRITICAL">🔴 Critical Threat (Emergency)</option>
@@ -449,7 +455,7 @@ export default function App() {
                   <select
                     value={filterRegion}
                     onChange={e => setFilterRegion(e.target.value)}
-                    className="p-1.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-300 text-xs rounded-lg border border-slate-300 dark:border-slate-800 focus:outline-none focus:border-emerald-500"
+                    className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 text-xs rounded-lg border border-slate-200 dark:border-slate-700/80 focus:outline-none focus:border-emerald-500 font-medium flex-1 min-w-[130px]"
                   >
                     <option value="ALL">All Ghana Regions</option>
                     {GHANA_REGIONS.map(r => (
@@ -463,7 +469,7 @@ export default function App() {
                   <select
                     value={filterCategory}
                     onChange={e => setFilterCategory(e.target.value)}
-                    className="p-1.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-300 text-xs rounded-lg border border-slate-300 dark:border-slate-800 focus:outline-none focus:border-emerald-500"
+                    className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 text-xs rounded-lg border border-slate-200 dark:border-slate-700/80 focus:outline-none focus:border-emerald-500 font-medium flex-1 min-w-[130px]"
                   >
                     <option value="ALL">All Categories</option>
                     <option value="Flooding & Drainage">Flooding & Drainage</option>
@@ -477,11 +483,12 @@ export default function App() {
 
                 <button
                   onClick={refreshPosts}
-                  className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1 text-xs"
+                  disabled={isRefreshing}
+                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-colors disabled:opacity-50 flex-shrink-0"
                   title="Refresh feed"
                 >
-                  <RefreshCw className="w-3 h-3" />
-                  <span className="hidden sm:inline">Refresh</span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
                 </button>
               </div>
 

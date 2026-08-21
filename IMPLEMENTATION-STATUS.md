@@ -16,3 +16,4 @@ This document tracks the conversion of Speak Up Web from a prototype to a full-s
 | Moderation & Abuse System | COMPLETED | 100% | DB abuse reports & moderator endpoints active. |
 | Testing Suite | COMPLETED | 100% | Automated Vitest test suite passing. |
 | Documentation (/docs) | COMPLETED | 100% | Architecture & specification guides complete. |
+| P³RE Engine (Privacy-Preserving Engine) | COMPLETED | 100% | Full-stack P³RE implementation & 12 docs complete. |

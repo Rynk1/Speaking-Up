@@ -22,8 +22,8 @@ import { NotificationItem } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
 interface NavbarProps {
-  currentView: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar';
-  setCurrentView: (view: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar') => void;
+  currentView: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review';
+  setCurrentView: (view: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review') => void;
   onOpenSpeakUp: () => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -265,7 +265,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={() => {
                       setUserRole('moderator');
-                      setCurrentView('feed');
+                      setCurrentView('privacy_review');
                       setShowRoleMenu(false);
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between mt-1 ${
@@ -275,8 +275,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <div className="flex items-center gap-2">
                       <Shield className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                       <div>
-                        <div className="font-semibold">Platform Safety & Moderation</div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400">Prevent mob targeting & review reports</div>
+                        <div className="font-semibold">P³RE Privacy Review Portal</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">Inspect PII findings & moderation queue</div>
                       </div>
                     </div>
                     {userRole === 'moderator' && <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />}

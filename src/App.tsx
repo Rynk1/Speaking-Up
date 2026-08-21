@@ -56,13 +56,14 @@ import { InstitutionDirectoryView } from './components/InstitutionDirectoryView'
 import { InstitutionDashboardView } from './components/InstitutionDashboardView';
 import { JournalistDeskView } from './components/JournalistDeskView';
 import { NationalAnalyticsView } from './components/NationalAnalyticsView';
+import { PrivacyReviewPortal } from './components/PrivacyReviewPortal';
 import { AuthModal } from './components/AuthModal';
 import { GHANA_REGIONS } from '../server/seedData';
 
 export default function App() {
   // Navigation & Role State
   const [currentView, setCurrentView] = useState<
-    'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar'
+    'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review'
   >('feed');
   const [userRole, setUserRole] = useState<'citizen' | 'institution_rep' | 'journalist' | 'moderator'>('citizen');
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>('ghana-police-service');
@@ -784,6 +785,11 @@ export default function App() {
         {/* VIEW 7: NATIONAL CIVIC RADAR & ANALYTICS */}
         {currentView === 'radar' && (
           <NationalAnalyticsView analytics={analytics} institutions={institutions} />
+        )}
+
+        {/* VIEW 8: P³RE PRIVACY REVIEW PORTAL */}
+        {currentView === 'privacy_review' && (
+          <PrivacyReviewPortal />
         )}
       </main>
 

@@ -1,0 +1,1603 @@
+
+PRD / Architecture Specification + Jules Implementation Prompt
+Document status
+Implementation authority
+This specification should be treated as an architectural extension to the existing SPEAK UP WEB PRD.md, not as an optional enhancement.
+It must be implemented without breaking the existing citizen-posting, public-feed, institutional-tagging, social-sharing, moderation and alerting functionality.
+
+1. Executive objective
+Implement a Privacy-Preserving Public Representation Engine (P³RE) that allows Speak Up to accept a citizen's original submission while automatically generating one or more audience-specific representations.
+The central requirement is:
+The original citizen submission must remain protected and intact, while public-facing representations automatically minimise or redact sensitive information according to policy.
+The system must support:
+ORIGINAL CITIZEN SUBMISSION
+          │
+          ├───────────────┐
+          │               │
+          ▼               ▼
+ PROTECTED EVIDENCE   PUBLIC REPRESENTATION
+          │               │
+          │               ├── Public website
+          │               ├── Search
+          │               ├── Social sharing
+          │               ├── OG metadata
+          │               └── Public APIs
+          │
+          ▼
+ AUTHORISED INSTITUTION
+The system must never overwrite the original evidence with the redacted version.
+
+2. Core design principle
+The system must treat:
+content storage
+and
+content presentation
+as separate concerns.
+A citizen submits one canonical source.
+The platform creates controlled projections from it.
+Therefore:
+CanonicalSubmission
+        │
+        ├── PublicProjection
+        ├── InstitutionProjection
+        ├── ModeratorProjection
+        ├── AISafeProjection
+        └── SocialProjection
+Do not create one post.content field and attempt to hide sensitive portions at rendering time.
+
+3. Recommended economical technology stack
+The objective is to use existing/common technology and avoid introducing unnecessary infrastructure.
+Primary application
+Use the application's existing stack.
+If the current repository is:
+Next.js
+TypeScript
+React
+Node/Express API
+retain it.
+Do not rewrite the application simply to implement P³RE.
+
+Recommended Google components
+Google Cloud Sensitive Data Protection
+Primary sensitive-data inspection/redaction engine.
+Use it for:
+PII detection;
+text redaction;
+OCR-based image inspection;
+image redaction;
+custom infoTypes;
+structured de-identification.
+Google currently supports built-in detectors plus custom dictionaries, regexes and contextual detectors.
+
+Google Cloud Storage
+Use for:
+original evidence
+protected evidence
+public derivatives
+temporary processing objects
+Separate buckets or strongly separated prefixes should be used.
+
+Gemini
+Use Gemini only where semantic/contextual understanding is useful.
+Examples:
+determining whether a person is acting as a public official;
+understanding whether a statement is an allegation or opinion;
+contextual sensitivity classification;
+generating public-safe summaries;
+detecting implicit sensitive context that regex/DLP cannot reliably determine.
+Do not use Gemini as the primary PII detector.
+Do not send unnecessary raw personal data to Gemini.
+
+Existing database
+Use the application's existing database.
+Do not introduce a new database solely for P³RE.
+
+Existing authentication
+Use the application's existing authentication and RBAC.
+Do not create a second identity system.
+
+Background processing
+Start economically:
+API
+ ↓
+database job
+ ↓
+worker
+or the application's existing asynchronous/job mechanism.
+Do not introduce Kafka, Kubernetes, Pub/Sub, Cloud Run Jobs, Redis, etc. unless actual scale later justifies it.
+
+4. Why this architecture is economical
+The expensive mistake would be:
+Every post
+→ Gemini
+→ Vision AI
+→ multiple LLM calls
+→ video AI pipeline
+→ human review
+That will become unnecessarily expensive.
+Instead:
+Cheap deterministic detection
+        ↓
+Google DLP where necessary
+        ↓
+AI only for ambiguity
+        ↓
+Human review only for high-risk cases
+The principle should be:
+Deterministic first → specialised service second → AI third → human review last.
+
+5. P³RE processing pipeline
+Implement the following pipeline:
+                         CITIZEN SUBMISSION
+                                │
+                                ▼
+                         INGESTION SERVICE
+                                │
+                                ▼
+                    ORIGINAL EVIDENCE VAULT
+                                │
+                                ▼
+                     MEDIA NORMALISATION
+                                │
+                                ▼
+                       CONTENT INSPECTION
+                                │
+            ┌───────────────────┼───────────────────┐
+            ▼                   ▼                   ▼
+          TEXT                IMAGE               VIDEO
+            │                   │                   │
+            ▼                   ▼                   ▼
+          DLP                OCR/DLP          frame/audio pipeline
+            │                   │                   │
+            └───────────────────┼───────────────────┘
+                                ▼
+                      ENTITY/FINDING MODEL
+                                │
+                                ▼
+                       POLICY DECISION
+                                │
+              ┌─────────────────┼──────────────────┐
+              ▼                 ▼                  ▼
+            SAFE              REDACT            REVIEW
+              │                 │                  │
+              └─────────────────┼──────────────────┘
+                                ▼
+                    PUBLIC REPRESENTATION
+                                │
+                   ┌────────────┼────────────┐
+                   ▼            ▼            ▼
+                 FEED        SEARCH       SOCIAL
+
+
+             ORIGINAL EVIDENCE
+                    │
+                    ▼
+            INSTITUTION PORTAL
+
+6. Processing states
+Every submission must have a privacy-processing state.
+PENDING
+INSPECTING
+SAFE
+REDACTION_REQUIRED
+REDACTING
+PUBLIC_READY
+HUMAN_REVIEW_REQUIRED
+BLOCKED
+FAILED
+REPROCESSING
+Never publish content simply because processing failed.
+This is a critical fail-safe:
+If privacy processing fails, the system must fail closed for public publication.
+
+7. Post publication states
+Separate content publication from privacy processing.
+For example:
+DRAFT
+PROCESSING
+PUBLIC_READY
+PUBLISHED
+RESTRICTED
+REMOVED
+ARCHIVED
+A post cannot enter:
+PUBLISHED
+unless:
+privacyStatus = PUBLIC_READY
+or an explicitly approved human-review state.
+
+8. Data model
+Implement the following conceptual entities.
+submissions
+Canonical citizen submission.
+id
+authorId
+postType
+claimType
+createdAt
+updatedAt
+visibility
+status
+privacyStatus
+moderationStatus
+verificationStatus
+Do not store public and private content interchangeably.
+
+9. submission_sources
+Original content references.
+id
+submissionId
+sourceType
+
+TEXT
+IMAGE
+VIDEO
+AUDIO
+DOCUMENT
+
+storageObjectId
+mimeType
+size
+sha256
+createdAt
+The original file must be immutable.
+
+10. submission_public_projections
+Public-safe representation.
+id
+submissionId
+version
+text
+mediaReferences
+caption
+summary
+createdAt
+generatedBy
+policyVersion
+redactionVersion
+status
+This is what public APIs consume.
+
+11. submission_protected_evidence
+Protected evidence metadata.
+id
+submissionId
+sourceId
+storageObjectId
+accessPolicy
+classification
+retentionPolicy
+createdAt
+The actual sensitive content should remain in protected object storage.
+
+12. privacy_findings
+Every detected finding should be recorded.
+id
+submissionId
+sourceId
+type
+confidence
+severity
+startOffset
+endOffset
+boundingBox
+detector
+detectorVersion
+policyAction
+createdAt
+Examples:
+PERSON_NAME
+PHONE_NUMBER
+EMAIL
+ADDRESS
+GOVERNMENT_ID
+BANK_ACCOUNT
+CHILD_IDENTITY
+MEDICAL_INFORMATION
+CRIMINAL_ALLEGATION
+PRIVATE_LOCATION
+FACE
+LICENSE_PLATE
+SIGNATURE
+
+13. privacy_policies
+Policies must be data-driven rather than hard-coded throughout the application.
+id
+policyName
+version
+jurisdiction
+contentType
+findingType
+audience
+action
+enabled
+For example:
+PRIVATE_PERSON_NAME
+PUBLIC
+REDACT
+but:
+PUBLIC_INSTITUTION_NAME
+PUBLIC
+ALLOW
+
+14. representation_versions
+Every derived public representation should identify exactly how it was generated.
+id
+submissionId
+representationType
+version
+sourceHash
+policyVersion
+detectorVersion
+createdAt
+status
+This makes the system auditable.
+
+15. Storage architecture
+Use separate logical security zones.
+Cloud Storage
+│
+├── original/
+│
+├── protected/
+│
+├── public/
+│
+└── processing/
+original
+Extremely restricted.
+protected
+Institution-authorised evidence.
+public
+Only safe derivatives.
+processing
+Temporary files with aggressive lifecycle cleanup.
+Do not allow the public bucket to contain originals.
+
+16. Object naming
+Never expose predictable IDs.
+Bad:
+/uploads/post-123/original.jpg
+Prefer opaque identifiers:
+original/{submissionUuid}/{randomObjectId}
+and never expose internal storage paths directly.
+
+17. Public media access
+Use the application's CDN/public delivery layer for already-public derivatives.
+For protected evidence, use short-lived signed URLs or equivalent authenticated object access.
+Google Cloud Storage supports time-limited signed URLs for specific objects.
+However:
+Do not treat a signed URL as authorisation.
+The backend must first determine:
+Who is requesting?
+What institution?
+What role?
+What submission?
+What access purpose?
+Is access still valid?
+Only then generate the signed URL.
+
+18. Text redaction architecture
+For text:
+Original text
+     ↓
+normalisation
+     ↓
+deterministic detectors
+     ↓
+DLP inspection
+     ↓
+custom Ghana detectors
+     ↓
+context classification
+     ↓
+policy engine
+     ↓
+redaction transformation
+     ↓
+public text
+Google Sensitive Data Protection supports text de-identification with replacement/redaction transformations.
+
+19. Do not use generic [REDACTED] everywhere
+Use semantic placeholders when appropriate.
+For example:
+[PHONE NUMBER REMOVED]
+or:
+[PRIVATE PERSON'S NAME WITHHELD]
+But avoid exposing information about what was detected if that itself creates risk.
+For sensitive victims:
+[IDENTIFYING INFORMATION WITHHELD]
+may be preferable.
+The policy engine determines the appropriate placeholder.
+
+20. Ghana-specific detection layer
+Create a configuration module:
+/privacy/policies/ghana
+containing detectors for:
+GH_PHONE_NUMBER
+GH_GHANA_CARD
+GH_PASSPORT
+GH_DRIVER_LICENSE
+GH_NHIS
+GH_SSNIT
+GH_MOBILE_MONEY
+GH_BANK_ACCOUNT
+GH_VEHICLE_REGISTRATION
+GH_ADDRESS
+GH_PERSON_NAME
+Where an exact identifier format is uncertain, do not invent regexes. Research and test the format before implementing it.
+
+21. Institution/public-official context
+Maintain an existing or new:
+institution_registry
+with:
+institutionId
+name
+aliases
+category
+officialDomains
+officialSocialAccounts
+officialContacts
+publicOfficials
+verifiedAt
+This allows the privacy engine to understand context.
+Example:
+"Chief Superintendent John Mensah"
+
+can potentially be resolved against an institution registry.
+But the registry must never automatically decide that a named person is guilty of anything.
+
+22. Public/private identity distinction
+Create:
+UserPrivateIdentity
+and:
+UserPublicProfile
+The public representation must not require the private identity.
+Example:
+Private:
+Kwame Mensah
+024xxxxxxx
+address...
+
+Public:
+Citizen Reporter
+unless the citizen deliberately chooses to publish their identity.
+
+23. Audience-specific representation
+This is one of the most important requirements.
+Implement:
+PUBLIC
+SOCIAL
+SEARCH
+INSTITUTION
+MODERATOR
+LEGAL
+AI
+as representation targets.
+For MVP, however, do not necessarily create seven physically different copies.
+Use:
+PUBLIC
+PROTECTED
+as the initial storage representations and derive restricted views through authorisation.
+Only create additional physical representations when necessary.
+This saves cost and complexity.
+
+24. AI-safe representation
+Before sending content to Gemini:
+Original
+ ↓
+Privacy Firewall
+ ↓
+AI-safe projection
+ ↓
+Gemini
+Never:
+Original
+ ↓
+Gemini
+ ↓
+redaction
+This prevents the AI request itself becoming an unnecessary disclosure channel.
+
+25. Gemini's role
+Gemini should perform:
+Good uses
+contextual classification;
+ambiguous entity interpretation;
+public-safe summarisation;
+semantic sensitivity detection;
+classification of allegation/opinion/report;
+detecting implicit privacy concerns.
+Bad uses
+Do not use Gemini to:
+determine whether an accusation is true;
+determine guilt;
+determine whether a person committed a crime;
+make legal conclusions;
+replace DLP;
+replace deterministic PII detection;
+decide whether an institution is corrupt.
+
+26. Cost-control policy for Gemini
+Implement:
+if deterministicDetectionSufficient:
+    doNotCallGemini()
+
+elif policyRiskHigh:
+    humanReview()
+
+else:
+    callGemini()
+This is a major cost optimisation.
+
+27. AI fallback behaviour
+No fake AI.
+If Gemini is unavailable:
+AI_UNAVAILABLE
+Do not invent classifications.
+However, deterministic privacy processing should still operate.
+For example:
+Gemini unavailable
++
+DLP detects phone number
+=
+phone still redacted
+This is very important.
+AI should be optional intelligence, not the privacy foundation.
+
+28. Image pipeline
+For images:
+Original image
+       ↓
+Validate MIME/type
+       ↓
+Malware/security scan
+       ↓
+OCR / DLP inspection
+       ↓
+Face / ID / licence plate detection
+       ↓
+Policy engine
+       ↓
+Public derivative
+Google Sensitive Data Protection can inspect image content, use OCR, return bounding boxes and generate redacted images.
+Its current detector catalogue includes person/face, passport, photo ID, signature and licence plate object detectors.
+
+29. Image redaction must create a new file
+Never modify the original.
+original.jpg
+        ↓
+redaction
+        ↓
+public-redacted.jpg
+The original remains immutable.
+
+30. Face redaction
+For public content involving:
+victims;
+children;
+bystanders;
+private persons;
+the policy engine can require face anonymisation.
+Do not automatically blur every face in every public-interest image.
+Example:
+Crowd at a public demonstration
+may have different requirements from:
+Child victim in a sensitive incident.
+This requires context-aware policy.
+
+31. Video
+Do not build sophisticated AI video redaction in Phase 1.
+It will increase cost and complexity dramatically.
+Phase 1:
+protect original video;
+extract audio;
+transcribe where required;
+inspect metadata;
+inspect selected/key frames;
+identify obvious sensitive content;
+send high-risk video to human review.
+Phase 2:
+automated face blurring;
+licence plate blurring;
+OCR redaction;
+audio PII redaction.
+Phase 3:
+full frame-by-frame automated redaction.
+This is much more economical.
+
+32. Audio
+For voice notes:
+original audio
+     ↓
+protected storage
+     ↓
+speech-to-text
+     ↓
+PII inspection
+     ↓
+public transcript
+For MVP:
+Do not automatically publish a redacted audio derivative.
+Instead, if the voice recording contains sensitive information:
+keep the original protected;
+optionally publish a redacted transcript;
+require human review for public audio.
+Voice itself can be identifying, so don't assume a transcript alone solves the privacy issue.
+
+33. Metadata stripping
+This is absolutely essential and easy to overlook.
+Before public media publication, strip:
+EXIF;
+GPS coordinates;
+device information;
+author metadata;
+embedded thumbnails;
+software metadata.
+Public derivatives should contain only metadata necessary for public delivery.
+
+34. GPS is particularly important
+A citizen could upload a photo that contains:
+GPS:
+5.6037,-0.1870
+Even if the image contains no visible address, the metadata could expose the person's location.
+Therefore:
+Public media derivatives must have location metadata stripped unless explicitly approved by policy.
+
+35. Public post location should be separately controlled
+Don't automatically publish exact GPS.
+Use:
+EXACT
+NEIGHBOURHOOD
+DISTRICT
+REGION
+CITY
+APPROXIMATE
+HIDDEN
+For sensitive incidents:
+exact location may be institution-only.
+This is particularly important for:
+victims;
+domestic violence;
+child reports;
+crime;
+witnesses;
+security incidents.
+
+36. Policy engine
+This should be a deterministic service.
+Input:
+submission
+findings
+author
+location
+institution
+contentType
+riskClassification
+audience
+Output:
+ALLOW
+REDACT
+MASK
+ANONYMISE
+RESTRICT
+HUMAN_REVIEW
+BLOCK
+Example:
+PERSON_NAME
++
+PRIVATE_PERSON
++
+PUBLIC
+=
+REDACT
+Whereas:
+INSTITUTION_NAME
++
+PUBLIC_INSTITUTION
++
+PUBLIC
+=
+ALLOW
+
+37. High-risk override
+Certain categories should automatically trigger human review:
+CHILD_SAFETY
+SEXUAL_VIOLENCE
+IMMINENT_THREAT
+VIGILANTISM
+MASS_CASUALTY
+NATIONAL_SECURITY
+HIGH_PROFILE_CRIMINAL_ALLEGATION
+SENSITIVE_MEDICAL
+DOXXING
+Do not let an LLM make the final decision.
+
+38. Public preview
+Before publication:
+Original submission
+       ↓
+Privacy processing
+       ↓
+Public preview
+Show:
+Public version
+and:
+Protected information
+Do not display the protected information.
+Example:
+"Your post contains 3 items of personal information that will not be shown publicly."
+Then:
+Publish protected version
+
+39. Citizen override
+I recommend allowing:
+"Request public disclosure of this information."
+rather than:
+"Turn off privacy protection."
+The user can request publication of their own information, but the system should still prevent prohibited information such as:
+another person's private information;
+child identity;
+victim identity;
+confidential government information.
+This is an important distinction.
+
+40. Human review interface
+Create:
+/admin/privacy-review
+with:
+Original
+Public Preview
+Detected Findings
+Policy Decisions
+Confidence
+Recommended Action
+Reviewer Decision
+Reason
+Reviewer actions:
+APPROVE
+EDIT_REDACTION
+ESCALATE
+REJECT_PUBLICATION
+REPROCESS
+Every action must be audited.
+
+41. Never expose original evidence unnecessarily to moderators
+Use:
+least privilege
+Moderators should see the minimum necessary.
+Sensitive evidence access should require an explicit elevated permission.
+
+42. Institutional evidence portal
+For a tagged institution:
+/institution/reports/:id/evidence
+Require:
+authenticated institution;
+verified institution account;
+role;
+permission;
+access audit.
+Display:
+Citizen report
+Original evidence
+Submission metadata
+Location
+Timeline
+Privacy findings
+Public version
+Institution response
+But do not automatically reveal:
+internal platform security data;
+unrelated user history;
+IP addresses;
+private account information.
+
+43. Evidence access logging
+Every access must generate:
+EvidenceAccessLog
+with:
+id
+submissionId
+actorId
+institutionId
+action
+timestamp
+ip
+reason
+result
+Examples:
+VIEW_ORIGINAL
+DOWNLOAD_ORIGINAL
+VIEW_LOCATION
+VIEW_IDENTITY
+VIEW_MEDIA
+EXPORT_EVIDENCE
+
+44. Social-sharing architecture
+The social sharing service must accept:
+PublicProjection
+not:
+Submission
+This prevents accidental leakage.
+For example:
+POST /api/social/share
+
+{
+   "publicRepresentationId": "..."
+}
+not:
+{
+   "submissionId": "..."
+}
+The server resolves the safe representation.
+
+45. Search indexing
+Search engines should only index:
+PublicProjection
+Never:
+OriginalEvidence
+Likewise:
+sitemap;
+OpenGraph;
+JSON-LD;
+RSS;
+public APIs.
+All must derive from public-safe content.
+
+46. Notification system
+Push/email/SMS notifications must also use the safe representation.
+Bad:
+"Kwame Mensah reported that..."
+Good:
+"A citizen report you follow has been updated."
+This is an often-overlooked leakage channel.
+
+47. Database security
+Never trust frontend role claims.
+Every protected endpoint must perform:
+authenticate()
+authorize()
+resolveInstitution()
+resolveSubmission()
+checkPermission()
+audit()
+return()
+
+48. API separation
+Create clear namespaces:
+/api/public/*
+/api/citizen/*
+/api/institution/*
+/api/moderation/*
+/api/privacy/*
+/api/legal/*
+The public API must physically prevent access to protected evidence.
+
+49. Never use frontend route protection as security
+This:
+if (user.role === "institution") {
+   showOriginal()
+}
+is not sufficient.
+The backend must enforce the permission.
+
+50. Cryptographic integrity
+For original evidence:
+SHA-256
+hash each uploaded file.
+Store:
+sha256
+size
+mimeType
+createdAt
+This allows you to detect accidental or malicious modification.
+Do not market this automatically as "court-certified evidence."
+
+51. Versioning
+Every public representation should be versioned.
+Example:
+submission 123
+public v1
+public v2
+public v3
+If a new privacy policy identifies something previously missed:
+reprocess
+→ generate v2
+→ invalidate v1
+This is extremely important.
+
+52. Retroactive privacy remediation
+You need a system-wide job:
+REPROCESS_PUBLIC_REPRESENTATIONS
+When:
+privacy rules change;
+new Ghana detector added;
+vulnerability discovered;
+institution registry changes;
+policy becomes stricter.
+This should allow existing content to be rescanned.
+
+53. Emergency kill switch
+Administrators should be able to disable:
+PUBLIC_MEDIA_PUBLICATION
+PUBLIC_TEXT_PUBLICATION
+SOCIAL_SHARING
+INSTITUTION_EVIDENCE_ACCESS
+AI_PROCESSING
+independently.
+For example:
+DLP service outage.
+You can continue citizen submissions but prevent publication of unprocessed content.
+
+54. Failure strategy
+DLP unavailable
+If existing cached deterministic rules can safely process content:
+continue where safe.
+Otherwise:
+PRIVACY_PROCESSING_UNAVAILABLE
+and hold publication.
+Gemini unavailable
+Continue deterministic privacy processing.
+Only semantic AI features become unavailable.
+Storage unavailable
+Do not acknowledge upload as successfully stored.
+Redaction generation fails
+Do not publish original.
+Institution integration unavailable
+Show:
+NOT_CONFIGURED
+DELIVERY_FAILED
+Never fake success.
+
+55. Phase implementation plan
+I recommend six phases.
+
+PHASE 0 — Existing-system assessment
+Jules must first inspect:
+current PRD
+database
+API
+authentication
+storage
+media handling
+post model
+moderation
+institution registry
+social sharing
+AI integration
+deployment
+No implementation yet.
+Deliver:
+P3RE_GAP_ANALYSIS.md
+
+PHASE 1 — Foundation
+Implement:
+data model;
+storage separation;
+public/protected representation;
+privacy statuses;
+RBAC;
+audit logs;
+hashing;
+lifecycle states.
+No expensive AI yet.
+Acceptance test
+Citizen submits:
+private original + safe public representation.
+Public API cannot retrieve original.
+
+PHASE 2 — Text Privacy Firewall
+Implement:
+deterministic detectors
+email;
+phone;
+URL;
+ID patterns;
+financial patterns;
+address patterns.
+Then Google Sensitive Data Protection.
+Add Ghana custom detectors.
+Google supports custom regex/dictionary detectors, making this suitable for Ghana-specific patterns without training a model.
+Acceptance
+100% of seeded test fixtures containing obvious PII must not expose it publicly.
+
+PHASE 3 — Image Privacy
+Implement:
+OCR;
+DLP image inspection;
+ID/document detection;
+face detection;
+licence plate detection;
+metadata stripping;
+server-side redacted derivatives.
+Google supports image inspection/redaction and returns locations of detected sensitive information or a redacted image.
+Acceptance
+Upload:
+Ghana Card
+passport
+document
+screenshot
+photograph
+and verify public representation doesn't expose configured sensitive fields.
+
+PHASE 4 — Contextual intelligence
+Introduce Gemini only after deterministic privacy works.
+Gemini handles:
+ambiguity;
+context;
+classification;
+summarisation.
+Implement:
+AI_SAFE_INPUT
+AI_RESULT
+AI_CONFIDENCE
+AI_PROVIDER
+AI_MODEL
+AI_STATUS
+No fake AI fallback.
+
+PHASE 5 — Institution Evidence Rooms
+Implement:
+institution authentication;
+role-based evidence access;
+signed URLs;
+access logs;
+evidence download controls;
+institution response;
+notification tracking.
+Google Cloud signed URLs can provide time-limited access to specific Cloud Storage objects.
+
+PHASE 6 — Video/audio + advanced remediation
+Only after the rest works.
+Implement:
+Audio
+transcription;
+PII detection;
+safe transcript.
+Video
+frame sampling;
+OCR;
+face detection;
+licence plate detection;
+sensitive-scene classification.
+Then later:
+automated video redaction;
+audio redaction;
+continuous frame processing.
+Do not make advanced video redaction a launch blocker.
+
+56. Cost-control architecture
+This is particularly important for your project.
+Don't process unnecessarily.
+For example:
+Plain text
+→ text detector
+
+Image
+→ image detector
+
+Video
+→ don't run full-frame AI immediately
+Use content-type-specific pipelines.
+
+57. Tiered processing
+Implement:
+Tier 1 — Free/local
+TypeScript/regex:
+email;
+phone;
+URLs;
+obvious identifiers.
+Tier 2 — Google service
+Sensitive Data Protection:
+advanced PII;
+OCR;
+image inspection.
+Tier 3 — Gemini
+Only ambiguous semantic cases.
+Tier 4 — Human
+Only high-risk cases.
+This gives you:
+low average processing cost with strong protection.
+
+58. Don't build your own machine-learning model
+Absolutely unnecessary for the first version.
+Do not train:
+custom NER model;
+facial recognition model;
+custom multimodal model.
+Use established services and deterministic code.
+You can revisit custom models only once Speak Up has enough real-world data to justify them.
+
+59. Don't introduce a second cloud
+Because the application is already moving through Google AI Studio, I would strongly prefer:
+Google Cloud
+├── Sensitive Data Protection
+├── Cloud Storage
+├── Gemini
+└── existing hosting/backend where applicable
+rather than:
+Google
++
+AWS
++
+Azure
++
+Cloudflare
++
+third-party AI
+Every extra provider increases:
+cost;
+security surface;
+contracts;
+privacy review;
+operational complexity.
+
+60. Important optimisation: don't call DLP for every tiny field
+The backend can perform cheap checks first.
+Example:
+if text.length < threshold
+and no suspicious pattern
+and content type is low risk:
+    cheap processing
+But never bypass required inspection for high-risk categories.
+
+61. Privacy policy configuration
+Put policies in version-controlled configuration.
+Example:
+config/privacy/
+    ghana-info-types.ts
+    public-policy.ts
+    institution-policy.ts
+    child-policy.ts
+    emergency-policy.ts
+    media-policy.ts
+Don't scatter rules throughout React components and API handlers.
+
+62. Test architecture
+Jules should create:
+tests/privacy/
+with fixtures for:
+Names
+Kwame Mensah
+Ama Boateng
+Phone
+Ghanaian phone formats
+Address
+Accra
+Kumasi
+Tamale
+IDs
+synthetic test identifiers only.
+Sensitive contexts
+child;
+medical;
+sexual violence;
+criminal allegation;
+domestic violence.
+Media
+screenshots;
+documents;
+photographs;
+ID-like documents.
+Never use real citizen data in automated tests.
+
+63. Critical security tests
+Jules must prove:
+Test 1
+Public API cannot return original text.
+Test 2
+Public API cannot return original media.
+Test 3
+Changing frontend role cannot obtain evidence.
+Test 4
+Institution A cannot access Institution B's evidence.
+Test 5
+Signed URLs expire.
+Test 6
+Social sharing never uses original content.
+Test 7
+OG metadata never exposes original content.
+Test 8
+Search indexing only sees public representations.
+Test 9
+Notifications never contain protected information.
+Test 10
+AI payload contains only approved representation.
+
+64. Privacy leakage tests
+Create automated assertions such as:
+assert(publicText).notContain(originalPhone)
+assert(publicText).notContain(privateName)
+assert(publicMedia).notEqual(originalMedia)
+assert(publicMetadata).notContain(gps)
+For every test fixture.
+
+65. Golden journey
+The most important end-to-end test should be:
+Citizen
+ ↓
+creates report
+ ↓
+uploads sensitive text
+ ↓
+uploads image containing sensitive information
+ ↓
+tags institution
+ ↓
+privacy firewall processes
+ ↓
+public preview generated
+ ↓
+citizen confirms
+ ↓
+public post published
+ ↓
+institution receives alert
+ ↓
+institution accesses protected evidence
+ ↓
+institution responds
+ ↓
+public sees response
+ ↓
+citizen shares post externally
+ ↓
+external share contains only public representation
+This must work without manual database intervention.
+
+66. Performance requirement
+The privacy engine must not make ordinary text posting feel slow.
+Target:
+Text
+Prefer:
+near-real-time processing.
+Image
+Accept:
+asynchronous processing with visible progress.
+Video
+Use:
+asynchronous processing.
+UI should say:
+"Protecting sensitive information..."
+rather than appearing frozen.
+
+67. Offline/low-bandwidth behaviour
+This is particularly relevant to Speak Up.
+If a citizen has weak connectivity:
+draft locally
+ ↓
+upload resumably
+ ↓
+server processes
+ ↓
+public preview
+Do not process the original entirely on the client as the authoritative privacy mechanism.
+Client-side detection can be a convenience.
+Server-side processing is authoritative.
+
+68. Accessibility
+The privacy workflow must work for:
+screen readers;
+low literacy;
+mobile;
+voice input;
+large text;
+low bandwidth.
+Use plain language:
+"We found information that may identify someone."
+not:
+"PII detected according to policy P-004."
+The technical terminology belongs in the admin interface.
+
+69. User transparency
+The user should always know:
+"The public sees a protected version. Authorised institutions may receive additional information needed to understand the report."
+This should be explained before submission.
+Do not secretly create an entirely different audience representation.
+
+70. Legal/audit requirement
+Every transformation should be traceable:
+Who submitted?
+What was submitted?
+What was detected?
+What policy applied?
+What version generated the public representation?
+Who approved it?
+When?
+What changed?
+This is the audit backbone.
+
+71. Privacy engine observability
+Add metrics:
+privacy_processing_total
+privacy_processing_failures
+privacy_redactions_total
+privacy_review_total
+privacy_ai_calls_total
+privacy_ai_failures
+privacy_processing_latency
+public_projection_generation_latency
+protected_evidence_access_total
+Track costs separately:
+DLP calls
+Gemini calls
+OCR processing
+media processing
+storage
+This lets you optimise the platform economically.
+
+72. Cost dashboard
+Admin should eventually see:
+Posts processed
+Text inspections
+Image inspections
+AI calls
+Media processing
+Storage consumed
+Estimated privacy-engine cost
+Cost per 1,000 submissions
+This becomes extremely useful when scaling.
+
+73. What NOT to implement
+Jules should explicitly avoid:
+❌ Training a proprietary AI model.
+❌ Running Gemini against every submission.
+❌ Running full AI video analysis at launch.
+❌ Building Kafka/event-streaming infrastructure.
+❌ Introducing a second database.
+❌ Creating a separate microservice fleet.
+❌ Building custom facial-recognition technology.
+❌ Storing originals in public storage.
+❌ Redacting only in React.
+❌ Using CSS blur as "privacy".
+❌ Letting institutions access all citizen data.
+❌ Allowing AI to decide truth/guilt.
+❌ Automatically publishing failed privacy-processing jobs.
+
+74. Recommended initial architecture
+For the current project I would keep it remarkably simple:
+                 Next.js / Existing App
+                         │
+                         ▼
+                 Existing API Layer
+                         │
+                ┌────────┴────────┐
+                │                 │
+                ▼                 ▼
+          Existing DB        Cloud Storage
+                │                 │
+                │        ┌────────┼─────────┐
+                │        ▼        ▼         ▼
+                │    original  protected  public
+                │
+                ▼
+        Privacy Orchestrator
+                │
+       ┌────────┼───────────┐
+       ▼        ▼           ▼
+     Rules     DLP       Gemini
+       │        │           │
+       └────────┼───────────┘
+                ▼
+          Policy Engine
+                │
+        ┌───────┴────────┐
+        ▼                ▼
+   Public Projection  Human Review
+That is enough.
+Don't over-engineer it.
+
+75. Jules implementation prompt
+I would give Jules the following instruction almost verbatim:
+JULES IMPLEMENTATION DIRECTIVE — PRIVACY-PRESERVING PUBLIC REPRESENTATION ENGINE
+You are responsible for implementing the Privacy-Preserving Public Representation Engine (P³RE) described in this specification as a production-grade subsystem of Speak Up.
+Treat the specification as an architectural extension to SPEAK UP WEB PRD.md.
+Do not redesign unrelated parts of the application.
+Do not introduce unnecessary infrastructure.
+Preserve the current frontend and existing user journeys wherever they are compatible with this architecture.
+Your objective is to move the existing AI Studio-generated frontend/prototype toward a genuine full-stack implementation.
+
+PHASE 0 — AUDIT FIRST
+Before changing code:
+Inspect the complete repository.
+Inspect the current PRD.
+Inspect existing post creation.
+Inspect media upload.
+Inspect authentication.
+Inspect database schema.
+Inspect storage.
+Inspect institution tagging.
+Inspect institution alerting.
+Inspect moderation.
+Inspect AI integrations.
+Inspect social sharing.
+Inspect deployment configuration.
+Produce:
+docs/privacy/P3RE-GAP-ANALYSIS.md
+containing:
+existing implementation;
+missing components;
+reusable components;
+architectural conflicts;
+security weaknesses;
+migration requirements;
+recommended implementation order.
+Do not begin implementation until the repository architecture has been understood.
+
+PHASE 1 — DATA FOUNDATION
+Implement the required entities:
+submissions;
+submission_sources;
+submission_public_projections;
+submission_protected_evidence;
+privacy_findings;
+privacy_policies;
+representation_versions;
+evidence_access_logs.
+Reuse the existing database technology.
+Do not introduce another database.
+Establish immutable original evidence and independently generated public representations.
+
+PHASE 2 — STORAGE SECURITY
+Implement separate storage zones for:
+original;
+protected;
+public;
+processing.
+Ensure original evidence can never be returned through public APIs.
+Implement authenticated, authorisation-controlled access to protected evidence.
+Use short-lived signed URLs only after backend authorisation succeeds.
+Never expose storage credentials to the client.
+
+PHASE 3 — PRIVACY ORCHESTRATOR
+Implement:
+PrivacyOrchestrator
+responsible for:
+receiving canonical submission content;
+identifying content type;
+invoking appropriate inspection pipeline;
+aggregating findings;
+invoking policy engine;
+generating public representation;
+determining whether human review is required;
+updating privacy state;
+producing audit information.
+
+PHASE 4 — DETECTION
+Implement a layered detection strategy:
+deterministic local detection;
+Google Sensitive Data Protection;
+custom Ghana-specific detectors;
+Gemini only for contextual ambiguity.
+Do not use Gemini as the primary PII detector.
+Do not create fake AI fallback responses.
+If Gemini is unavailable, deterministic privacy protection must continue.
+
+PHASE 5 — PUBLIC REPRESENTATION
+Implement a server-generated public projection.
+Public APIs must consume only:
+submission_public_projections
+Never return canonical/original content to anonymous/public clients.
+Social sharing, search indexing, OpenGraph metadata, notifications and public feeds must all derive from the public projection.
+
+PHASE 6 — IMAGE PRIVACY
+Implement:
+OCR;
+sensitive text detection;
+configured object detection;
+face/privacy handling;
+licence plate handling;
+metadata stripping;
+server-side redacted image generation.
+Never modify the original.
+Never use frontend-only blurring as a privacy mechanism.
+
+PHASE 7 — HUMAN REVIEW
+Implement /admin/privacy-review.
+Provide reviewers with:
+original content where authorised;
+detected findings;
+public preview;
+policy decisions;
+confidence;
+recommended action.
+Actions:
+approve;
+modify redaction;
+escalate;
+block;
+reprocess.
+Audit every decision.
+
+PHASE 8 — INSTITUTION EVIDENCE
+Implement institution-specific protected evidence access.
+An institution must only access evidence for reports it is authorised to access.
+Log every:
+view;
+download;
+export;
+identity access;
+location access.
+
+PHASE 9 — AI BOUNDARY
+Before any Gemini call:
+Original → Privacy Firewall → AI-safe projection → Gemini
+Never:
+Original → Gemini → redact
+AI must not determine:
+guilt;
+criminal liability;
+truth;
+defamation;
+legal conclusions.
+
+PHASE 10 — FAILURE SAFETY
+Privacy processing failure must fail closed.
+Never publish the original because redaction failed.
+Implement explicit statuses:
+PRIVACY_PROCESSING
+PRIVACY_READY
+PRIVACY_REVIEW_REQUIRED
+PRIVACY_FAILED
+AI_UNAVAILABLE
+Do not simulate successful processing.
+
+PHASE 11 — TESTING
+Implement automated tests covering:
+PII detection;
+text redaction;
+image redaction;
+metadata stripping;
+public API isolation;
+institution access;
+signed URL expiry;
+social sharing;
+OpenGraph;
+notification leakage;
+AI-safe payload;
+failure states;
+cross-institution isolation;
+privacy policy changes;
+reprocessing.
+Include an end-to-end golden journey:
+Citizen → submit → detect → redact → preview → publish → institution alert → protected evidence → institution response → social share
+
+PHASE 12 — DOCUMENTATION
+Create:
+docs/privacy/P3RE-ARCHITECTURE.md
+docs/privacy/P3RE-DATA-MODEL.md
+docs/privacy/P3RE-POLICY-ENGINE.md
+docs/privacy/P3RE-DETECTION.md
+docs/privacy/P3RE-MEDIA-PIPELINE.md
+docs/privacy/P3RE-AI-BOUNDARY.md
+docs/privacy/P3RE-STORAGE-SECURITY.md
+docs/privacy/P3RE-INSTITUTION-ACCESS.md
+docs/privacy/P3RE-THREAT-MODEL.md
+docs/privacy/P3RE-TESTING.md
+docs/privacy/P3RE-COST-CONTROL.md
+docs/privacy/P3RE-OPERATIONS.md
+Update the main architecture documentation to reference P³RE.
+
+FINAL REQUIREMENT
+Do not stop after implementing the UI.
+The feature is incomplete until:
+frontend → API → database → storage → privacy inspection → policy engine → public projection → protected evidence → institution access → audit → social sharing → automated tests
+all work against real persistent infrastructure.
+Do not use mock arrays, fake institution alerts, fake AI classifications, fake redaction results or frontend-only security.
+If an external service is unavailable or unconfigured, expose an explicit system status rather than simulating success.
+Work through the implementation in phases, verify each phase, fix discovered defects, and only then proceed to the next phase.
+At completion, provide a final implementation report mapping every P³RE requirement to:
+IMPLEMENTED / PARTIAL / BLOCKED
+with file paths, tests and remaining risks.
+
+76. One architectural decision I would make now
+For your particular project, I would resist the temptation to build a huge "AI privacy engine."
+The economical architecture is:
+TypeScript rules → Google Sensitive Data Protection → existing storage/database → Gemini only for semantic ambiguity → human review for high-risk cases.
+That gives you most of the capability without creating an expensive AI infrastructure project.
+Google's current platform already supports the fundamental building blocks—200+ detectors, custom detectors, text de-identification, OCR/image inspection, image redaction and multiple transformation methods.
+The real intellectual property of Speak Up should therefore be the policy/orchestration layer, not a proprietary AI model:
+What should be visible to whom, under what circumstances, and why?
+That is where the civic/privacy sophistication of the platform will reside.
+And I would make P³RE a prerequisite for the final production release, particularly because Speak Up's core value proposition involves citizens uploading exactly the kind of sensitive, potentially identifying material that ordinary social platforms tend to handle poorly.

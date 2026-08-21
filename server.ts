@@ -9,6 +9,9 @@ import multer from 'multer';
 import { initDatabase, db } from './server/db';
 import { seedDatabaseIfEmpty } from './server/seedDatabase';
 import { GHANA_REGIONS } from './server/seedData';
+import { initStorageZones, STORAGE_ZONES, verifySignedAccessToken, generateSignedAccessToken } from './server/storage';
+import { PrivacyOrchestrator } from './server/privacy/privacyOrchestrator';
+import { processMediaFile } from './server/media/mediaPipeline';
 import {
   CivicPost,
   Institution,
@@ -23,14 +26,11 @@ import {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'speakup-secret-key-ghana-2025';
 
-// Setup file uploads storage directory
-const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Initialize P³RE storage zones
+initStorageZones();
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
+  destination: (req, file, cb) => cb(null, STORAGE_ZONES.PROCESSING),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, `upload-${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`);
@@ -120,10 +120,15 @@ function rowToPost(row: any): CivicPost {
 
   const followersCount = followerCountRow ? followerCountRow.cnt : 0;
 
+  // Retrieve P³RE public projection if generated
+  const projRow = db.prepare('SELECT title, text, media_references_json FROM submission_public_projections WHERE submission_id = ? ORDER BY version DESC LIMIT 1').get(row.id) as any;
+  const displayTitle = projRow ? projRow.title : row.title;
+  const displayContent = projRow ? projRow.text : row.content;
+
   return {
     id: row.id,
-    title: row.title,
-    content: row.content,
+    title: displayTitle,
+    content: displayContent,
     originalLanguage: row.original_language,
     translatedText: row.translated_text || undefined,
     authorId: row.author_id,
@@ -318,8 +323,38 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
   app.use(authMiddleware);
 
-  // Serve static media uploads
-  app.use('/uploads', express.static(uploadDir));
+  // Serve static public media uploads (strictly isolated to public derivative zone)
+  app.use('/uploads/public', express.static(STORAGE_ZONES.PUBLIC));
+  app.use('/uploads', (req, res, next) => {
+    if (req.path.startsWith('/original') || req.path.startsWith('/protected')) {
+      return res.status(403).json({ error: 'Access denied: Original and protected evidence zones cannot be accessed via public static route.' });
+    }
+    express.static(STORAGE_ZONES.PUBLIC)(req, res, next);
+  });
+
+  // GET /api/media/protected/:filename - Protected media endpoint with authorization check
+  app.get('/api/media/protected/:filename', authMiddleware, (req: AuthenticatedRequest, res) => {
+    const token = req.query.token as string;
+    let authorized = false;
+
+    if (token) {
+      const verified = verifySignedAccessToken(token);
+      if (verified) authorized = true;
+    } else if (req.user && ['INSTITUTION_REP', 'ADMIN', 'MODERATOR'].includes(req.user.role)) {
+      authorized = true;
+    }
+
+    if (!authorized) {
+      return res.status(403).json({ error: 'Forbidden: Valid token or authorized institution/admin role required' });
+    }
+
+    const filePath = path.join(STORAGE_ZONES.PROTECTED, req.params.filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Protected evidence file not found' });
+    }
+
+    res.sendFile(filePath);
+  });
 
   // --- AUTHENTICATION API ROUTES ---
 
@@ -483,6 +518,72 @@ async function startServer() {
     res.json(list);
   });
 
+  // --- INSTITUTIONAL EVIDENCE PORTAL APIs (/api/institutions/evidence) ---
+
+  // GET /api/institutions/evidence/:id - Access protected evidence package with strict scope checks
+  app.get('/api/institutions/evidence/:id', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    const subId = req.params.id;
+    const user = req.user!;
+    const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
+    const now = new Date().toISOString();
+
+    // Check if report is tagged to institution
+    let isAuthorized = user.role === 'ADMIN';
+    let userInstId = user.role === 'ADMIN' ? 'admin' : (req.query.institutionId as string || 'ghana-police-service');
+
+    if (!isAuthorized) {
+      const tagRow = db.prepare('SELECT 1 FROM post_institution_tags WHERE post_id = ? AND institution_id = ?').get(subId, userInstId);
+      if (tagRow) isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      // Log denied attempt
+      db.prepare(`
+        INSERT INTO evidence_access_logs (id, submission_id, actor_id, institution_id, action, timestamp, ip, reason, result)
+        VALUES (?, ?, ?, ?, 'VIEW_ORIGINAL', ?, ?, 'UNAUTHORIZED_INSTITUTION_SCOPE', 'DENIED')
+      `).run(`log-${Date.now()}`, subId, user.id, userInstId, now, ip);
+
+      return res.status(403).json({ error: 'Access Denied: Your institution is not authorized to access protected evidence for this report.' });
+    }
+
+    // Fetch protected evidence records
+    const submission = db.prepare('SELECT * FROM submissions WHERE id = ?').get(subId) as any;
+    const sources = db.prepare('SELECT * FROM submission_sources WHERE submission_id = ?').all(subId) as any[];
+    const protectedEvidence = db.prepare('SELECT * FROM submission_protected_evidence WHERE submission_id = ?').all(subId) as any[];
+
+    // Generate signed access token valid for 15 minutes
+    const token = generateSignedAccessToken(subId, user.id, 900);
+
+    // Log allowed view
+    db.prepare(`
+      INSERT INTO evidence_access_logs (id, submission_id, actor_id, institution_id, action, timestamp, ip, reason, result)
+      VALUES (?, ?, ?, ?, 'VIEW_ORIGINAL', ?, ?, 'OFFICIAL_INVESTIGATION', 'ALLOWED')
+    `).run(`log-${Date.now()}`, subId, user.id, userInstId, now, ip);
+
+    res.json({
+      submissionId: subId,
+      submission,
+      sources,
+      protectedEvidence,
+      signedToken: token,
+      expiresInSeconds: 900
+    });
+  });
+
+  // GET /api/institutions/evidence-logs - View institutional audit log
+  app.get('/api/institutions/evidence-logs', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    const logs = db.prepare(`
+      SELECT l.*, s.author_id, u.name as actor_name, u.email as actor_email
+      FROM evidence_access_logs l
+      LEFT JOIN users u ON l.actor_id = u.id
+      LEFT JOIN submissions s ON l.submission_id = s.id
+      ORDER BY l.timestamp DESC
+      LIMIT 100
+    `).all() as any[];
+
+    res.json(logs);
+  });
+
   // GET /api/institutions/:id
   app.get('/api/institutions/:id', (req, res) => {
     const row = db.prepare('SELECT * FROM institutions WHERE id = ?').get(req.params.id);
@@ -598,8 +699,8 @@ async function startServer() {
     res.json(post);
   });
 
-  // POST /api/posts - Persistent Civic Post Creation
-  app.post('/api/posts', (req: AuthenticatedRequest, res) => {
+  // POST /api/posts - Persistent Civic Post Creation with P³RE
+  app.post('/api/posts', async (req: AuthenticatedRequest, res) => {
     try {
       const body = req.body;
       const newPostId = `post-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -619,6 +720,15 @@ async function startServer() {
       const urgency = body.urgency || 'NORMAL';
       const severity = body.severity || 'MODERATE';
 
+      // Process submission through Privacy Orchestrator
+      const p3reResult = await PrivacyOrchestrator.processSubmission({
+        submissionId: newPostId,
+        authorId,
+        title,
+        content: body.content,
+        media: body.media || []
+      });
+
       // Insert post into SQLite
       db.prepare(`
         INSERT INTO posts (
@@ -637,7 +747,7 @@ async function startServer() {
       `).run(
         newPostId,
         title,
-        body.content,
+        p3reResult.publicText, // Store public sanitized text in post content
         body.originalLanguage || 'English',
         body.translatedText || null,
         authorId,
@@ -1434,6 +1544,77 @@ async function startServer() {
       categoryBreakdown: topCategories,
       topCategories
     });
+  });
+
+  // --- PRIVACY REVIEW & MODERATION APIs (/admin/privacy-review) ---
+
+  // GET /api/admin/privacy-review - List pending privacy review items
+  app.get('/api/admin/privacy-review', (req: AuthenticatedRequest, res) => {
+    const rows = db.prepare(`
+      SELECT s.*, COALESCE(u.name, 'Citizen Reporter') as author_name, COALESCE(u.handle, 'citizen_gh') as author_handle,
+             (SELECT COUNT(*) FROM privacy_findings pf WHERE pf.submission_id = s.id) as findings_count
+      FROM submissions s
+      LEFT JOIN users u ON s.author_id = u.id
+      WHERE s.privacy_status IN ('PRIVACY_REVIEW_REQUIRED', 'PRIVACY_FAILED', 'PRIVACY_PROCESSING')
+      ORDER BY s.created_at DESC
+    `).all() as any[];
+
+    res.json(rows);
+  });
+
+  // GET /api/admin/privacy-review/:id - Detailed inspection for privacy review
+  app.get('/api/admin/privacy-review/:id', (req: AuthenticatedRequest, res) => {
+    const subId = req.params.id;
+    const submission = db.prepare('SELECT * FROM submissions WHERE id = ?').get(subId) as any;
+    if (!submission) return res.status(404).json({ error: 'Submission not found' });
+
+    const sources = db.prepare('SELECT * FROM submission_sources WHERE submission_id = ?').all(subId) as any[];
+    const findings = db.prepare('SELECT * FROM privacy_findings WHERE submission_id = ?').all(subId) as any[];
+    const publicProj = db.prepare('SELECT * FROM submission_public_projections WHERE submission_id = ? ORDER BY version DESC LIMIT 1').get(subId) as any;
+    const protectedEvid = db.prepare('SELECT * FROM submission_protected_evidence WHERE submission_id = ?').all(subId) as any[];
+
+    res.json({
+      submission,
+      sources,
+      findings,
+      publicProjection: publicProj,
+      protectedEvidence: protectedEvid
+    });
+  });
+
+  // POST /api/admin/privacy-review/:id/decision - Apply moderator privacy decision
+  app.post('/api/admin/privacy-review/:id/decision', requireRole(['MODERATOR', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    const subId = req.params.id;
+    const { action, modifiedText, reason } = req.body;
+    const now = new Date().toISOString();
+    const actorId = req.user?.id || 'admin';
+
+    const sub = db.prepare('SELECT * FROM submissions WHERE id = ?').get(subId) as any;
+    if (!sub) return res.status(404).json({ error: 'Submission not found' });
+
+    if (action === 'approve') {
+      db.prepare("UPDATE submissions SET privacy_status = 'PRIVACY_READY', updated_at = ? WHERE id = ?").run(now, subId);
+      db.prepare("UPDATE submission_public_projections SET status = 'PRIVACY_READY' WHERE submission_id = ?").run(subId);
+    } else if (action === 'modify' && modifiedText) {
+      db.prepare("UPDATE submissions SET privacy_status = 'PRIVACY_READY', updated_at = ? WHERE id = ?").run(now, subId);
+      db.prepare("UPDATE submission_public_projections SET text = ?, status = 'PRIVACY_READY', generated_by = 'MODERATOR_OVERRIDE' WHERE submission_id = ?").run(modifiedText, subId);
+      db.prepare("UPDATE posts SET content = ?, updated_at = ? WHERE id = ?").run(modifiedText, now, subId);
+    } else if (action === 'block') {
+      db.prepare("UPDATE submissions SET privacy_status = 'PRIVACY_FAILED', moderation_status = 'restricted', updated_at = ? WHERE id = ?").run(now, subId);
+      db.prepare("UPDATE posts SET moderation_status = 'restricted', updated_at = ? WHERE id = ?").run(now, subId);
+    } else if (action === 'reprocess') {
+      db.prepare("UPDATE submissions SET privacy_status = 'PRIVACY_PROCESSING', updated_at = ? WHERE id = ?").run(now, subId);
+    } else {
+      return res.status(400).json({ error: 'Invalid review action' });
+    }
+
+    // Record audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, event_type, user_id, details_json, created_at)
+      VALUES (?, 'PRIVACY_REVIEW_DECISION', ?, ?, ?)
+    `).run(`audit-${Date.now()}`, actorId, JSON.stringify({ submissionId: subId, action, reason, modifiedText }), now);
+
+    res.json({ success: true, submissionId: subId, newStatus: action === 'block' ? 'PRIVACY_FAILED' : 'PRIVACY_READY' });
   });
 
   // GET /api/notifications

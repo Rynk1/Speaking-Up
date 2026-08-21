@@ -250,7 +250,7 @@ export default function App() {
   }, [posts, searchQuery, filterCategory, filterRegion, filterUrgency, focusedResponseId]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950 pb-20 lg:pb-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950 pb-20 lg:pb-8">
       {/* Emergency Disclaimer Banner */}
       <EmergencyBanner />
 

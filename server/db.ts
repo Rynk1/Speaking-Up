@@ -178,14 +178,26 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS comments (
       id TEXT PRIMARY KEY,
       post_id TEXT NOT NULL,
+      parent_comment_id TEXT,
       user_id TEXT NOT NULL,
       user_name TEXT NOT NULL,
       user_handle TEXT NOT NULL,
       is_verified INTEGER DEFAULT 1,
       content TEXT NOT NULL,
       likes_count INTEGER DEFAULT 0,
+      tags_json TEXT DEFAULT '[]',
       created_at TEXT NOT NULL,
       FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Create Comment Likes table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS comment_likes (
+      user_id TEXT NOT NULL,
+      comment_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, comment_id)
     );
   `);
 
@@ -247,6 +259,7 @@ export function initDatabase() {
       id TEXT PRIMARY KEY,
       response_id TEXT NOT NULL,
       post_id TEXT,
+      parent_comment_id TEXT,
       user_id TEXT NOT NULL,
       user_name TEXT NOT NULL,
       user_handle TEXT NOT NULL,
@@ -254,6 +267,7 @@ export function initDatabase() {
       is_verified INTEGER DEFAULT 1,
       content TEXT NOT NULL,
       likes_count INTEGER DEFAULT 0,
+      tags_json TEXT DEFAULT '[]',
       created_at TEXT NOT NULL,
       FOREIGN KEY (response_id) REFERENCES institution_responses(id) ON DELETE CASCADE
     );

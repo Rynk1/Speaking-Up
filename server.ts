@@ -264,13 +264,15 @@ function rowToPost(row: any): CivicPost {
     commentsList: commentRows.map(c => ({
       id: c.id,
       postId: c.post_id,
+      parentCommentId: c.parent_comment_id || undefined,
       userId: c.user_id,
       userName: c.user_name,
       userHandle: c.user_handle,
       isVerified: Boolean(c.is_verified),
       content: c.content,
       createdAt: c.created_at,
-      likesCount: c.likes_count
+      likesCount: c.likes_count || 0,
+      tags: JSON.parse(c.tags_json || '[]')
     })),
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -904,23 +906,27 @@ async function startServer() {
   // POST /api/posts/:id/comments
   app.post('/api/posts/:id/comments', (req: AuthenticatedRequest, res) => {
     const postId = req.params.id;
-    const { content, userName, userHandle } = req.body;
+    const { content, parentCommentId, userName, userHandle, tags } = req.body;
     const userId = req.user?.id || 'user-current';
     const now = new Date().toISOString();
     const commentId = `comment-${Date.now()}`;
 
     ensureUserFollowsIssue(userId, postId);
 
+    const extractedTags = Array.isArray(tags) ? tags : (content.match(/@[\w_]+/g) || []);
+
     db.prepare(`
-      INSERT INTO comments (id, post_id, user_id, user_name, user_handle, is_verified, content, likes_count, created_at)
-      VALUES (?, ?, ?, ?, ?, 1, ?, 0, ?)
+      INSERT INTO comments (id, post_id, parent_comment_id, user_id, user_name, user_handle, is_verified, content, likes_count, tags_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?)
     `).run(
       commentId,
       postId,
+      parentCommentId || null,
       userId,
       userName || req.user?.name || 'Civic Participant',
       userHandle || req.user?.handle || 'citizen_gh',
       content,
+      JSON.stringify(extractedTags),
       now
     );
 
@@ -929,14 +935,36 @@ async function startServer() {
     res.status(201).json({
       id: commentId,
       postId,
+      parentCommentId: parentCommentId || undefined,
       userId,
       userName: userName || req.user?.name || 'Civic Participant',
       userHandle: userHandle || req.user?.handle || 'citizen_gh',
       isVerified: true,
       content,
       createdAt: now,
-      likesCount: 0
+      likesCount: 0,
+      tags: extractedTags
     });
+  });
+
+  // POST /api/comments/:commentId/like - Like a civic post comment
+  app.post('/api/comments/:commentId/like', (req: AuthenticatedRequest, res) => {
+    const commentId = req.params.commentId;
+    const userId = req.user?.id || 'user-current';
+    const now = new Date().toISOString();
+
+    const existing = db.prepare('SELECT * FROM comment_likes WHERE user_id = ? AND comment_id = ?').get(userId, commentId);
+
+    if (existing) {
+      db.prepare('DELETE FROM comment_likes WHERE user_id = ? AND comment_id = ?').run(userId, commentId);
+      db.prepare('UPDATE comments SET likes_count = MAX(0, likes_count - 1) WHERE id = ?').run(commentId);
+    } else {
+      db.prepare('INSERT INTO comment_likes (user_id, comment_id, created_at) VALUES (?, ?, ?)').run(userId, commentId, now);
+      db.prepare('UPDATE comments SET likes_count = likes_count + 1 WHERE id = ?').run(commentId);
+    }
+
+    const row = db.prepare('SELECT likes_count FROM comments WHERE id = ?').get(commentId) as any;
+    res.json({ success: true, likesCount: row?.likes_count || 0, userLiked: !existing });
   });
 
   // POST /api/posts/:id/alert - Dispatch alert to institution
@@ -1176,6 +1204,7 @@ async function startServer() {
           id: c.id,
           responseId: c.response_id,
           postId: c.post_id,
+          parentCommentId: c.parent_comment_id || undefined,
           userId: c.user_id,
           userName: c.user_name,
           userHandle: c.user_handle,
@@ -1183,7 +1212,8 @@ async function startServer() {
           isVerified: Boolean(c.is_verified),
           content: c.content,
           createdAt: c.created_at,
-          likesCount: c.likes_count || 0
+          likesCount: c.likes_count || 0,
+          tags: JSON.parse(c.tags_json || '[]')
         })),
         official: Boolean(r.official),
         verified: Boolean(r.verified),

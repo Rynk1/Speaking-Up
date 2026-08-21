@@ -164,6 +164,7 @@ export interface PostConfirmation {
 export interface PostComment {
   id: string;
   postId: string;
+  parentCommentId?: string;
   userId: string;
   userName: string;
   userHandle: string;
@@ -172,6 +173,8 @@ export interface PostComment {
   content: string;
   createdAt: string;
   likesCount: number;
+  tags?: string[];
+  userLiked?: boolean;
 }
 
 export interface CivicPost {

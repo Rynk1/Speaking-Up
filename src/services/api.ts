@@ -209,13 +209,22 @@ export const api = {
     return res.json();
   },
 
-  async addComment(postId: string, commentData: { content: string; userName?: string; userHandle?: string }): Promise<PostComment> {
+  async addComment(postId: string, commentData: { content: string; parentCommentId?: string; userName?: string; userHandle?: string; tags?: string[] }): Promise<PostComment> {
     const res = await fetch(`/api/posts/${postId}/comments`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(commentData)
     });
     if (!res.ok) throw new Error('Failed to add comment');
+    return res.json();
+  },
+
+  async likeComment(commentId: string): Promise<{ success: boolean; likesCount: number; userLiked: boolean }> {
+    const res = await fetch(`/api/comments/${commentId}/like`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to like comment');
     return res.json();
   },
 

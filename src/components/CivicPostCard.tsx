@@ -25,7 +25,10 @@ import {
   BellPlus,
   BellRing,
   BadgeCheck,
-  ArrowRight
+  ArrowRight,
+  Heart,
+  Reply,
+  AtSign
 } from 'lucide-react';
 import { CivicPost, InstitutionResponse, CommunityEvidence } from '../types';
 import { api } from '../services/api';
@@ -59,6 +62,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(null);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -121,15 +125,26 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
     try {
       await api.addComment(post.id, {
         content: commentText.trim(),
+        parentCommentId: replyingToCommentId || undefined,
         userName: 'Citizen Participant',
         userHandle: 'citizen_gh'
       });
       setCommentText('');
+      setReplyingToCommentId(null);
       onPostUpdated();
     } catch (err) {
       console.error('Error adding comment:', err);
     } finally {
       setIsSubmittingComment(false);
+    }
+  };
+
+  const handleLikeComment = async (commentId: string) => {
+    try {
+      await api.likeComment(commentId);
+      onPostUpdated();
+    } catch (err) {
+      console.error('Error liking comment:', err);
     }
   };
 
@@ -594,13 +609,13 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       )}
 
       {/* Core Action Bar: "I'M SEEING THIS TOO", Add Evidence, Share, Amplify, Comments */}
-      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-1.5 text-slate-700 dark:text-slate-300">
+      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap md:flex-nowrap items-center justify-between gap-1.5 sm:gap-2 text-slate-700 dark:text-slate-300">
         {/* "I'M SEEING THIS TOO" Button */}
         <button
           id={`confirm-post-btn-${post.id}`}
           onClick={handleToggleConfirm}
           disabled={isConfirming}
-          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold shrink-0 transition-all ${
+          className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold shrink-0 transition-all ${
             post.userConfirmed
               ? 'bg-emerald-600 text-white shadow-sm'
               : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-slate-300 dark:border-slate-700/80'
@@ -610,7 +625,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${post.userConfirmed ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
           <span className="whitespace-nowrap">I’m Seeing This Too</span>
           <span
-            className={`px-1 py-0.2 rounded-full text-[10px] font-mono leading-none ${
+            className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
               post.userConfirmed ? 'bg-emerald-800 text-white' : 'bg-slate-200 dark:bg-slate-900 text-emerald-800 dark:text-emerald-300'
             }`}
           >
@@ -618,34 +633,34 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           </span>
         </button>
 
-        {/* Action Group */}
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap sm:flex-nowrap justify-end">
+        {/* Action Group: All aligned in a single horizontal row on desktop/large screens */}
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap md:flex-nowrap justify-end shrink-0">
           {/* Add Evidence CTA */}
           <button
             onClick={() => onOpenAddEvidence(post)}
-            className="px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-semibold rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0"
+            className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 sm:gap-1.5 transition-colors shrink-0"
             title="Add field photos or status update"
           >
             <Camera className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-            <span className="whitespace-nowrap">Evidence</span>
+            <span className="whitespace-nowrap">Add Evidence</span>
           </button>
 
           {/* Social Share */}
           <button
             id={`share-post-btn-${post.id}`}
             onClick={() => onOpenShare(post)}
-            className="px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-semibold rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0"
+            className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 sm:gap-1.5 transition-colors shrink-0"
             title="Share to WhatsApp, X, Facebook or Telegram"
           >
             <Share2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
             <span className="whitespace-nowrap">Share</span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement.shares || 0)}</span>
+            <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement.shares || 0)}</span>
           </button>
 
           {/* Repost / Amplify */}
           <button
             onClick={handleToggleRepost}
-            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border flex items-center gap-1 transition-colors shrink-0 ${
+            className={`px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold border flex items-center gap-1 sm:gap-1.5 transition-colors shrink-0 ${
               post.userReposted
                 ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
                 : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700/80'
@@ -654,24 +669,24 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           >
             <Repeat2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span className="whitespace-nowrap">Amplify</span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement.reposts || 0)}</span>
+            <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement.reposts || 0)}</span>
           </button>
 
           {/* Comments Toggle */}
           <button
             onClick={() => setShowComments(!showComments)}
-            className="px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-semibold rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0"
+            className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 sm:gap-1.5 transition-colors shrink-0"
           >
             <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
-            <span className="whitespace-nowrap">Comment</span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.commentsList?.length || post.engagement.comments || 0)}</span>
+            <span className="whitespace-nowrap">Comments</span>
+            <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.commentsList?.length || post.engagement.comments || 0)}</span>
           </button>
 
           {/* Institution Rep CTA if viewing in official mode */}
           {userRole === 'institution_rep' && onOpenInstitutionResponse && (
             <button
               onClick={() => onOpenInstitutionResponse(post)}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 text-[11px] font-bold rounded-lg flex items-center gap-1 shadow-sm transition-colors shrink-0"
+              className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 text-[11px] sm:text-xs font-bold rounded-xl flex items-center gap-1 sm:gap-1.5 shadow-sm transition-colors shrink-0"
             >
               <Building2 className="w-3.5 h-3.5 shrink-0" />
               <span className="whitespace-nowrap">Respond</span>
@@ -683,36 +698,124 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       {/* Expanded Comments Section */}
       {showComments && (
         <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2.5 animate-in fade-in">
-          <form onSubmit={handleAddComment} className="flex items-center gap-2">
-            <input
-              type="text"
-              value={commentText}
-              onChange={e => setCommentText(e.target.value)}
-              placeholder="Add factual context or observation..."
-              className="flex-1 p-2 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-400 rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-emerald-500"
-            />
-            <button
-              type="submit"
-              disabled={isSubmittingComment || !commentText.trim()}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1"
-            >
-              <Send className="w-3 h-3" />
-            </button>
+          {/* Quick Tagging Chips */}
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-500 dark:text-slate-400">
+            <span className="flex items-center gap-1 font-medium">
+              <AtSign className="w-3 h-3 text-purple-600 dark:text-purple-400" /> Quick Tag Agency:
+            </span>
+            {['@NADMO', '@ECG', '@GWCL', '@GhanaPolice', '@MWRH'].map(handleTag => (
+              <button
+                key={handleTag}
+                type="button"
+                onClick={() => setCommentText(prev => (prev ? `${prev} ${handleTag} ` : `${handleTag} `))}
+                className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-purple-100 dark:hover:bg-purple-950/60 text-slate-700 dark:text-slate-300 hover:text-purple-700 dark:hover:text-purple-300 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-[10px] transition-colors"
+              >
+                {handleTag}
+              </button>
+            ))}
+          </div>
+
+          {/* Comment Form */}
+          <form onSubmit={handleAddComment} className="space-y-1.5">
+            {replyingToCommentId && (
+              <div className="flex items-center justify-between text-[11px] bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800/60 text-purple-800 dark:text-purple-300">
+                <span className="flex items-center gap-1 font-medium">
+                  <Reply className="w-3 h-3" /> Replying to comment
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReplyingToCommentId(null)}
+                  className="font-bold hover:underline text-[10px]"
+                >
+                  Cancel Reply
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                placeholder={replyingToCommentId ? "Write your reply..." : "Add factual context or tag state agency with @..."}
+                className="flex-1 p-2 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-400 rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-purple-500"
+              />
+              <button
+                type="submit"
+                disabled={isSubmittingComment || !commentText.trim()}
+                className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow-sm transition-all"
+              >
+                <Send className="w-3 h-3" />
+              </button>
+            </div>
           </form>
 
-          <div className="space-y-2 max-h-48 overflow-y-auto">
+          {/* Comment Stream */}
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
             {post.commentsList && post.commentsList.length > 0 ? (
               post.commentsList.map((c, idx) => (
-                <div key={c.id ? `${c.id}-${idx}` : `c-${idx}`} className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-xs space-y-0.5 border border-slate-200 dark:border-slate-700/50">
+                <div
+                  key={c.id ? `${c.id}-${idx}` : `c-${idx}`}
+                  className={`p-2.5 rounded-xl text-xs space-y-1 border transition-colors ${
+                    c.parentCommentId
+                      ? 'ml-4 bg-purple-50/50 dark:bg-purple-950/20 border-purple-200/60 dark:border-purple-900/40'
+                      : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/50'
+                  }`}
+                >
                   <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">@{c.userHandle}</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                      @{c.userHandle}
+                      {c.isVerified && <span className="text-emerald-500 text-[10px]">✓</span>}
+                    </span>
                     <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
-                  <p className="text-slate-800 dark:text-slate-200">{c.content}</p>
+
+                  {/* Comment Content with Tag Highlight */}
+                  <p className="text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line">
+                    {c.content.split(/(@[\w_]+)/g).map((part, pIdx) =>
+                      part.startsWith('@') ? (
+                        <span key={pIdx} className="font-bold text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/40 px-1 py-0.2 rounded">
+                          {part}
+                        </span>
+                      ) : (
+                        part
+                      )
+                    )}
+                  </p>
+
+                  {/* Comment Actions: Heart Like & Reply */}
+                  <div className="flex items-center justify-between pt-1 text-[11px] border-t border-slate-200/60 dark:border-slate-700/40">
+                    <button
+                      type="button"
+                      onClick={() => handleLikeComment(c.id)}
+                      className={`flex items-center gap-1 transition-colors ${
+                        c.userLiked
+                          ? 'text-red-600 dark:text-red-400 font-bold'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-red-500'
+                      }`}
+                    >
+                      <Heart className={`w-3 h-3 ${c.userLiked ? 'fill-current text-red-600 dark:text-red-400' : ''}`} />
+                      <span>{c.likesCount || 0}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyingToCommentId(c.id);
+                        setCommentText(`@${c.userHandle} `);
+                      }}
+                      className="flex items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 font-medium transition-colors"
+                    >
+                      <Reply className="w-3 h-3" />
+                      <span>Reply</span>
+                    </button>
+                  </div>
                 </div>
               ))
             ) : (
-              <p className="text-xs text-slate-500 dark:text-slate-400 py-1 text-center">No comments yet. Add community context above.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 py-2 text-center italic">
+                No comments yet. Be the first to add community context or tag an agency!
+              </p>
             )}
           </div>
         </div>

@@ -594,13 +594,13 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       )}
 
       {/* Core Action Bar: "I'M SEEING THIS TOO", Add Evidence, Share, Amplify, Comments */}
-      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-start sm:items-center justify-between gap-2 text-slate-700 dark:text-slate-300">
+      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap md:flex-nowrap items-center justify-between gap-1.5 sm:gap-2 text-slate-700 dark:text-slate-300">
         {/* "I'M SEEING THIS TOO" Button */}
         <button
           id={`confirm-post-btn-${post.id}`}
           onClick={handleToggleConfirm}
           disabled={isConfirming}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all ${
+          className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold shrink-0 transition-all ${
             post.userConfirmed
               ? 'bg-emerald-600 text-white shadow-sm'
               : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-slate-300 dark:border-slate-700/80'
@@ -618,69 +618,65 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           </span>
         </button>
 
-        {/* Action Group */}
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            {/* Add Evidence CTA */}
-            <button
-              onClick={() => onOpenAddEvidence(post)}
-              className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1.5 transition-colors shrink-0"
-              title="Add field photos or status update"
-            >
-              <Camera className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-              <span className="whitespace-nowrap">Add Evidence</span>
-            </button>
+        {/* Action Group: All aligned in a single horizontal row on desktop/large screens */}
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap md:flex-nowrap justify-end shrink-0">
+          {/* Add Evidence CTA */}
+          <button
+            onClick={() => onOpenAddEvidence(post)}
+            className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 sm:gap-1.5 transition-colors shrink-0"
+            title="Add field photos or status update"
+          >
+            <Camera className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+            <span className="whitespace-nowrap">Add Evidence</span>
+          </button>
 
-            {/* Social Share */}
-            <button
-              id={`share-post-btn-${post.id}`}
-              onClick={() => onOpenShare(post)}
-              className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1.5 transition-colors shrink-0"
-              title="Share to WhatsApp, X, Facebook or Telegram"
-            >
-              <Share2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span className="whitespace-nowrap">Share</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement.shares || 0)}</span>
-            </button>
+          {/* Social Share */}
+          <button
+            id={`share-post-btn-${post.id}`}
+            onClick={() => onOpenShare(post)}
+            className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 sm:gap-1.5 transition-colors shrink-0"
+            title="Share to WhatsApp, X, Facebook or Telegram"
+          >
+            <Share2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="whitespace-nowrap">Share</span>
+            <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement.shares || 0)}</span>
+          </button>
 
-            {/* Repost / Amplify */}
-            <button
-              onClick={handleToggleRepost}
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition-colors shrink-0 ${
-                post.userReposted
-                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
-                  : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700/80'
-              }`}
-              title="Amplify on platform"
-            >
-              <Repeat2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="whitespace-nowrap">Amplify</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement.reposts || 0)}</span>
-            </button>
-          </div>
+          {/* Repost / Amplify */}
+          <button
+            onClick={handleToggleRepost}
+            className={`px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold border flex items-center gap-1 sm:gap-1.5 transition-colors shrink-0 ${
+              post.userReposted
+                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700/80'
+            }`}
+            title="Amplify on platform"
+          >
+            <Repeat2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="whitespace-nowrap">Amplify</span>
+            <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement.reposts || 0)}</span>
+          </button>
 
-          <div className="flex items-center gap-1.5 justify-end">
-            {/* Comments Toggle */}
-            <button
-              onClick={() => setShowComments(!showComments)}
-              className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1.5 transition-colors shrink-0"
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
-              <span className="whitespace-nowrap">Comments</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.commentsList?.length || post.engagement.comments || 0)}</span>
-            </button>
+          {/* Comments Toggle */}
+          <button
+            onClick={() => setShowComments(!showComments)}
+            className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 sm:gap-1.5 transition-colors shrink-0"
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+            <span className="whitespace-nowrap">Comments</span>
+            <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.commentsList?.length || post.engagement.comments || 0)}</span>
+          </button>
 
-            {/* Institution Rep CTA if viewing in official mode */}
-            {userRole === 'institution_rep' && onOpenInstitutionResponse && (
-              <button
-                onClick={() => onOpenInstitutionResponse(post)}
-                className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-colors shrink-0"
-              >
-                <Building2 className="w-3.5 h-3.5 shrink-0" />
-                <span className="whitespace-nowrap">Respond</span>
-              </button>
-            )}
-          </div>
+          {/* Institution Rep CTA if viewing in official mode */}
+          {userRole === 'institution_rep' && onOpenInstitutionResponse && (
+            <button
+              onClick={() => onOpenInstitutionResponse(post)}
+              className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 text-[11px] sm:text-xs font-bold rounded-xl flex items-center gap-1 sm:gap-1.5 shadow-sm transition-colors shrink-0"
+            >
+              <Building2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="whitespace-nowrap">Respond</span>
+            </button>
+          )}
         </div>
       </div>
 

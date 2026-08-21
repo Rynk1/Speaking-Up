@@ -98,8 +98,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
 
-          {/* Search Bar */}
-          <div className="flex-1 max-w-md hidden md:block">
+          {/* Expanded Search Bar */}
+          <div className="flex-1 max-w-xl lg:max-w-2xl hidden md:block">
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -108,7 +108,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search issues, regions, #hashtags, @police, @nadmo..."
-                className="w-full pl-9 pr-8 py-1.5 bg-slate-100 dark:bg-slate-800/90 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                className="w-full pl-9 pr-8 py-2 bg-slate-100 dark:bg-slate-800/90 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
               />
               {searchQuery && (
                 <button
@@ -150,19 +150,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              id="nav-tab-clusters"
-              onClick={() => setCurrentView('clusters')}
-              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
-                currentView === 'clusters'
-                  ? 'bg-emerald-100 dark:bg-emerald-600/20 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-bold'
-                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Flame className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-              Community Issues
-            </button>
-
-            <button
               id="nav-tab-institutions"
               onClick={() => setCurrentView('institutions')}
               className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
@@ -174,22 +161,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Building2 className="w-3.5 h-3.5" />
               State Bodies
             </button>
-
-            <button
-              id="nav-tab-radar"
-              onClick={() => setCurrentView('radar')}
-              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
-                currentView === 'radar'
-                  ? 'bg-emerald-100 dark:bg-emerald-600/20 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-bold'
-                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              Civic Radar
-            </button>
           </nav>
 
-          {/* Action CTAs: Role Switcher, Theme Toggle, Notifications, Speak Up Button */}
+          {/* Action CTAs: Role Switcher, Theme Toggle, Notifications */}
           <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Role Switcher */}
             <div className="relative" ref={roleRef}>
@@ -371,15 +345,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </div>
 
-            {/* Primary CTA: SPEAK UP */}
-            <button
-              id="header-speak-up-cta"
-              onClick={onOpenSpeakUp}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs sm:text-sm font-bold rounded-lg shadow-md hover:shadow-emerald-900/40 transition-all active:scale-95 shrink-0"
-            >
-              <Megaphone className="w-4 h-4" />
-              <span>SPEAK UP</span>
-            </button>
           </div>
         </div>
       </div>

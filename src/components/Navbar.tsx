@@ -161,6 +161,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Building2 className="w-3.5 h-3.5" />
               State Bodies
             </button>
+
+            <button
+              id="nav-tab-radar"
+              onClick={() => setCurrentView('radar')}
+              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
+                currentView === 'radar'
+                  ? 'bg-emerald-100 dark:bg-emerald-600/20 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-bold'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              Civic Radar
+            </button>
           </nav>
 
           {/* Action CTAs: Role Switcher, Theme Toggle, Notifications */}

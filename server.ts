@@ -114,6 +114,12 @@ function rowToPost(row: any): CivicPost {
   const evidenceRows = db.prepare('SELECT * FROM community_evidence WHERE post_id = ?').all(row.id) as any[];
   const commentRows = db.prepare('SELECT * FROM comments WHERE post_id = ?').all(row.id) as any[];
 
+  const followerCountRow = db.prepare('SELECT COUNT(*) as cnt FROM issue_followers WHERE post_id = ?').get(row.id) as any;
+  const isFollowedRow = db.prepare('SELECT 1 FROM issue_followers WHERE post_id = ? AND user_id = ?').get(row.id, 'user-current') as any;
+  const isConfirmedRow = db.prepare('SELECT 1 FROM confirmations WHERE post_id = ? AND user_id = ?').get(row.id, 'user-current') as any;
+
+  const followersCount = followerCountRow ? followerCountRow.cnt : 0;
+
   return {
     id: row.id,
     title: row.title,
@@ -126,7 +132,7 @@ function rowToPost(row: any): CivicPost {
     authorAvatar: row.author_avatar || undefined,
     authorVisibility: row.author_visibility,
     isVerifiedCitizen: Boolean(row.is_verified_citizen),
-    followersCount: 0,
+    followersCount,
     media: mediaRows.map(m => ({
       id: m.id,
       type: m.type,
@@ -176,9 +182,11 @@ function rowToPost(row: any): CivicPost {
       reposts: row.reposts_count,
       shares: row.shares_count,
       confirmations: row.confirmations_count,
-      comments: row.comments_count
+      comments: row.comments_count,
+      followersCount
     },
-    userConfirmed: true,
+    userConfirmed: Boolean(isConfirmedRow),
+    userFollowed: Boolean(isFollowedRow),
     userBookmarked: false,
     userReposted: false,
     officialResponses: responseRows.map(r => {
@@ -752,6 +760,77 @@ async function startServer() {
     }
   });
 
+  // Helper: Auto-trigger issue followership (max 1 follow count per user per issue)
+  function ensureUserFollowsIssue(userId: string, postId: string) {
+    try {
+      const existing = db.prepare('SELECT 1 FROM issue_followers WHERE user_id = ? AND post_id = ?').get(userId, postId);
+      if (!existing) {
+        db.prepare('INSERT INTO issue_followers (user_id, post_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(userId, postId);
+      }
+    } catch (err) {
+      console.error('Error in ensureUserFollowsIssue:', err);
+    }
+  }
+
+  // POST /api/posts/:id/follow - Toggle or ensure issue follow
+  app.post('/api/posts/:id/follow', (req: AuthenticatedRequest, res) => {
+    const postId = req.params.id;
+    const userId = req.user?.id || 'user-current';
+
+    const existing = db.prepare('SELECT 1 FROM issue_followers WHERE user_id = ? AND post_id = ?').get(userId, postId);
+
+    if (existing) {
+      db.prepare('DELETE FROM issue_followers WHERE user_id = ? AND post_id = ?').run(userId, postId);
+    } else {
+      ensureUserFollowsIssue(userId, postId);
+    }
+
+    const followerCount = (db.prepare('SELECT COUNT(*) as cnt FROM issue_followers WHERE post_id = ?').get(postId) as any)?.cnt || 0;
+
+    res.json({
+      success: true,
+      followed: !existing,
+      followersCount: followerCount
+    });
+  });
+
+  // POST /api/posts/:id/repost - Toggle Repost / Amplify
+  app.post('/api/posts/:id/repost', (req: AuthenticatedRequest, res) => {
+    const postId = req.params.id;
+    const userId = req.user?.id || 'user-current';
+
+    ensureUserFollowsIssue(userId, postId);
+
+    db.prepare('UPDATE posts SET reposts_count = reposts_count + 1 WHERE id = ?').run(postId);
+    const updated = db.prepare('SELECT reposts_count FROM posts WHERE id = ?').get(postId) as any;
+    const followerCount = (db.prepare('SELECT COUNT(*) as cnt FROM issue_followers WHERE post_id = ?').get(postId) as any)?.cnt || 0;
+
+    res.json({
+      success: true,
+      reposted: true,
+      repostsCount: updated ? updated.reposts_count : 0,
+      followersCount: followerCount
+    });
+  });
+
+  // POST /api/posts/:id/share - Record social share
+  app.post('/api/posts/:id/share', (req: AuthenticatedRequest, res) => {
+    const postId = req.params.id;
+    const userId = req.user?.id || 'user-current';
+
+    ensureUserFollowsIssue(userId, postId);
+
+    db.prepare('UPDATE posts SET shares_count = shares_count + 1 WHERE id = ?').run(postId);
+    const updated = db.prepare('SELECT shares_count FROM posts WHERE id = ?').get(postId) as any;
+    const followerCount = (db.prepare('SELECT COUNT(*) as cnt FROM issue_followers WHERE post_id = ?').get(postId) as any)?.cnt || 0;
+
+    res.json({
+      success: true,
+      sharesCount: updated ? updated.shares_count : 0,
+      followersCount: followerCount
+    });
+  });
+
   // POST /api/posts/:id/confirm - Toggle "I'm seeing this too"
   app.post('/api/posts/:id/confirm', (req: AuthenticatedRequest, res) => {
     const postId = req.params.id;
@@ -764,6 +843,7 @@ async function startServer() {
       db.prepare('DELETE FROM confirmations WHERE post_id = ? AND user_id = ?').run(postId, userId);
       db.prepare('UPDATE posts SET confirmations_count = MAX(0, confirmations_count - 1) WHERE id = ?').run(postId);
     } else {
+      ensureUserFollowsIssue(userId, postId);
       db.prepare('INSERT INTO confirmations (id, post_id, user_id, created_at) VALUES (?, ?, ?, ?)').run(
         `conf-${Date.now()}`,
         postId,
@@ -774,10 +854,13 @@ async function startServer() {
     }
 
     const updatedRow = db.prepare('SELECT confirmations_count FROM posts WHERE id = ?').get(postId) as any;
+    const followerCount = (db.prepare('SELECT COUNT(*) as cnt FROM issue_followers WHERE post_id = ?').get(postId) as any)?.cnt || 0;
+
     res.json({
       success: true,
       confirmed: !existing,
-      confirmationsCount: updatedRow ? updatedRow.confirmations_count : 0
+      confirmationsCount: updatedRow ? updatedRow.confirmations_count : 0,
+      followersCount: followerCount
     });
   });
 
@@ -788,6 +871,8 @@ async function startServer() {
     const userId = req.user?.id || 'user-current';
     const now = new Date().toISOString();
     const evidenceId = `evid-${Date.now()}`;
+
+    ensureUserFollowsIssue(userId, postId);
 
     db.prepare(`
       INSERT INTO community_evidence (id, post_id, user_id, user_name, user_handle, text, status_update, created_at)
@@ -823,6 +908,8 @@ async function startServer() {
     const userId = req.user?.id || 'user-current';
     const now = new Date().toISOString();
     const commentId = `comment-${Date.now()}`;
+
+    ensureUserFollowsIssue(userId, postId);
 
     db.prepare(`
       INSERT INTO comments (id, post_id, user_id, user_name, user_handle, is_verified, content, likes_count, created_at)

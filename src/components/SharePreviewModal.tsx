@@ -77,22 +77,32 @@ export const SharePreviewModal: React.FC<SharePreviewModalProps> = ({
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const recordShare = () => {
+    if (post) {
+      api.sharePost(post.id).catch(() => {});
+    }
+  };
+
   const handleWhatsAppShare = () => {
+    recordShare();
     const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappText)}`;
     window.open(url, '_blank');
   };
 
   const handleTwitterShare = () => {
+    recordShare();
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(twitterText)}`;
     window.open(url, '_blank');
   };
 
   const handleTelegramShare = () => {
+    recordShare();
     const url = `https://t.me/share/url?url=${encodeURIComponent(`${window.location.origin}/app/post/${post.id}`)}&text=${encodeURIComponent(whatsappText)}`;
     window.open(url, '_blank');
   };
 
   const handleNativeShare = async () => {
+    recordShare();
     if (navigator.share) {
       try {
         await navigator.share({

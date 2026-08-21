@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
-  currentView: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar';
-  setCurrentView: (view: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar') => void;
+  currentView: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review' | 'admin_dashboard';
+  setCurrentView: (view: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review' | 'admin_dashboard') => void;
   onOpenSpeakUp: () => void;
 }
 

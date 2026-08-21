@@ -591,5 +591,254 @@ export function createApp() {
     });
   });
 
+  // ADMIN & SYSTEM MANAGEMENT ENDPOINTS
+  app.get('/api/admin/overview', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const totalUsers = (db.prepare('SELECT COUNT(*) as c FROM users').get() as any)?.c || 0;
+      const totalPosts = (db.prepare('SELECT COUNT(*) as c FROM posts').get() as any)?.c || 0;
+      const pendingAbuse = (db.prepare("SELECT COUNT(*) as c FROM abuse_reports WHERE status = 'PENDING'").get() as any)?.c || 0;
+      const queuedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'QUEUED'").get() as any)?.c || 0;
+      const failedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'FAILED'").get() as any)?.c || 0;
+      const activeInstitutions = (db.prepare('SELECT COUNT(*) as c FROM institutions').get() as any)?.c || 0;
+      const pendingPrivacy = (db.prepare("SELECT COUNT(*) as c FROM submissions WHERE privacy_status = 'PRIVACY_PROCESSING'").get() as any)?.c || 0;
+
+      res.json({
+        totalUsers,
+        totalPosts,
+        pendingAbuse,
+        queuedJobs,
+        failedJobs,
+        activeInstitutions,
+        pendingPrivacy,
+        systemHealth: 'HEALTHY',
+        databaseStatus: 'CONNECTED'
+      });
+    } catch (err: any) {
+      logger.error(`Admin overview error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch admin overview' });
+    }
+  });
+
+  app.get('/api/admin/users', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const { search, role, isVerified } = req.query;
+      let sql = 'SELECT id, email, name, handle, avatar, role, is_verified, followers_count, created_at FROM users WHERE 1=1';
+      const params: any[] = [];
+
+      if (role && role !== 'ALL') {
+        sql += ' AND role = ?';
+        params.push(role);
+      }
+      if (isVerified !== undefined && isVerified !== 'ALL') {
+        sql += ' AND is_verified = ?';
+        params.push(isVerified === 'true' || isVerified === '1' ? 1 : 0);
+      }
+      if (search) {
+        sql += ' AND (name LIKE ? OR handle LIKE ? OR email LIKE ?)';
+        const term = `%${search}%`;
+        params.push(term, term, term);
+      }
+
+      sql += ' ORDER BY created_at DESC LIMIT 100';
+      const users = db.prepare(sql).all(...params);
+      res.json(users);
+    } catch (err: any) {
+      logger.error(`Admin get users error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch users' });
+    }
+  });
+
+  app.put('/api/admin/users/:id/role', requireRole(['ADMIN']), (req, res) => {
+    try {
+      const { role } = req.body;
+      const userId = req.params.id;
+      if (!role) return res.status(400).json({ error: 'Role is required' });
+
+      db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(role, new Date().toISOString(), userId);
+      res.json({ success: true, userId, role });
+    } catch (err: any) {
+      logger.error(`Admin update role error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to update user role' });
+    }
+  });
+
+  app.put('/api/admin/users/:id/verify', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const { isVerified } = req.body;
+      const userId = req.params.id;
+
+      db.prepare('UPDATE users SET is_verified = ?, updated_at = ? WHERE id = ?').run(isVerified ? 1 : 0, new Date().toISOString(), userId);
+      res.json({ success: true, userId, isVerified: Boolean(isVerified) });
+    } catch (err: any) {
+      logger.error(`Admin verify user error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to update user verification' });
+    }
+  });
+
+  app.get('/api/admin/posts', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const { moderationStatus, category, search } = req.query;
+      let sql = 'SELECT * FROM posts WHERE 1=1';
+      const params: any[] = [];
+
+      if (moderationStatus && moderationStatus !== 'ALL') {
+        sql += ' AND moderation_status = ?';
+        params.push(moderationStatus);
+      }
+      if (category && category !== 'ALL') {
+        sql += ' AND category = ?';
+        params.push(category);
+      }
+      if (search) {
+        sql += ' AND (title LIKE ? OR content LIKE ? OR author_name LIKE ?)';
+        const term = `%${search}%`;
+        params.push(term, term, term);
+      }
+
+      sql += ' ORDER BY created_at DESC LIMIT 100';
+      const posts = db.prepare(sql).all(...params);
+      res.json(posts);
+    } catch (err: any) {
+      logger.error(`Admin get posts error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch admin posts' });
+    }
+  });
+
+  app.put('/api/admin/posts/:id/moderation', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const { moderationStatus, reportLifecycleStatus } = req.body;
+      const postId = req.params.id;
+
+      db.prepare(`
+        UPDATE posts
+        SET moderation_status = COALESCE(?, moderation_status),
+            report_lifecycle_status = COALESCE(?, report_lifecycle_status),
+            updated_at = ?
+        WHERE id = ?
+      `).run(moderationStatus || null, reportLifecycleStatus || null, new Date().toISOString(), postId);
+
+      eventBus.emitReportEvent({
+        reportId: postId,
+        eventType: moderationStatus === 'approved' ? 'MODERATION_APPROVED' : 'REPORT_HELD',
+        actorType: 'MODERATOR',
+        actorId: (req as AuthenticatedRequest).user?.id || 'admin',
+        metadata: { moderationStatus, reportLifecycleStatus }
+      });
+
+      res.json({ success: true, postId, moderationStatus, reportLifecycleStatus });
+    } catch (err: any) {
+      logger.error(`Admin update post moderation error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to update post moderation status' });
+    }
+  });
+
+  app.get('/api/admin/abuse-reports', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const { status } = req.query;
+      let sql = 'SELECT ar.*, p.title as post_title FROM abuse_reports ar LEFT JOIN posts p ON ar.post_id = p.id WHERE 1=1';
+      const params: any[] = [];
+
+      if (status && status !== 'ALL') {
+        sql += ' AND ar.status = ?';
+        params.push(status);
+      }
+
+      sql += ' ORDER BY ar.created_at DESC LIMIT 100';
+      const reports = db.prepare(sql).all(...params);
+      res.json(reports);
+    } catch (err: any) {
+      logger.error(`Admin get abuse reports error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch abuse reports' });
+    }
+  });
+
+  app.put('/api/admin/abuse-reports/:id', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const { status } = req.body;
+      const reportId = req.params.id;
+
+      db.prepare('UPDATE abuse_reports SET status = ? WHERE id = ?').run(status || 'RESOLVED', reportId);
+      res.json({ success: true, reportId, status });
+    } catch (err: any) {
+      logger.error(`Admin update abuse report error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to update abuse report' });
+    }
+  });
+
+  app.post('/api/admin/institutions', requireRole(['ADMIN']), (req, res) => {
+    try {
+      const { id, officialName, shortName, acronym, mandate, category, jurisdiction, alertMethod } = req.body;
+      if (!officialName || !shortName || !acronym) {
+        return res.status(400).json({ error: 'Official name, short name, and acronym are required' });
+      }
+
+      const instId = id || `inst-${Date.now()}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO institutions (id, official_name, short_name, acronym, mandate, category, jurisdiction, alert_method, verification_status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?)
+        ON CONFLICT(id) DO UPDATE SET
+          official_name = excluded.official_name,
+          short_name = excluded.short_name,
+          acronym = excluded.acronym,
+          mandate = excluded.mandate,
+          category = excluded.category,
+          jurisdiction = excluded.jurisdiction,
+          alert_method = excluded.alert_method
+      `).run(instId, officialName, shortName, acronym, mandate || '', category || 'GOVERNMENT', jurisdiction || 'NATIONAL', alertMethod || 'OFFICIAL_EMAIL', now);
+
+      res.status(201).json({ success: true, id: instId });
+    } catch (err: any) {
+      logger.error(`Admin create/update institution error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to manage institution' });
+    }
+  });
+
+  app.get('/api/admin/jobs', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const { status } = req.query;
+      let sql = 'SELECT * FROM jobs WHERE 1=1';
+      const params: any[] = [];
+
+      if (status && status !== 'ALL') {
+        sql += ' AND status = ?';
+        params.push(status);
+      }
+
+      sql += ' ORDER BY created_at DESC LIMIT 100';
+      const jobs = db.prepare(sql).all(...params);
+      res.json(jobs);
+    } catch (err: any) {
+      logger.error(`Admin get jobs error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch background jobs' });
+    }
+  });
+
+  app.post('/api/admin/jobs/:id/retry', requireRole(['ADMIN']), (req, res) => {
+    try {
+      const jobId = req.params.id;
+      const now = new Date().toISOString();
+
+      db.prepare("UPDATE jobs SET status = 'QUEUED', attempts = 0, available_at = ?, updated_at = ? WHERE id = ?")
+        .run(now, now, jobId);
+
+      res.json({ success: true, jobId, message: 'Job requeued successfully' });
+    } catch (err: any) {
+      logger.error(`Admin retry job error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to retry job' });
+    }
+  });
+
+  app.get('/api/admin/audit-logs', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const events = db.prepare('SELECT * FROM report_events ORDER BY created_at DESC LIMIT 100').all();
+      res.json(events);
+    } catch (err: any) {
+      logger.error(`Admin get audit logs error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch audit logs' });
+    }
+  });
+
   return app;
 }

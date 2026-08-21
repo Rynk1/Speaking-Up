@@ -57,15 +57,16 @@ import { InstitutionDashboardView } from './components/InstitutionDashboardView'
 import { JournalistDeskView } from './components/JournalistDeskView';
 import { NationalAnalyticsView } from './components/NationalAnalyticsView';
 import { PrivacyReviewPortal } from './components/PrivacyReviewPortal';
+import { AdminDashboardView } from './components/AdminDashboardView';
 import { AuthModal } from './components/AuthModal';
 import { GHANA_REGIONS } from '../server/seedData';
 
 export default function App() {
   // Navigation & Role State
   const [currentView, setCurrentView] = useState<
-    'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review'
+    'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review' | 'admin_dashboard'
   >('feed');
-  const [userRole, setUserRole] = useState<'citizen' | 'institution_rep' | 'journalist' | 'moderator'>('citizen');
+  const [userRole, setUserRole] = useState<'citizen' | 'institution_rep' | 'journalist' | 'moderator' | 'admin'>('citizen');
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>('ghana-police-service');
   const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -790,6 +791,11 @@ export default function App() {
         {/* VIEW 8: P³RE PRIVACY REVIEW PORTAL */}
         {currentView === 'privacy_review' && (
           <PrivacyReviewPortal />
+        )}
+
+        {/* VIEW 9: SYSTEM ADMIN CONTROL DASHBOARD */}
+        {currentView === 'admin_dashboard' && (
+          <AdminDashboardView />
         )}
       </main>
 

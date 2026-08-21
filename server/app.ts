@@ -879,6 +879,71 @@ export function createApp() {
     })));
   });
 
+  app.get('/api/clusters/:id', (req, res) => {
+    try {
+      const clusterId = req.params.id;
+      const clusterRow = db.prepare('SELECT * FROM issue_clusters WHERE id = ?').get(clusterId) as any;
+      if (!clusterRow) {
+        return res.status(404).json({ error: 'Cluster not found' });
+      }
+
+      const cluster = {
+        id: clusterRow.id,
+        title: clusterRow.title,
+        category: clusterRow.category,
+        region: clusterRow.region,
+        district: clusterRow.district,
+        summary: clusterRow.summary,
+        totalConfirmations: clusterRow.total_confirmations,
+        trendScore: clusterRow.trend_score,
+        status: clusterRow.status,
+        primaryInstitutions: JSON.parse(clusterRow.primary_institutions_json || '[]')
+      };
+
+      // Get posts belonging to or associated with this cluster
+      let postsRows = db.prepare("SELECT * FROM posts WHERE (issue_cluster_id = ? OR (category = ? AND district = ?)) AND moderation_status = 'approved' ORDER BY created_at DESC LIMIT 20")
+        .all(clusterId, clusterRow.category, clusterRow.district) as any[];
+
+      // If no exact match, grab top posts in that category as fallback
+      if (postsRows.length === 0) {
+        postsRows = db.prepare("SELECT * FROM posts WHERE category = ? AND moderation_status = 'approved' ORDER BY confirmations_count DESC LIMIT 10")
+          .all(clusterRow.category) as any[];
+      }
+
+      const posts = postsRows.map(row => {
+        const tagsRows = db.prepare('SELECT * FROM post_institution_tags WHERE post_id = ?').all(row.id) as any[];
+        const mediaRows = db.prepare('SELECT * FROM media WHERE post_id = ?').all(row.id) as any[];
+        const responsesRows = db.prepare('SELECT * FROM institution_responses WHERE post_id = ? ORDER BY created_at DESC').all(row.id) as any[];
+
+        return {
+          id: row.id,
+          title: row.title,
+          content: row.content,
+          authorName: row.author_name,
+          authorHandle: row.author_handle,
+          category: row.category,
+          urgency: row.urgency,
+          location: { region: row.region, district: row.district, landmark: row.landmark },
+          engagement: { confirmations: row.confirmations_count || 0 },
+          institutionTags: tagsRows.map(t => ({ shortName: t.short_name, alertStatus: t.alert_status })),
+          officialResponses: responsesRows.map(r => ({
+            id: r.id,
+            institutionName: r.institution_name,
+            message: r.message,
+            responderName: r.responder_name,
+            responderTitle: r.responder_title
+          })),
+          createdAt: row.created_at
+        };
+      });
+
+      res.json({ cluster, posts });
+    } catch (err: any) {
+      logger.error(`Error fetching cluster details: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch cluster details' });
+    }
+  });
+
   app.get('/api/analytics', (req, res) => {
     const totalPosts = (db.prepare('SELECT COUNT(*) as c FROM posts').get() as any)?.c || 0;
     const totalConfirmations = (db.prepare('SELECT SUM(confirmations_count) as c FROM posts').get() as any)?.c || 0;

@@ -347,11 +347,11 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       </div>
 
       {/* Title & Post Content */}
-      <div className="space-y-1.5">
-        <h3 className="font-bold text-base sm:text-lg text-slate-900 dark:text-white leading-snug tracking-tight">
+      <div className="space-y-1.5 font-editorial">
+        <h3 className="font-bold text-base sm:text-lg text-slate-900 dark:text-white leading-snug tracking-tight font-editorial">
           {post.title}
         </h3>
-        <p className="text-sm text-slate-800 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+        <p className="text-base text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line font-editorial">
           {post.content}
         </p>
 

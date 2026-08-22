@@ -304,7 +304,7 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
         </div>
 
         {/* Statement Message Text & Response Media (No outer background container) */}
-        <div className="text-xs sm:text-sm text-slate-900 dark:text-slate-100 leading-relaxed font-sans whitespace-pre-line space-y-2.5 px-0.5">
+        <div className="text-sm sm:text-base text-slate-900 dark:text-slate-100 leading-relaxed font-editorial whitespace-pre-line space-y-2.5 px-0.5">
           <p className={isExpanded ? '' : 'line-clamp-4'}>
             {response.fullStatement || response.message}
           </p>

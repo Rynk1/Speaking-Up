@@ -59,13 +59,22 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [relatedResponses, setRelatedResponses] = useState<InstitutionResponse[]>([]);
 
-  // Fetch full details from backend on mount
+  // Synchronize with initialResponse prop
+  useEffect(() => {
+    setResponse(initialResponse);
+    setComments(initialResponse.commentsList || []);
+    setHelpfulCount(initialResponse.helpfulCount || 0);
+    setUnhelpfulCount(initialResponse.unhelpfulCount || 0);
+    setHelpfulVote(initialResponse.userHelpfulVote || null);
+  }, [initialResponse]);
+
+  // Fetch full details from backend on mount or when response ID changes
   useEffect(() => {
     let isMounted = true;
     async function loadData() {
       try {
         setLoadingDetails(true);
-        const data = await api.getResponseById(initialResponse.id);
+        const data = await api.getResponseById(response.id);
         if (isMounted && data) {
           if (data.response) {
             setResponse(data.response);
@@ -93,7 +102,29 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [initialResponse.id]);
+  }, [response.id]);
+
+  const handleSelectAnotherResponse = (targetResp: InstitutionResponse, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setResponse(targetResp);
+    setComments(targetResp.commentsList || []);
+    setHelpfulCount(targetResp.helpfulCount || 0);
+    setUnhelpfulCount(targetResp.unhelpfulCount || 0);
+    setHelpfulVote(targetResp.userHelpfulVote || null);
+    setActiveTab('statement_replies');
+
+    if (onOpenAnotherResponse) {
+      onOpenAnotherResponse(targetResp);
+    }
+
+    const scrollContainer = document.getElementById('statement-modal-body');
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const handleCopyRef = () => {
     const ref = response.referenceNumber || `REF-${response.id}`;
@@ -230,7 +261,17 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
     ? response.actionTimeline
     : [];
 
-  const otherAgencyResponses = post.officialResponses.filter(r => r.id !== response.id);
+  // Merge other responses from post.officialResponses and relatedResponses
+  const otherAgencyResponses = React.useMemo(() => {
+    const map = new Map<string, InstitutionResponse>();
+    (post.officialResponses || []).forEach(r => {
+      if (r.id !== response.id) map.set(r.id, r);
+    });
+    (relatedResponses || []).forEach(r => {
+      if (r.id !== response.id && !map.has(r.id)) map.set(r.id, r);
+    });
+    return Array.from(map.values());
+  }, [post.officialResponses, relatedResponses, response.id]);
 
   return (
     <div
@@ -505,39 +546,44 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
               )}
             </div>
 
-            {/* Helpfulness Rating bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800">
-              <div>
-                <p className="text-xs font-semibold text-slate-900 dark:text-white">
-                  Was this official statement clear and transparent?
-                </p>
-                <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
-                  Ratings provide public accountability feedback to oversight ministries.
-                </p>
+            {/* Ultra-Compact & Space-Efficient Transparency Rating bar */}
+            <div className="flex items-center justify-between gap-2.5 p-2 sm:p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/80 border border-slate-200 dark:border-slate-800/80 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 hidden sm:block" />
+                <div className="min-w-0">
+                  <span className="font-semibold text-slate-900 dark:text-slate-200 text-[11px] sm:text-xs truncate block">
+                    Clear and transparent statement?
+                  </span>
+                  <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 truncate hidden sm:block">
+                    Public accountability rating
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 self-end sm:self-auto">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   id="vote-helpful-btn"
                   onClick={() => handleVote('helpful')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
                     helpfulVote === 'helpful'
-                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                       : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-slate-700'
                   }`}
+                  title="Mark statement as clear and transparent"
                 >
-                  <ThumbsUp className="w-3.5 h-3.5" />
+                  <ThumbsUp className="w-3 h-3" />
                   <span>Clear ({helpfulCount})</span>
                 </button>
                 <button
                   id="vote-unhelpful-btn"
                   onClick={() => handleVote('unhelpful')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
                     helpfulVote === 'unhelpful'
-                      ? 'bg-rose-600 text-white border-rose-600'
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
                       : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-slate-700'
                   }`}
+                  title="Mark statement as unclear or inadequate"
                 >
-                  <ThumbsDown className="w-3.5 h-3.5" />
+                  <ThumbsDown className="w-3 h-3" />
                   <span>Unclear ({unhelpfulCount})</span>
                 </button>
               </div>
@@ -766,42 +812,62 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
           {/* TAB 3: OTHER AGENCY STATEMENTS */}
           {activeTab === 'agency_thread' && (
             <div id="tab-content-agency-thread" className="p-4 sm:p-5 space-y-3 bg-white dark:bg-slate-900">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Other state institutions that issued statements regarding this report:
-              </p>
-              {otherAgencyResponses.map(r => (
-                <div
-                  key={r.id}
-                  className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 space-y-1.5 hover:border-emerald-500 transition-colors cursor-pointer"
-                  onClick={() => {
-                    if (onOpenAnotherResponse) {
-                      onOpenAnotherResponse(r);
-                    } else {
-                      setResponse(r);
-                      setComments(r.commentsList || []);
-                      setActiveTab('statement_replies');
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <strong className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                        {r.institutionName}
-                      </strong>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
-                        {r.responseType}
-                      </span>
-                    </div>
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5">
-                      View <ChevronRight className="w-3.5 h-3.5" />
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
-                    {r.statementTitle ? `"${r.statementTitle}" — ` : ''}
-                    {r.message}
-                  </p>
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>Other state institutions that issued statements on this report:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{otherAgencyResponses.length} Communiqué{otherAgencyResponses.length > 1 ? 's' : ''}</span>
+              </div>
+              {otherAgencyResponses.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs">
+                  No other agency statements found for this civic report.
                 </div>
-              ))}
+              ) : (
+                otherAgencyResponses.map(r => (
+                  <div
+                    key={r.id}
+                    id={`agency-response-card-${r.id}`}
+                    onClick={(e) => handleSelectAnotherResponse(r, e)}
+                    className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 space-y-2 hover:border-emerald-500 dark:hover:border-emerald-500/80 transition-all cursor-pointer shadow-xs hover:shadow-sm group"
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {r.institutionLogo ? (
+                          <img
+                            src={r.institutionLogo}
+                            alt={r.institutionName}
+                            className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-slate-300 dark:ring-slate-700"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                            <Building2 className="w-3.5 h-3.5" />
+                          </div>
+                        )}
+                        <strong className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+                          {r.institutionName}
+                        </strong>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium shrink-0">
+                          {r.responseType?.replace('_', ' ') || 'COMMUNIQUÉ'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => handleSelectAnotherResponse(r, e)}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 group-hover:bg-emerald-600 text-emerald-700 dark:text-emerald-300 group-hover:text-white border border-emerald-500/30 group-hover:border-emerald-600 font-semibold flex items-center gap-1 transition-all"
+                      >
+                        <span>View Statement</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                      {r.statementTitle ? <strong className="text-slate-800 dark:text-slate-100">"{r.statementTitle}" — </strong> : null}
+                      {r.message}
+                    </p>
+                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                      <span>{r.responderName ? `By ${r.responderName} (${r.responderTitle || 'Spokesperson'})` : 'Official Agency Statement'}</span>
+                      <span>{new Date(r.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>

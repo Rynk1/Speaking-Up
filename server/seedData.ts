@@ -482,8 +482,8 @@ export const INITIAL_POSTS: CivicPost[] = [
       }
     ],
     suggestedInstitutions: ['Ghana National Fire Service'],
-    urgency: 'HIGH',
-    severity: 'SEVERE',
+    urgency: 'CRITICAL',
+    severity: 'EMERGENCY',
     hashtags: ['AccraFloods', 'Odawna', 'NADMO', 'CircleDrain'],
     issueClusterId: 'cluster-odawna-floods-2026',
     issueClusterTitle: 'Severe Storm Drain Overflow at Kwame Nkrumah Circle',

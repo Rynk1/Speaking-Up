@@ -320,7 +320,29 @@ export default function App() {
 
           <Route
             path="/radar"
-            element={<NationalAnalyticsView analytics={analytics} institutions={institutions} />}
+            element={
+              <NationalAnalyticsView
+                analytics={analytics}
+                institutions={institutions}
+                posts={posts}
+                clusters={clusters}
+                onSelectPost={p => navigate(`/post/${p.id}`)}
+                onSelectCluster={cId => navigate(`/clusters/${cId}`)}
+                onSelectInstitution={instId => {
+                  setSelectedInstitutionId(instId);
+                  navigate(`/institutions/${instId}`);
+                }}
+                onOpenSpeakUp={() => {
+                  if (!currentUser) {
+                    setAuthMode('signin');
+                    setIsAuthOpen(true);
+                  } else {
+                    setIsSpeakUpOpen(true);
+                  }
+                }}
+                onRefresh={refreshPosts}
+              />
+            }
           />
 
           {/* Role Protected Routes */}

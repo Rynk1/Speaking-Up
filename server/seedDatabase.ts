@@ -27,7 +27,17 @@ export async function seedDatabaseIfEmpty() {
       )
     `);
 
+    const updatePostUrgency = db.prepare(`
+      UPDATE posts SET urgency = @urgency, severity = @severity WHERE id = @id
+    `);
+
     for (const p of INITIAL_POSTS) {
+      updatePostUrgency.run({
+        id: p.id,
+        urgency: p.urgency,
+        severity: p.severity
+      });
+
       for (const r of p.officialResponses || []) {
         insertResponseOrIgnore.run({
           id: r.id,

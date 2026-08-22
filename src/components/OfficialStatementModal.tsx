@@ -22,10 +22,12 @@ import {
   Info,
   Layers,
   ArrowUpRight,
-  Check
+  Check,
+  BadgeCheck
 } from 'lucide-react';
 import { CivicPost, InstitutionResponse, ResponseComment, ResponseTimelineStep } from '../types';
 import { api } from '../services/api';
+import { SharePreviewModal } from './SharePreviewModal';
 
 interface OfficialStatementModalProps {
   post: CivicPost;
@@ -35,6 +37,7 @@ interface OfficialStatementModalProps {
   onPostUpdated?: (updatedPost: CivicPost) => void;
   onOpenAnotherResponse?: (response: InstitutionResponse) => void;
   onViewAsFeedPost?: (post: CivicPost, response: InstitutionResponse) => void;
+  onOpenShare?: (post: CivicPost, response: InstitutionResponse) => void;
 }
 
 export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
@@ -44,7 +47,8 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
   onClose,
   onPostUpdated,
   onOpenAnotherResponse,
-  onViewAsFeedPost
+  onViewAsFeedPost,
+  onOpenShare
 }) => {
   const [response, setResponse] = useState<InstitutionResponse>(initialResponse);
   const [activeTab, setActiveTab] = useState<'statement_replies' | 'original_report_discussion' | 'agency_thread'>('statement_replies');
@@ -55,7 +59,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
   const [helpfulCount, setHelpfulCount] = useState(initialResponse.helpfulCount || 0);
   const [unhelpfulCount, setUnhelpfulCount] = useState(initialResponse.unhelpfulCount || 0);
   const [copiedRef, setCopiedRef] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [relatedResponses, setRelatedResponses] = useState<InstitutionResponse[]>([]);
 
@@ -133,30 +137,11 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
     setTimeout(() => setCopiedRef(false), 2000);
   };
 
-  const handleShare = async () => {
-    const title = response.statementTitle || `Official Statement from ${response.institutionName}`;
-    const text = `Official Statement from ${response.institutionName}: "${response.statementTitle || response.message}" regarding citizen report on "${post.title}".`;
-    const url = window.location.href;
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title,
-          text,
-          url
-        });
-        return;
-      } catch (err) {
-        // User cancelled or fallback to clipboard
-      }
-    }
-
-    try {
-      await navigator.clipboard.writeText(`${title}\n\n${text}\n\n${url}`);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    } catch (e) {
-      console.error('Clipboard copy failed', e);
+  const handleShareClick = () => {
+    if (onOpenShare) {
+      onOpenShare(post, response);
+    } else {
+      setIsShareModalOpen(true);
     }
   };
 
@@ -284,38 +269,51 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
         className="relative w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] flex flex-col bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 overflow-hidden my-auto"
         onClick={e => e.stopPropagation()}
       >
-        {/* Top Official Header - X/Facebook Social Style */}
+        {/* Top Official Header - Instagram & X Mobile Hierarchy */}
         <div
           id="statement-modal-header"
-          className="px-4 py-3 sm:px-5 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0"
+          className="px-3.5 py-2.5 sm:px-5 sm:py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between gap-2.5 shrink-0"
         >
-          {/* Left: Avatar + Title block */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            {response.institutionLogo ? (
-              <img
-                src={response.institutionLogo}
-                alt={response.institutionName}
-                className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover ring-2 ring-emerald-500/20 shrink-0"
-              />
-            ) : (
-              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shrink-0 shadow-sm font-bold text-base">
-                <Landmark className="w-5 h-5 sm:w-6 sm:h-6" />
-              </div>
-            )}
-            <div className="min-w-0 flex flex-col justify-center">
+          {/* Left: Institution avatar & Verified title */}
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="relative shrink-0">
+              {response.institutionLogo ? (
+                <img
+                  src={response.institutionLogo}
+                  alt={response.institutionName}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover ring-1.5 ring-slate-200 dark:ring-slate-700 shrink-0"
+                />
+              ) : (
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shrink-0 shadow-xs font-bold text-sm">
+                  <Landmark className="w-4 h-4 sm:w-5 sm:h-5" />
+                </div>
+              )}
+            </div>
+
+            <div className="min-w-0 flex-1 leading-tight">
               <div className="flex items-center gap-1 min-w-0">
-                <span className="font-bold text-slate-900 dark:text-white text-sm sm:text-base truncate">
+                <span className="font-bold text-[13px] sm:text-base text-slate-900 dark:text-slate-100 truncate tracking-tight hover:underline cursor-pointer">
                   {response.institutionName}
                 </span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 fill-emerald-500/10" />
+                <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 fill-emerald-500/15" />
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
-                Republic of Ghana • Official State Record
-              </p>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
+                <span className="truncate">{response.responderName}</span>
+                {response.responderTitle && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                    <span className="truncate hidden sm:inline text-slate-400">{response.responderTitle}</span>
+                  </>
+                )}
+                <span className="text-slate-300 dark:text-slate-600">•</span>
+                <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                  {new Date(response.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Right Action Bar */}
+          {/* Right Action Bar - Compact X buttons */}
           <div className="flex items-center gap-1.5 shrink-0">
             {onViewAsFeedPost && (
               <button
@@ -325,7 +323,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   onClose();
                 }}
                 title="View in main feed"
-                className="px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 rounded-full transition-colors flex items-center gap-1 text-[11px] sm:text-xs font-semibold cursor-pointer active:scale-95"
               >
                 <ArrowUpRight className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Feed View</span>
@@ -334,29 +332,29 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
             <button
               id="statement-share-btn"
-              onClick={handleShare}
-              title="Share Communiqué"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-medium"
+              onClick={handleShareClick}
+              title="Share Official Communiqué"
+              className="px-2.5 sm:px-3 py-1 sm:py-1.5 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-full transition-colors flex items-center gap-1 text-[11px] sm:text-xs font-semibold cursor-pointer active:scale-95"
             >
-              {copiedLink ? <Check className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4" />}
-              <span className="hidden sm:inline">{copiedLink ? 'Copied' : 'Share'}</span>
+              <Share2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">Share</span>
             </button>
 
             <button
               id="statement-print-btn"
               onClick={handlePrint}
               title="Print"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors hidden sm:flex items-center gap-1 text-xs font-medium"
+              className="p-1.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors hidden sm:flex items-center text-xs cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="w-3.5 h-3.5" />
             </button>
 
             <button
               id="statement-close-btn"
               onClick={onClose}
-              className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors ml-0.5"
+              className="p-1.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors ml-0.5 cursor-pointer active:scale-95"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
         </div>
@@ -893,13 +891,23 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             )}
             <button
               onClick={onClose}
-              className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors"
+              className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             >
               Close
             </button>
           </div>
         </div>
       </div>
+
+      {/* Standalone Share Preview Modal Fallback */}
+      {isShareModalOpen && (
+        <SharePreviewModal
+          post={post}
+          response={response}
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

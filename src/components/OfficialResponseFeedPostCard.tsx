@@ -39,7 +39,7 @@ interface OfficialResponseFeedPostCardProps {
   onOpenStatementModal: (post: CivicPost, response: InstitutionResponse) => void;
   onJumpToOriginalPost?: (post: CivicPost) => void;
   onPostUpdated?: () => void;
-  onOpenShare?: (post: CivicPost) => void;
+  onOpenShare?: (post: CivicPost, response?: InstitutionResponse) => void;
   onOpenReportAbuse?: (postId: string) => void;
 }
 
@@ -208,12 +208,12 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
                   onClick={() => {
                     setShowMenu(false);
                     if (onOpenShare) {
-                      onOpenShare(post);
+                      onOpenShare(post, response);
                     }
                   }}
-                  className="w-full text-left px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center gap-2"
+                  className="w-full text-left px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center gap-2 cursor-pointer"
                 >
-                  <Share2 className="w-3.5 h-3.5" /> Share / Export
+                  <Share2 className="w-3.5 h-3.5" /> Share Communiqué
                 </button>
                 {onOpenReportAbuse && (
                   <button
@@ -235,7 +235,7 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
       {/* Official Institution Identity Header (Social Media Format like X / Instagram) */}
       <div className="flex items-start justify-between gap-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden shrink-0">
             {response.institutionLogo ? (
               <img
                 src={response.institutionLogo}
@@ -250,15 +250,15 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           </div>
 
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100 truncate">
+            <div className="flex items-center gap-1.5 flex-wrap leading-tight">
+              <span className="font-bold text-[13px] sm:text-sm text-slate-900 dark:text-slate-100 hover:underline cursor-pointer truncate tracking-tight">
                 {response.institutionName}
               </span>
-              <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 fill-emerald-500/15" />
             </div>
 
             {/* Responder & Time */}
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
               <span className="font-medium text-slate-700 dark:text-slate-300 truncate">
                 {response.responderName}
                 {response.responderTitle && (
@@ -423,11 +423,11 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
           )}
 
           <div className="flex-1 min-w-0 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap text-xs">
-              <span className="font-bold text-slate-900 dark:text-slate-200">{post.authorName}</span>
-              <span className="text-slate-500 dark:text-slate-400">@{post.authorHandle}</span>
-              <span className="text-slate-400 dark:text-slate-500">•</span>
-              <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1 truncate">
+            <div className="flex items-center gap-1.5 flex-wrap text-xs leading-tight">
+              <span className="font-bold text-[13px] sm:text-sm text-slate-900 dark:text-slate-200 truncate">{post.authorName}</span>
+              <span className="text-slate-500 dark:text-slate-400 font-normal">@{post.authorHandle}</span>
+              <span className="text-slate-400 dark:text-slate-600">•</span>
+              <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1 truncate text-[11px]">
                 <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 {post.location.landmark ? `${post.location.landmark}, ` : ''}
                 {post.location.region}
@@ -500,13 +500,13 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
             id={`share-response-btn-${response.id}`}
             onClick={() => {
               if (onOpenShare) {
-                onOpenShare(post);
+                onOpenShare(post, response);
               }
             }}
-            className="px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] sm:text-[11px] font-medium rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0"
-            title="Share to WhatsApp, X, Facebook or Telegram"
+            className="px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] sm:text-[11px] font-medium rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0 cursor-pointer active:scale-95"
+            title="Share Official Communiqué to WhatsApp, X, or Telegram"
           >
-            <Share2 className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+            <Share2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span className="whitespace-nowrap hidden sm:inline">Share</span>
             <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement?.shares || post.sharesCount || 0)}</span>
           </button>
@@ -582,9 +582,9 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
                   className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 space-y-1 text-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-slate-900 dark:text-slate-200">{c.userName}</span>
-                      <span className="text-slate-500 dark:text-slate-400">@{c.userHandle}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-[13px] text-slate-900 dark:text-slate-200 hover:underline cursor-pointer">{c.userName}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">@{c.userHandle}</span>
                     </div>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                       {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

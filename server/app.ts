@@ -1686,11 +1686,32 @@ export function createApp() {
   });
 
   app.post('/api/ai/generate-share-copy', async (req, res) => {
-    const { postTitle, location, confirmationsCount, institutionsTagged } = req.body;
-    res.json({
-      whatsappCopy: `🚨 CIVIC ALERT: ${postTitle}\n📍 Location: ${location}\n👥 ${confirmationsCount || 1} citizens independently observed this issue.\n🏛️ Tagged: ${institutionsTagged}\n🔗 Track on Speak Up Ghana`,
-      twitterCopy: `🚨 Citizen Report: ${postTitle} around ${location}. ${confirmationsCount || 1} residents seeing this too. @${institutionsTagged} #GhanaCivic #SpeakUp`
-    });
+    const {
+      postTitle,
+      location,
+      confirmationsCount,
+      institutionsTagged,
+      institutionName,
+      statementTitle,
+      message,
+      referenceNumber,
+      responseType
+    } = req.body;
+
+    if (institutionName) {
+      const ref = referenceNumber ? `[Ref: ${referenceNumber}]` : '';
+      const typeStr = (responseType || 'OFFICIAL_STATEMENT').replace(/_/g, ' ');
+      const excerpt = (statementTitle || message || '').replace(/\s+/g, ' ').slice(0, 140);
+      res.json({
+        whatsappCopy: `🏛️ GHANA OFFICIAL COMMUNIQUÉ\n\n📌 Authority: ${institutionName} ${ref}\n🎯 Directive: ${typeStr}\n📢 Statement: "${excerpt}..."\n\n📍 In response to citizen issue: "${postTitle}" (${location})\n\n🔗 Read full verified official statement & track actions:\n`,
+        twitterCopy: `🏛️ Official Statement from ${institutionName} on "${postTitle}" in ${location}: "${excerpt}..." ${ref} #GhanaCivic #PublicService`
+      });
+    } else {
+      res.json({
+        whatsappCopy: `🚨 CIVIC ALERT: ${postTitle}\n📍 Location: ${location}\n👥 ${confirmationsCount || 1} citizens independently observed this issue.\n🏛️ Tagged: ${institutionsTagged}\n🔗 Track on Speak Up Ghana:\n`,
+        twitterCopy: `🚨 Citizen Report: ${postTitle} around ${location}. ${confirmationsCount || 1} residents seeing this too. @${institutionsTagged} #GhanaCivic #SpeakUp`
+      });
+    }
   });
 
   // ADMIN & SYSTEM MANAGEMENT ENDPOINTS

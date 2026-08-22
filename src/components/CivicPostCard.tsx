@@ -236,22 +236,24 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           <button
             onClick={handleToggleFollowIssue}
             disabled={isFollowingIssue}
-            className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold flex items-center gap-1 transition-all active:scale-95 ${
+            className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95 shrink-0 ${
               post.userFollowed
                 ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/40'
-                : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
+                : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700'
             }`}
             title="Follow this specific civic issue to get push updates whenever state bodies respond"
           >
             {post.userFollowed ? (
               <>
-                <BellRing className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600 dark:text-amber-400" />
-                <span>Following ({formatCount(post.engagement?.followersCount || post.followersCount || 0)})</span>
+                <BellRing className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                <span className="font-semibold">Following</span>
+                <span className="text-[10px] opacity-80">({formatCount(post.engagement?.followersCount || post.followersCount || 0)})</span>
               </>
             ) : (
               <>
-                <BellPlus className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600 dark:text-amber-400" />
-                <span>Follow ({formatCount(post.engagement?.followersCount || post.followersCount || 0)})</span>
+                <BellPlus className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                <span className="font-semibold">Follow</span>
+                <span className="text-[10px] opacity-80">({formatCount(post.engagement?.followersCount || post.followersCount || 0)})</span>
               </>
             )}
           </button>
@@ -296,7 +298,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       {/* Author & Location Header (Social Media Format like X / Instagram) */}
       <div className="flex items-start justify-between gap-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 overflow-hidden shrink-0">
             {post.authorAvatar && post.authorVisibility !== 'anonymous' ? (
               <img src={post.authorAvatar} alt={post.authorName} className="w-full h-full object-cover" />
             ) : (
@@ -307,30 +309,35 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           </div>
 
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100 truncate">{post.authorName}</span>
+            {/* Instagram / X style Name + Handle + Badges line */}
+            <div className="flex items-center gap-1.5 flex-wrap leading-tight">
+              <span className="font-bold text-[13px] sm:text-sm text-slate-900 dark:text-slate-100 hover:underline cursor-pointer truncate tracking-tight">
+                {post.authorName}
+              </span>
               {post.authorVisibility === 'anonymous' && (
-                <span className="text-[10px] font-semibold bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 px-1.5 py-0.2 rounded">
+                <span className="text-[10px] font-semibold bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 px-1.5 py-0.2 rounded-md">
                   Confidential
                 </span>
               )}
               {post.isVerifiedCitizen && (
-                <span className="text-emerald-600 dark:text-emerald-400 shrink-0" title="Verified Ghanaian Citizen">
-                  <UserCheck className="w-3.5 h-3.5" />
+                <span className="text-emerald-600 dark:text-emerald-400 shrink-0 inline-flex items-center" title="Verified Citizen">
+                  <BadgeCheck className="w-4 h-4 fill-emerald-500/15" />
                 </span>
               )}
-              <span className="text-xs text-slate-500 dark:text-slate-400 truncate">@{post.authorHandle}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-normal truncate">
+                @{post.authorHandle}
+              </span>
             </div>
 
-            {/* Location & Time */}
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
-              <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300 font-medium truncate">
+            {/* Location & Time info line */}
+            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+              <span className="flex items-center gap-1 text-slate-600 dark:text-slate-300 font-medium truncate">
                 <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 {post.location.landmark ? `${post.location.landmark}, ` : ''}
                 {post.location.region}
               </span>
               <span>•</span>
-              <span className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                 <Clock className="w-3 h-3 shrink-0" />
                 {new Date(post.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
               </span>
@@ -677,7 +684,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <button
                       type="button"
                       onClick={e => {
@@ -688,10 +695,11 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                           onViewOfficialResponse(post, resp);
                         }
                       }}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold border border-slate-200 dark:border-slate-700 text-xs transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold border border-slate-200 dark:border-slate-700 text-[11px] sm:text-xs transition-colors shrink-0"
                       title="View this response formatted as a standalone reverse-hierarchy post in the feed"
                     >
-                      <span>View Response Feed Post</span>
+                      <span className="hidden xs:inline sm:inline">Feed Post</span>
+                      <span className="xs:hidden sm:hidden">Post</span>
                       <ArrowRight className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                     </button>
 
@@ -703,10 +711,10 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                           onViewOfficialResponse(post, resp);
                         }
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-500/20 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-300 dark:border-emerald-500/40 text-xs transition-colors"
+                      className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-500/20 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-500/40 text-[11px] sm:text-xs transition-colors shrink-0"
                     >
-                      <span>Full Communiqué</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Communiqué</span>
+                      <ExternalLink className="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -902,11 +910,15 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                   }`}
                 >
                   <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                    <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
-                      @{c.userHandle}
-                      {c.isVerified && <span className="text-emerald-500 text-[10px]">✓</span>}
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                      <span className="hover:underline cursor-pointer">@{c.userHandle}</span>
+                      {c.isVerified && (
+                        <span className="text-emerald-500 dark:text-emerald-400 shrink-0 inline-flex items-center" title="Verified Citizen">
+                          <BadgeCheck className="w-3.5 h-3.5 fill-emerald-500/20" />
+                        </span>
+                      )}
                     </span>
-                    <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-[10px] font-mono">{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
 
                   {/* Comment Content with Tag Highlight */}

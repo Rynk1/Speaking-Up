@@ -438,10 +438,15 @@ export const api = {
 
   async generateShareCopy(payload: {
     postTitle: string;
-    category: string;
+    category?: string;
     location: string;
-    confirmationsCount: number;
-    institutionsTagged: string;
+    confirmationsCount?: number;
+    institutionsTagged?: string;
+    institutionName?: string;
+    statementTitle?: string;
+    message?: string;
+    referenceNumber?: string;
+    responseType?: string;
   }): Promise<{ whatsappCopy: string; twitterCopy: string; smsCopy?: string }> {
     const res = await fetch('/api/ai/generate-share-copy', {
       method: 'POST',

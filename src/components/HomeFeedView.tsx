@@ -420,6 +420,8 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
                     navigate(`/post/${p.id}`);
                   }}
                   onPostUpdated={handleRefresh}
+                  onOpenShare={p => setSharePost(p)}
+                  onOpenReportAbuse={id => setAbusePostId(id)}
                 />
               ))
             )}

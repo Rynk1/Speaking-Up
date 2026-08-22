@@ -178,10 +178,10 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
   return (
     <article
       id={`official-response-post-${response.id}`}
-      className={`bg-white dark:bg-slate-900 border-l-4 ${typeMeta.borderLeft} border-y border-r border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700/90 rounded-2xl p-3.5 sm:p-5 shadow-xl space-y-3.5 sm:space-y-4 transition-all duration-200`}
+      className={`bg-white dark:bg-slate-900 border-l-4 ${typeMeta.borderLeft} border-y border-r border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700/90 rounded-2xl p-3 sm:p-5 shadow-xl space-y-3 sm:space-y-4 transition-all duration-200 overflow-hidden`}
     >
       {/* 1. TOP HEADER: Official Institution Identity & Verified State Desk */}
-      <div className="flex items-start justify-between gap-2.5 sm:gap-3">
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
         <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
           {response.institutionLogo ? (
             <img

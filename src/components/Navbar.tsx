@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Megaphone,
   Radio,
@@ -18,14 +19,13 @@ import {
   Sun,
   Moon,
   LogOut,
-  Sparkles
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { NotificationItem } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
 interface NavbarProps {
-  currentView: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review' | 'admin_dashboard';
-  setCurrentView: (view: 'feed' | 'map' | 'clusters' | 'institutions' | 'institution_portal' | 'journalist_desk' | 'radar' | 'privacy_review' | 'admin_dashboard') => void;
   onOpenSpeakUp: () => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -41,8 +41,6 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  currentView,
-  setCurrentView,
   onOpenSpeakUp,
   searchQuery,
   setSearchQuery,
@@ -56,6 +54,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onLogout
 }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [showNotifications, setShowNotifications] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -82,12 +83,18 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const isActive = (path: string) => {
+    if (path === '/' && location.pathname === '/') return true;
+    if (path !== '/' && location.pathname.startsWith(path)) return true;
+    return false;
+  };
+
   return (
     <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm">
       <div className="max-w-7xl mx-auto px-2 sm:px-6">
         <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
           {/* Logo & Brand */}
-          <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer flex-shrink-0" onClick={() => setCurrentView('feed')}>
+          <Link to="/" className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 via-emerald-500 to-amber-500 p-0.5 shadow-md flex items-center justify-center">
               <div className="w-full h-full bg-slate-900 dark:bg-slate-950 rounded-[10px] flex items-center justify-center">
                 <Megaphone className="w-5 h-5 text-emerald-400" />
@@ -109,7 +116,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 The Megaphone for Every Citizen
               </p>
             </div>
-          </div>
+          </Link>
 
           {/* Expanded Search Bar */}
           <div className="flex-1 max-w-xl lg:max-w-2xl hidden md:block">
@@ -136,70 +143,85 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Desktop Navigation Links */}
           <nav className="hidden lg:flex items-center gap-1 text-xs font-medium">
-            <button
+            <Link
               id="nav-tab-feed"
-              onClick={() => setCurrentView('feed')}
+              to="/"
               className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
-                currentView === 'feed'
+                isActive('/')
                   ? 'bg-emerald-100 dark:bg-emerald-600/20 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-bold'
                   : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <Radio className="w-3.5 h-3.5" />
               Live Feed
-            </button>
+            </Link>
 
-            <button
+            <Link
               id="nav-tab-map"
-              onClick={() => setCurrentView('map')}
+              to="/map"
               className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
-                currentView === 'map'
+                isActive('/map')
                   ? 'bg-emerald-100 dark:bg-emerald-600/20 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-bold'
                   : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <MapPin className="w-3.5 h-3.5" />
               National Map
-            </button>
+            </Link>
 
-            <button
-              id="nav-tab-institutions"
-              onClick={() => setCurrentView('institutions')}
+            <Link
+              id="nav-tab-clusters"
+              to="/clusters"
               className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
-                currentView === 'institutions'
+                isActive('/clusters')
+                  ? 'bg-emerald-100 dark:bg-emerald-600/20 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-bold'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Clusters
+            </Link>
+
+            <Link
+              id="nav-tab-institutions"
+              to="/institutions"
+              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
+                isActive('/institutions')
                   ? 'bg-emerald-100 dark:bg-emerald-600/20 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-bold'
                   : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <Building2 className="w-3.5 h-3.5" />
               State Bodies
-            </button>
+            </Link>
 
-            <button
+            <Link
               id="nav-tab-radar"
-              onClick={() => setCurrentView('radar')}
+              to="/radar"
               className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
-                currentView === 'radar'
+                isActive('/radar')
                   ? 'bg-emerald-100 dark:bg-emerald-600/20 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-bold'
                   : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
               Civic Radar
-            </button>
+            </Link>
 
-            <button
-              id="nav-tab-admin"
-              onClick={() => setCurrentView('admin_dashboard')}
-              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
-                currentView === 'admin_dashboard'
-                  ? 'bg-purple-100 dark:bg-purple-600/20 text-purple-800 dark:text-purple-400 border border-purple-300 dark:border-purple-500/30 font-bold'
-                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5 text-purple-500" />
-              Admin
-            </button>
+            {userRole === 'admin' && (
+              <Link
+                id="nav-tab-admin"
+                to="/admin"
+                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
+                  isActive('/admin')
+                    ? 'bg-purple-100 dark:bg-purple-600/20 text-purple-800 dark:text-purple-400 border border-purple-300 dark:border-purple-500/30 font-bold'
+                    : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5 text-purple-500" />
+                Admin
+              </Link>
+            )}
           </nav>
 
           {/* Action CTAs: Role Switcher, Theme Toggle, Notifications */}
@@ -231,7 +253,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={() => {
                       setUserRole('citizen');
-                      setCurrentView('feed');
+                      navigate('/');
                       setShowRoleMenu(false);
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between ${
@@ -251,7 +273,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={() => {
                       setUserRole('institution_rep');
-                      setCurrentView('institution_portal');
+                      navigate('/portal');
                       setShowRoleMenu(false);
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between mt-1 ${
@@ -271,7 +293,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={() => {
                       setUserRole('journalist');
-                      setCurrentView('journalist_desk');
+                      navigate('/journalist-desk');
                       setShowRoleMenu(false);
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between mt-1 ${
@@ -291,7 +313,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={() => {
                       setUserRole('moderator');
-                      setCurrentView('privacy_review');
+                      navigate('/privacy-portal');
                       setShowRoleMenu(false);
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between mt-1 ${
@@ -311,7 +333,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={() => {
                       setUserRole('admin');
-                      setCurrentView('admin_dashboard');
+                      navigate('/admin');
                       setShowRoleMenu(false);
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between mt-1 ${
@@ -383,7 +405,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           key={n.id}
                           onClick={() => {
                             onMarkNotificationRead(n.id);
-                            if (n.postId) setCurrentView('feed');
+                            if (n.postId) navigate(`/post/${n.postId}`);
                           }}
                           className={`py-2.5 px-2 rounded-lg cursor-pointer transition-colors ${
                             n.read ? 'opacity-60 hover:opacity-100' : 'bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800'

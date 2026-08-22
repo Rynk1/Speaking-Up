@@ -122,6 +122,7 @@ export interface InstitutionResponse {
   referenceNumber?: string;
   actionTimeline?: ResponseTimelineStep[] | string;
   resolutionStatus?: 'IN_PROGRESS' | 'RESOLVED' | 'UNDER_REVIEW' | 'MONITORING' | 'REFERRED';
+  status?: string;
   documents?: ResponseDocument[];
   hotlines?: string[];
   helpfulCount?: number;
@@ -217,7 +218,12 @@ export interface CivicPost {
     confirmations: number;
     comments: number;
     followersCount?: number;
+    amplifies?: number;
   };
+  confirmationsCount?: number;
+  sharesCount?: number;
+  repostsCount?: number;
+  commentsCount?: number;
   userFollowed?: boolean;
   userConfirmed?: boolean;
   userBookmarked?: boolean;
@@ -248,6 +254,7 @@ export interface Institution {
   emergencyChannels?: string[];
   emergencyHotline?: string;
   whatsappDesk?: string;
+  whatsappNumber?: string;
   tollFree?: string;
   officialEmail?: string;
   emailChannels?: string[];
@@ -277,6 +284,8 @@ export interface IssueCluster {
   district: string;
   locationSummary?: string;
   postIds: string[];
+  memberPostIds?: string[];
+  primaryPostId?: string;
   postsCount?: number;
   postCount?: number;
   confirmationCount?: number;

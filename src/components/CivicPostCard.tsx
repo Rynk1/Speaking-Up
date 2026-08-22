@@ -44,7 +44,7 @@ interface CivicPostCardProps {
   onOpenReportAbuse: (postId: string) => void;
   onOpenCluster?: (clusterId: string) => void;
   onPostUpdated: () => void;
-  userRole?: 'citizen' | 'institution_rep' | 'journalist' | 'moderator';
+  userRole?: 'citizen' | 'institution_rep' | 'journalist' | 'moderator' | 'admin';
   onOpenInstitutionResponse?: (post: CivicPost) => void;
   onViewOfficialResponse?: (post: CivicPost, response: InstitutionResponse) => void;
   onViewResponseFeedPost?: (post: CivicPost, response: InstitutionResponse) => void;

@@ -6,7 +6,13 @@ import {
   NotificationItem,
   CommunityEvidence,
   PostComment,
-  InstitutionResponse
+  InstitutionResponse,
+  SocialPlatform,
+  CreatorContext,
+  SocialSharePackage,
+  CreatorPack,
+  CreatorProfile,
+  ShareAnalyticsSummary
 } from '../types';
 
 const TOKEN_KEY = 'speakup_jwt_token';
@@ -422,6 +428,87 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to like statement reply');
+    return res.json();
+  },
+
+  // Social Distribution & Creator Engine (SSDE)
+  async prepareSocialPackage(params: {
+    postId: string;
+    responseId?: string;
+    platform: SocialPlatform;
+    creatorContext?: CreatorContext;
+    creatorId?: string;
+  }): Promise<SocialSharePackage> {
+    const res = await fetch('/api/social/prepare', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) throw new Error('Failed to prepare social package');
+    return res.json();
+  },
+
+  async generateCreatorPack(params: {
+    postId: string;
+    responseId?: string;
+    creatorId?: string;
+    creatorContext?: CreatorContext;
+  }): Promise<CreatorPack> {
+    const res = await fetch('/api/social/creator-pack', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) throw new Error('Failed to generate creator pack');
+    return res.json();
+  },
+
+  async recordSocialShare(params: {
+    postId: string;
+    responseId?: string;
+    creatorId?: string;
+    platform: SocialPlatform;
+    contentType?: string;
+    shareMethod?: string;
+    referralCode?: string;
+  }): Promise<{ success: boolean }> {
+    const res = await fetch('/api/social/events/share', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) throw new Error('Failed to record social share');
+    return res.json();
+  },
+
+  async getSocialAnalytics(postId: string): Promise<ShareAnalyticsSummary> {
+    const res = await fetch(`/api/social/analytics/${postId}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch social analytics');
+    return res.json();
+  },
+
+  async getMyCreatorProfile(): Promise<CreatorProfile | null> {
+    const res = await fetch('/api/social/creators/me', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) return null;
+    return res.json();
+  },
+
+  async registerCreatorProfile(data: {
+    creatorName: string;
+    handle: string;
+    primaryPlatform?: string;
+    platformLinks?: Record<string, string>;
+  }): Promise<CreatorProfile> {
+    const res = await fetch('/api/social/creators', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to register creator profile');
     return res.json();
   },
 

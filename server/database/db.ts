@@ -28,6 +28,82 @@ export function initDatabase() {
     );
   `);
 
+  // SpeakUp Social Distribution Engine (SSDE) Tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS social_share_packages (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      response_id TEXT,
+      platform TEXT NOT NULL,
+      creator_context TEXT NOT NULL DEFAULT 'general',
+      package_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS social_share_events (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      response_id TEXT,
+      user_id TEXT,
+      creator_id TEXT,
+      platform TEXT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT 'SHARE_ASSIST',
+      share_method TEXT DEFAULT 'NATIVE_SHARE',
+      referral_code TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS social_click_events (
+      id TEXT PRIMARY KEY,
+      referral_code TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      response_id TEXT,
+      creator_id TEXT,
+      platform TEXT NOT NULL,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS creator_profiles (
+      id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL,
+      creator_name TEXT NOT NULL,
+      handle TEXT NOT NULL,
+      primary_platform TEXT NOT NULL DEFAULT 'YOUTUBE',
+      platform_links_json TEXT DEFAULT '{}',
+      is_verified_creator INTEGER NOT NULL DEFAULT 1,
+      total_shares INTEGER NOT NULL DEFAULT 0,
+      total_clicks INTEGER NOT NULL DEFAULT 0,
+      total_conversions INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS creator_referrals (
+      code TEXT PRIMARY KEY,
+      creator_id TEXT,
+      post_id TEXT NOT NULL,
+      response_id TEXT,
+      platform TEXT NOT NULL,
+      campaign TEXT DEFAULT 'creator-share',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+
   // Create Institutions table
   db.exec(`
     CREATE TABLE IF NOT EXISTS institutions (
@@ -651,6 +727,9 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, available_at);
     CREATE INDEX IF NOT EXISTS idx_report_events_report ON report_events(report_id);
     CREATE INDEX IF NOT EXISTS idx_alert_attempts_key ON alert_attempts(idempotency_key);
+    CREATE INDEX IF NOT EXISTS idx_social_shares_post ON social_share_events(post_id);
+    CREATE INDEX IF NOT EXISTS idx_social_clicks_ref ON social_click_events(referral_code);
+    CREATE INDEX IF NOT EXISTS idx_creator_refs_code ON creator_referrals(code);
   `);
 
   console.log('Database tables and indexes verified successfully.');

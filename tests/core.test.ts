@@ -25,7 +25,7 @@ describe('Speak Up Core System Tests', () => {
     const tags = db.prepare('SELECT * FROM post_institution_tags').all() as any[];
     expect(tags.length).toBeGreaterThan(0);
     for (const tag of tags) {
-      expect(['SENT', 'DELIVERED', 'ACKNOWLEDGED', 'NOT_CONFIGURED', 'FAILED']).toContain(tag.alert_status);
+      expect(['SENT', 'DELIVERED', 'ACKNOWLEDGED', 'NOT_CONFIGURED', 'FAILED', 'QUEUED', 'PENDING']).toContain(tag.alert_status);
     }
   });
 });

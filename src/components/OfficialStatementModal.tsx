@@ -10,21 +10,19 @@ import {
   ThumbsDown,
   MessageSquare,
   Share2,
-  Copy,
   ExternalLink,
   Send,
-  AlertTriangle,
-  ArrowRight,
   Printer,
   ChevronRight,
   Building2,
   Landmark,
   User,
   Heart,
-  Sparkles,
-  Layers,
   FileCheck2,
-  Info
+  Info,
+  Layers,
+  ArrowUpRight,
+  Check
 } from 'lucide-react';
 import { CivicPost, InstitutionResponse, ResponseComment, ResponseTimelineStep } from '../types';
 import { api } from '../services/api';
@@ -104,11 +102,31 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
     setTimeout(() => setCopiedRef(false), 2000);
   };
 
-  const handleShare = () => {
-    const shareText = `Official Statement from ${response.institutionName}: "${response.statementTitle || response.message}" regarding citizen report on "${post.title}".`;
-    navigator.clipboard.writeText(shareText);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+  const handleShare = async () => {
+    const title = response.statementTitle || `Official Statement from ${response.institutionName}`;
+    const text = `Official Statement from ${response.institutionName}: "${response.statementTitle || response.message}" regarding citizen report on "${post.title}".`;
+    const url = window.location.href;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title,
+          text,
+          url
+        });
+        return;
+      } catch (err) {
+        // User cancelled or fallback to clipboard
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(`${title}\n\n${text}\n\n${url}`);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch (e) {
+      console.error('Clipboard copy failed', e);
+    }
   };
 
   const handlePrint = () => {
@@ -168,28 +186,28 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
         };
       case 'INVESTIGATING':
         return {
-          label: 'Formal Investigation & Assessment Underway',
+          label: 'Formal Assessment Underway',
           bg: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20',
           badgeBg: 'bg-amber-600',
           icon: Clock
         };
       case 'PUBLIC_GUIDANCE':
         return {
-          label: 'Official Public Safety Guidance & Advisory',
+          label: 'Public Advisory',
           bg: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20',
           badgeBg: 'bg-sky-600',
           icon: ShieldCheck
         };
       case 'WE_ARE_AWARE':
         return {
-          label: 'Acknowledged & Logged for Dispatch',
+          label: 'Acknowledged & Logged',
           bg: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20',
           badgeBg: 'bg-blue-600',
           icon: Info
         };
       case 'OUTSIDE_MANDATE':
         return {
-          label: 'Referral to Authorized Sister Institution',
+          label: 'Inter-Agency Referral',
           bg: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20',
           badgeBg: 'bg-purple-600',
           icon: Building2
@@ -217,48 +235,46 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
   return (
     <div
       id="official-statement-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
         id="official-statement-modal-dialog"
-        className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto"
+        className="relative w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] flex flex-col bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 overflow-hidden my-auto"
         onClick={e => e.stopPropagation()}
       >
-        {/* Top Official Banner / Header */}
+        {/* Top Official Header - X/Facebook Social Style */}
         <div
           id="statement-modal-header"
-          className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-50 via-slate-100 to-slate-50 dark:from-slate-900 dark:via-slate-850 dark:to-slate-900 flex items-center justify-between gap-3 shrink-0"
+          className="px-4 py-3 sm:px-5 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0"
         >
-          <div className="flex items-center gap-3 min-w-0">
+          {/* Left: Avatar + Title block */}
+          <div className="flex items-center gap-2.5 min-w-0">
             {response.institutionLogo ? (
               <img
                 src={response.institutionLogo}
                 alt={response.institutionName}
-                className="w-11 h-11 rounded-xl object-cover ring-2 ring-emerald-500/20 shrink-0"
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover ring-2 ring-emerald-500/20 shrink-0"
               />
             ) : (
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shrink-0 shadow-sm">
-                <Landmark className="w-6 h-6" />
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shrink-0 shadow-sm font-bold text-base">
+                <Landmark className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
             )}
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-bold text-slate-900 dark:text-white text-base truncate">
+            <div className="min-w-0 flex flex-col justify-center">
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="font-bold text-slate-900 dark:text-white text-sm sm:text-base truncate">
                   {response.institutionName}
                 </span>
-                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Verified State Authority
-                </span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 fill-emerald-500/10" />
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                Republic of Ghana • Official Public Accountability Record
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                Republic of Ghana • Official State Record
               </p>
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Right Action Bar */}
           <div className="flex items-center gap-1.5 shrink-0">
             {onViewAsFeedPost && (
               <button
@@ -267,35 +283,37 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   onViewAsFeedPost(post, response);
                   onClose();
                 }}
-                title="View formatted as standalone reverse-hierarchy post in feed"
-                className="px-2.5 py-1.5 bg-emerald-600/10 dark:bg-emerald-600/20 hover:bg-emerald-600/20 dark:hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold"
+                title="View in main feed"
+                className="px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
               >
-                <ArrowRight className="w-3.5 h-3.5 rotate-45" />
-                <span>Open Feed Post View</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Feed View</span>
               </button>
             )}
+
             <button
               id="statement-share-btn"
               onClick={handleShare}
               title="Share Communiqué"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-medium"
+              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-medium"
             >
-              <Share2 className="w-4 h-4" />
-              <span className="hidden sm:inline">{copiedLink ? 'Copied!' : 'Share'}</span>
+              {copiedLink ? <Check className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4" />}
+              <span className="hidden sm:inline">{copiedLink ? 'Copied' : 'Share'}</span>
             </button>
+
             <button
               id="statement-print-btn"
               onClick={handlePrint}
-              title="Print / Save PDF"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors hidden sm:flex items-center gap-1 text-xs font-medium"
+              title="Print"
+              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors hidden sm:flex items-center gap-1 text-xs font-medium"
             >
               <Printer className="w-4 h-4" />
-              <span>Print</span>
             </button>
+
             <button
               id="statement-close-btn"
               onClick={onClose}
-              className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors ml-1"
+              className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors ml-0.5"
             >
               <X className="w-5 h-5" />
             </button>
@@ -304,12 +322,12 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
         {/* Scrollable Content */}
         <div id="statement-modal-body" className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-          {/* Main Statement Box */}
-          <div className="p-5 sm:p-6 space-y-5">
-            {/* Meta bar: Reference ID, Status, Timestamp */}
-            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+          {/* Main Statement Content Block */}
+          <div className="p-4 sm:p-6 space-y-4">
+            {/* Action Badges & Ref Header Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-semibold border ${typeMeta.bg}`}>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold border ${typeMeta.bg}`}>
                   <TypeIcon className="w-3.5 h-3.5" />
                   {typeMeta.label}
                 </span>
@@ -321,19 +339,19 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800">
                 {response.referenceNumber && (
                   <button
                     id="copy-ref-number-btn"
                     onClick={handleCopyRef}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono text-xs transition-colors"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono text-[11px] transition-colors"
                   >
                     <FileCheck2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     <span>{response.referenceNumber}</span>
-                    <span className="text-[10px] text-slate-400 ml-0.5">{copiedRef ? '✓' : '(copy)'}</span>
+                    <span className="text-[10px] text-slate-400">{copiedRef ? '✓' : '(copy)'}</span>
                   </button>
                 )}
-                <span className="text-slate-400 dark:text-slate-500">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
                   {new Date(response.createdAt).toLocaleString(undefined, {
                     month: 'short',
                     day: 'numeric',
@@ -345,20 +363,30 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
               </div>
             </div>
 
-            {/* Communiqué Title / Subject */}
-            <div className="space-y-1.5">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
+            {/* Title & Author Info Section */}
+            <div className="space-y-3 pt-1">
+              <h2 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
                 {response.statementTitle || `Official Communiqué regarding ${post.title}`}
               </h2>
-              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                <span className="font-medium text-slate-900 dark:text-slate-200">{response.responderName}</span>
-                <span>•</span>
-                <span>{response.responderTitle}</span>
+
+              {/* Responder Author Box */}
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800">
+                <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 flex items-center justify-center shrink-0 font-bold text-xs">
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">
+                    {response.responderName}
+                  </p>
+                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                    {response.responderTitle} • {response.institutionName}
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Official Statement Body */}
-            <div className="p-4 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-750 text-slate-800 dark:text-slate-200 leading-relaxed space-y-3.5 text-sm sm:text-[15px]">
+            {/* Body Statement Content */}
+            <div className="p-4 sm:p-5 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 leading-relaxed space-y-3 text-xs sm:text-sm shadow-xs">
               {(response.fullStatement || response.message).split('\n\n').map((paragraph, idx) => (
                 <p key={`p-${idx}`} className="whitespace-pre-line">
                   {paragraph}
@@ -368,22 +396,20 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
             {/* Action Timeline Progress Steps */}
             {timelineSteps.length > 0 && (
-              <div id="statement-timeline-section" className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-850/50 space-y-3">
+              <div id="statement-timeline-section" className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/60 dark:bg-slate-850/50 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     Official Action & Resolution Timeline
                   </h4>
-                  <span className="text-[11px] text-slate-500">Live operational dispatch</span>
+                  <span className="text-[10px] text-slate-400">Live dispatch</span>
                 </div>
                 <div className="space-y-3 pt-1">
                   {timelineSteps.map((step, idx) => (
                     <div key={`step-${idx}-${step.step.slice(0, 8)}`} className="flex items-start gap-3 relative">
-                      {/* Line connector */}
                       {idx !== timelineSteps.length - 1 && (
                         <div className="absolute left-3.5 top-6 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700" />
                       )}
-                      {/* Step Status Icon */}
                       <div className="z-10 mt-0.5 shrink-0">
                         {step.status === 'completed' ? (
                           <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm">
@@ -399,14 +425,13 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                           </div>
                         )}
                       </div>
-                      {/* Step text */}
-                      <div className="flex-1 pb-3">
-                        <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 pb-2 min-w-0">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
                           <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">
                             {step.step}
                           </p>
                           {step.timestamp && (
-                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 shrink-0">
+                            <span className="text-[10px] font-mono text-slate-400 shrink-0">
                               {step.timestamp}
                             </span>
                           )}
@@ -424,11 +449,11 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             )}
 
             {/* Attached Documents & Emergency Hotlines Bar */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Documents */}
               {response.documents && response.documents.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2">
-                  <h5 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-2">
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-blue-500" />
                     Official Directives & Documents
                   </h5>
@@ -439,7 +464,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                         href={doc.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-blue-400 transition-colors text-xs"
+                        className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 hover:border-blue-400 transition-colors text-xs"
                       >
                         <span className="font-medium text-slate-800 dark:text-slate-200 truncate mr-2">
                           📄 {doc.title}
@@ -453,8 +478,8 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
               {/* Hotlines */}
               {response.hotlines && response.hotlines.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2">
-                  <h5 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-2">
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Phone className="w-3.5 h-3.5 text-emerald-500" />
                     Direct Agency Contact & Hotlines
                   </h5>
@@ -462,7 +487,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                     {response.hotlines.map((line, idx) => (
                       <div
                         key={`line-${idx}`}
-                        className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
+                        className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 text-xs"
                       >
                         <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
                           📞 {line}
@@ -481,16 +506,16 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             </div>
 
             {/* Helpfulness Rating bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-slate-850 dark:to-slate-850 border border-emerald-100 dark:border-slate-750">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800">
               <div>
                 <p className="text-xs font-semibold text-slate-900 dark:text-white">
-                  Was this official statement clear, transparent and actionable?
+                  Was this official statement clear and transparent?
                 </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Citizen ratings provide transparent accountability to the Ministry & Regulators.
+                <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
+                  Ratings provide public accountability feedback to oversight ministries.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-end sm:self-auto">
                 <button
                   id="vote-helpful-btn"
                   onClick={() => handleVote('helpful')}
@@ -501,7 +526,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   }`}
                 >
                   <ThumbsUp className="w-3.5 h-3.5" />
-                  <span>Helpful ({helpfulCount})</span>
+                  <span>Clear ({helpfulCount})</span>
                 </button>
                 <button
                   id="vote-unhelpful-btn"
@@ -523,7 +548,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
           <div id="statement-parent-post-context" className="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-900/60 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-                <ArrowRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 rotate-180" />
+                <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 In Direct Response To Citizen Issue
               </span>
               <div className="flex items-center gap-2">
@@ -535,7 +560,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                     }}
                     className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-semibold flex items-center gap-1"
                   >
-                    <span>View as Feed Post</span>
+                    <span>View Feed Post</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </button>
                 )}
@@ -545,31 +570,31 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row gap-3.5 items-start">
+            <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col sm:flex-row gap-3 items-start">
               {post.media && post.media.length > 0 && (
                 <img
                   src={post.media[0].url}
                   alt={post.title}
-                  className="w-full sm:w-28 h-20 rounded-lg object-cover shrink-0 border border-slate-200 dark:border-slate-700"
+                  className="w-full sm:w-28 h-24 sm:h-20 rounded-lg object-cover shrink-0 border border-slate-200 dark:border-slate-700"
                 />
               )}
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                     {post.category}
                   </span>
-                  <span className="text-xs text-slate-500">
+                  <span className="text-[11px] text-slate-500 truncate">
                     Reported by <strong className="text-slate-700 dark:text-slate-300">{post.authorName}</strong> ({post.authorHandle})
                   </span>
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-2">
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm line-clamp-2">
                   {post.title}
                 </h4>
                 <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
                   {post.content}
                 </p>
-                <div className="flex items-center gap-3 pt-1 text-[11px] text-slate-500">
-                  <span>👥 {post.engagement.confirmations} citizen confirmations</span>
+                <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-400">
+                  <span>👥 {post.engagement.confirmations} confirmations</span>
                   <span>💬 {post.engagement.comments} comments</span>
                   <span>📅 {new Date(post.createdAt).toLocaleDateString()}</span>
                 </div>
@@ -577,59 +602,59 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             </div>
           </div>
 
-          {/* Perspective Switcher Tabs (Like X reply & quote threads) */}
-          <div id="statement-discussion-tabs" className="px-5 pt-4 bg-white dark:bg-slate-900">
-            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
+          {/* Perspective Switcher Tabs */}
+          <div id="statement-discussion-tabs" className="px-4 sm:px-5 pt-3 bg-white dark:bg-slate-900">
+            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar">
               <button
                 id="tab-statement-replies"
                 onClick={() => setActiveTab('statement_replies')}
-                className={`pb-3 text-xs sm:text-sm font-semibold flex items-center gap-1.5 border-b-2 transition-colors ${
+                className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 whitespace-nowrap transition-colors ${
                   activeTab === 'statement_replies'
                     ? 'border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400'
                     : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
-                <MessageSquare className="w-4 h-4" />
-                <span>Statement Follow-ups & Citizen Replies ({comments.length})</span>
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Replies ({comments.length})</span>
               </button>
 
               <button
                 id="tab-original-report"
                 onClick={() => setActiveTab('original_report_discussion')}
-                className={`pb-3 text-xs sm:text-sm font-semibold flex items-center gap-1.5 border-b-2 transition-colors ${
+                className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 whitespace-nowrap transition-colors ${
                   activeTab === 'original_report_discussion'
                     ? 'border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400'
                     : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
-                <Layers className="w-4 h-4" />
-                <span>Original Citizen Discussion ({post.commentsList?.length || post.engagement.comments || 0})</span>
+                <Layers className="w-3.5 h-3.5" />
+                <span>Citizen Thread ({post.commentsList?.length || post.engagement.comments || 0})</span>
               </button>
 
               {otherAgencyResponses.length > 0 && (
                 <button
                   id="tab-agency-thread"
                   onClick={() => setActiveTab('agency_thread')}
-                  className={`pb-3 text-xs sm:text-sm font-semibold flex items-center gap-1.5 border-b-2 transition-colors ${
+                  className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 whitespace-nowrap transition-colors ${
                     activeTab === 'agency_thread'
                       ? 'border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400'
                       : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
-                  <Building2 className="w-4 h-4" />
-                  <span>Other Agency Statements ({otherAgencyResponses.length})</span>
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Other Agencies ({otherAgencyResponses.length})</span>
                 </button>
               )}
             </div>
           </div>
 
-          {/* TAB 1: STATEMENT REPLIES & FIELD VERIFICATIONS */}
+          {/* TAB 1: STATEMENT REPLIES */}
           {activeTab === 'statement_replies' && (
-            <div id="tab-content-statement-replies" className="p-5 space-y-4 bg-white dark:bg-slate-900">
+            <div id="tab-content-statement-replies" className="p-4 sm:p-5 space-y-4 bg-white dark:bg-slate-900">
               {/* Comment Composer */}
               <form onSubmit={handleCommentSubmit} className="space-y-2">
                 <div className="flex items-start gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0 text-xs font-bold">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0 text-xs font-bold">
                     {currentUser?.name ? currentUser.name.charAt(0) : 'C'}
                   </div>
                   <div className="flex-1 relative">
@@ -637,7 +662,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                       id="statement-reply-textarea"
                       value={newCommentText}
                       onChange={e => setNewCommentText(e.target.value)}
-                      placeholder={`Reply directly to ${response.institutionName} regarding this statement, report whether crews arrived, or ask follow-up questions...`}
+                      placeholder={`Reply directly to ${response.institutionName} regarding this statement...`}
                       rows={2}
                       className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
                     />
@@ -649,7 +674,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        <span>{submittingComment ? 'Posting...' : 'Post Reply to Authority'}</span>
+                        <span>{submittingComment ? 'Posting...' : 'Post Reply'}</span>
                       </button>
                     </div>
                   </div>
@@ -657,44 +682,39 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
               </form>
 
               {/* Comments List */}
-              <div className="space-y-3 pt-2">
+              <div className="space-y-2.5 pt-1">
                 {comments.length === 0 ? (
                   <div className="text-center py-6 text-slate-400 text-xs">
-                    No replies yet to this official statement. Be the first citizen or assembly member to reply!
+                    No replies yet to this official statement.
                   </div>
                 ) : (
                   comments.map(c => (
                     <div
                       key={c.id}
-                      className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/70 dark:border-slate-800 space-y-1.5"
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/70 dark:border-slate-800 space-y-1"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs text-slate-900 dark:text-white">
                             {c.userName}
                           </span>
-                          <span className="text-[11px] text-slate-400">@{c.userHandle}</span>
-                          {c.isVerified && (
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium">
-                              Verified Citizen
-                            </span>
-                          )}
+                          <span className="text-[10px] text-slate-400">@{c.userHandle}</span>
                         </div>
-                        <span className="text-[11px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-slate-400 font-mono">
                           {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                      <p className="text-xs text-slate-700 dark:text-slate-300">
                         {c.content}
                       </p>
-                      <div className="flex items-center gap-3 pt-1 text-[11px] text-slate-500">
+                      <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-500">
                         <button
                           onClick={() => handleLikeComment(c.id)}
                           className={`flex items-center gap-1 hover:text-emerald-600 transition-colors ${
                             c.userLiked ? 'text-emerald-600 font-semibold' : ''
                           }`}
                         >
-                          <Heart className={`w-3.5 h-3.5 ${c.userLiked ? 'fill-current' : ''}`} />
+                          <Heart className={`w-3 h-3 ${c.userLiked ? 'fill-current' : ''}`} />
                           <span>{c.likesCount || 0}</span>
                         </button>
                       </div>
@@ -707,52 +727,52 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
           {/* TAB 2: ORIGINAL CITIZEN REPORT DISCUSSION */}
           {activeTab === 'original_report_discussion' && (
-            <div id="tab-content-original-discussion" className="p-5 space-y-4 bg-white dark:bg-slate-900">
-              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 text-xs text-blue-800 dark:text-blue-200 flex items-center justify-between">
-                <span>Displaying original community comments on "{post.title}"</span>
+            <div id="tab-content-original-discussion" className="p-4 sm:p-5 space-y-3 bg-white dark:bg-slate-900">
+              <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 text-xs text-blue-800 dark:text-blue-200 flex items-center justify-between">
+                <span>Original community discussion on "{post.title}"</span>
                 <span className="font-semibold">{post.commentsList?.length || post.engagement.comments || 0} Comments</span>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {post.commentsList && post.commentsList.length > 0 ? (
                   post.commentsList.map(c => (
                     <div
                       key={c.id}
-                      className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/70 dark:border-slate-800 space-y-1.5"
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/70 dark:border-slate-800 space-y-1"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs text-slate-900 dark:text-white">
                             {c.userName}
                           </span>
-                          <span className="text-[11px] text-slate-400">@{c.userHandle}</span>
+                          <span className="text-[10px] text-slate-400">@{c.userHandle}</span>
                         </div>
-                        <span className="text-[11px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-slate-400 font-mono">
                           {new Date(c.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                      <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300">{c.content}</p>
+                      <p className="text-xs text-slate-700 dark:text-slate-300">{c.content}</p>
                     </div>
                   ))
                 ) : (
                   <div className="text-center py-6 text-slate-400 text-xs">
-                    No previous comments recorded on the original citizen post.
+                    No previous comments recorded on the original post.
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* TAB 3: OTHER AGENCY STATEMENTS (Cross-agency coordination) */}
+          {/* TAB 3: OTHER AGENCY STATEMENTS */}
           {activeTab === 'agency_thread' && (
-            <div id="tab-content-agency-thread" className="p-5 space-y-3 bg-white dark:bg-slate-900">
+            <div id="tab-content-agency-thread" className="p-4 sm:p-5 space-y-3 bg-white dark:bg-slate-900">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Other state institutions and regulatory commissions that have issued statements regarding this citizen issue:
+                Other state institutions that issued statements regarding this report:
               </p>
               {otherAgencyResponses.map(r => (
                 <div
                   key={r.id}
-                  className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 space-y-2 hover:border-emerald-500 transition-colors cursor-pointer"
+                  className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 space-y-1.5 hover:border-emerald-500 transition-colors cursor-pointer"
                   onClick={() => {
                     if (onOpenAnotherResponse) {
                       onOpenAnotherResponse(r);
@@ -768,12 +788,12 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                       <strong className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
                         {r.institutionName}
                       </strong>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
                         {r.responseType}
                       </span>
                     </div>
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                      View Statement <ChevronRight className="w-3.5 h-3.5" />
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5">
+                      View <ChevronRight className="w-3.5 h-3.5" />
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
@@ -787,10 +807,10 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0 flex-wrap">
-          <div className="text-xs text-slate-500 flex items-center gap-1.5 min-w-0">
+        <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0 flex-wrap">
+          <div className="text-[11px] sm:text-xs text-slate-500 flex items-center gap-1.5 min-w-0">
             <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="truncate">Audited & verified public record on SpeakUp Ghana National Platform</span>
+            <span className="truncate">Ghana National Civic Transparency Record</span>
           </div>
           <div className="flex items-center gap-2">
             {onViewAsFeedPost && (
@@ -799,17 +819,17 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   onViewAsFeedPost(post, response);
                   onClose();
                 }}
-                className="px-3.5 py-2 rounded-xl bg-emerald-600/10 dark:bg-emerald-950/60 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors flex items-center gap-1.5"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open Post in Feed</span>
+                <span>Open in Feed</span>
               </button>
             )}
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors"
+              className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors"
             >
-              Close Statement
+              Close
             </button>
           </div>
         </div>

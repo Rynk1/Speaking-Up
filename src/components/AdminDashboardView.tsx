@@ -371,22 +371,6 @@ export const AdminDashboardView: React.FC = () => {
           </button>
         </div>
 
-        {/* Mobile Horizontal Pill Tab Scroller */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
-          {(['overview', 'content', 'reports', 'users', 'institutions', 'privacy', 'system'] as AdminTab[]).map(tab => (
-            <button
-              key={`pill-adm-${tab}`}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
-                activeTab === tab
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'bg-slate-900 text-slate-400 border border-slate-800'
-              }`}
-            >
-              {getTabLabel(tab)}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Mobile Left Sidebar Overlay Drawer */}

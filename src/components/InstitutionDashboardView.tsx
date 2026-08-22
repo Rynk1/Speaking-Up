@@ -269,22 +269,6 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
           </button>
         </div>
 
-        {/* Mobile Horizontal Pill Tab Scroller */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
-          {(['overview', 'alerts', 'urgent', 'responses', 'config'] as InstitutionTab[]).map(tab => (
-            <button
-              key={`pill-inst-${tab}`}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
-                activeTab === tab
-                  ? 'bg-amber-600 text-slate-950 shadow-md font-extrabold'
-                  : 'bg-slate-900 text-slate-400 border border-slate-800'
-              }`}
-            >
-              {getTabLabel(tab)}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Mobile Left Sidebar Overlay Drawer */}

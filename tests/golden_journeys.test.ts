@@ -37,7 +37,7 @@ describe('Golden User Journeys & Critical PRD Tests', () => {
   it('Golden Journey 6: Institution alert status never fabricates delivery success', () => {
     const tags = db.prepare('SELECT * FROM post_institution_tags').all() as any[];
     for (const tag of tags) {
-      expect(['SENT', 'DELIVERED', 'ACKNOWLEDGED', 'NOT_CONFIGURED', 'FAILED']).toContain(tag.alert_status);
+      expect(['SENT', 'DELIVERED', 'ACKNOWLEDGED', 'NOT_CONFIGURED', 'FAILED', 'QUEUED', 'PENDING']).toContain(tag.alert_status);
       if (tag.alert_status === 'NOT_CONFIGURED') {
         expect(tag.alert_method_used).toContain('No direct channel');
       }

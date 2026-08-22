@@ -21,6 +21,10 @@ import { jobQueue } from './jobs/jobQueue';
 import { eventBus } from './events/eventBus';
 import { setupSSERoute } from './events/sseStream';
 import { GoogleGenAI } from '@google/genai';
+import { SocialDistributionService } from './social/SocialDistributionService';
+import { ShareLinkService } from './social/ShareLinkService';
+import { ShareAnalyticsService } from './social/ShareAnalyticsService';
+import { PLATFORM_CAPABILITIES } from './social/PlatformCapabilityRegistry';
 
 export function createApp() {
   const app = express();
@@ -1668,6 +1672,148 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Notifications fetch error: ${err.message}`);
       res.json([]);
+    }
+  });
+
+  // SOCIAL DISTRIBUTION & CREATOR ENGINE (SSDE) API
+  app.get('/s/:code', (req, res) => {
+    try {
+      const { code } = req.params;
+      const refInfo = ShareLinkService.resolveCode(code);
+      if (!refInfo) {
+        return res.redirect('/');
+      }
+
+      ShareAnalyticsService.recordClickEvent({
+        referralCode: code,
+        postId: refInfo.postId,
+        responseId: refInfo.responseId,
+        creatorId: refInfo.creatorId,
+        platform: refInfo.platform,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+
+      const redirectPath = refInfo.responseId
+        ? `/app/post/${refInfo.postId}?responseId=${refInfo.responseId}&ref=${code}`
+        : `/app/post/${refInfo.postId}?ref=${code}`;
+
+      res.redirect(redirectPath);
+    } catch (err: any) {
+      logger.error(`Short URL redirect error: ${err.message}`);
+      res.redirect('/');
+    }
+  });
+
+  app.post('/api/social/prepare', async (req: AuthenticatedRequest, res) => {
+    try {
+      const { postId, responseId, platform, creatorContext, creatorId } = req.body;
+      if (!postId || !platform) {
+        return res.status(400).json({ error: 'Post ID and platform are required' });
+      }
+
+      const pkg = await SocialDistributionService.prepareSharePackage({
+        postId,
+        responseId,
+        platform,
+        creatorContext,
+        creatorId,
+        userId: req.user?.id
+      });
+
+      res.json(pkg);
+    } catch (err: any) {
+      logger.error(`Social prepare error: ${err.message}`);
+      res.status(500).json({ error: err.message || 'Failed to prepare share package' });
+    }
+  });
+
+  app.post('/api/social/creator-pack', async (req: AuthenticatedRequest, res) => {
+    try {
+      const { postId, responseId, creatorId, creatorContext } = req.body;
+      if (!postId) {
+        return res.status(400).json({ error: 'Post ID is required' });
+      }
+
+      const pack = await SocialDistributionService.getCreatorPack({
+        postId,
+        responseId,
+        creatorId,
+        creatorContext
+      });
+
+      res.json(pack);
+    } catch (err: any) {
+      logger.error(`Creator pack error: ${err.message}`);
+      res.status(500).json({ error: err.message || 'Failed to generate creator pack' });
+    }
+  });
+
+  app.post('/api/social/events/share', (req: AuthenticatedRequest, res) => {
+    try {
+      const { postId, responseId, creatorId, platform, contentType, shareMethod, referralCode } = req.body;
+      if (!postId || !platform) {
+        return res.status(400).json({ error: 'Post ID and platform are required' });
+      }
+
+      ShareAnalyticsService.recordShareEvent({
+        postId,
+        responseId,
+        userId: req.user?.id,
+        creatorId,
+        platform,
+        contentType,
+        shareMethod,
+        referralCode
+      });
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to record share event' });
+    }
+  });
+
+  app.get('/api/social/analytics/:postId', (req, res) => {
+    try {
+      const { postId } = req.params;
+      const analytics = ShareAnalyticsService.getPostShareAnalytics(postId);
+      res.json(analytics);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch social analytics' });
+    }
+  });
+
+  app.get('/api/social/capabilities', (req, res) => {
+    res.json(PLATFORM_CAPABILITIES);
+  });
+
+  app.post('/api/social/creators', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const { creatorName, handle, primaryPlatform, platformLinks } = req.body;
+      if (!creatorName || !handle) {
+        return res.status(400).json({ error: 'Creator name and handle are required' });
+      }
+
+      const profile = SocialDistributionService.registerCreatorProfile({
+        userId: req.user!.id,
+        creatorName: sanitizePlainText(creatorName),
+        handle: sanitizePlainText(handle),
+        primaryPlatform: primaryPlatform || 'YOUTUBE',
+        platformLinks
+      });
+
+      res.status(201).json(profile);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to manage creator profile' });
+    }
+  });
+
+  app.get('/api/social/creators/me', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const profile = SocialDistributionService.getCreatorProfileByUserId(req.user!.id);
+      res.json(profile);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch creator profile' });
     }
   });
 

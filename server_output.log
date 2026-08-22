@@ -1,0 +1,58 @@
+
+> react-example@0.0.0 dev
+> tsx server.ts
+
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+{"timestamp":"2026-08-22T17:11:30.579Z","level":"INFO","message":"Bootstrapping Speak Up Platform Server..."}
+Initializing SQLite database at: /app/speakup.db
+Database tables and indexes verified successfully.
+Database already contains seed data. Syncing any missing official responses...
+P³RE Storage Zones initialized successfully.
+{"timestamp":"2026-08-22T17:11:30.584Z","level":"INFO","message":"Starting durable background job worker loop..."}
+{"timestamp":"2026-08-22T17:11:30.837Z","level":"INFO","message":"Speak Up Production API Server running on port 3000 (development mode)"}
+{"timestamp":"2026-08-22T17:11:30.837Z","level":"INFO","message":"Live Web Preview: http://localhost:3000/"}
+{"timestamp":"2026-08-22T17:11:30.837Z","level":"INFO","message":"Health Live Endpoint: http://localhost:3000/health/live"}
+{"timestamp":"2026-08-22T17:11:30.837Z","level":"INFO","message":"Health Ready Endpoint: http://localhost:3000/health/ready"}
+{"timestamp":"2026-08-22T17:11:30.837Z","level":"INFO","message":"Real-Time SSE Stream Endpoint: http://localhost:3000/api/events"}
+{"timestamp":"2026-08-22T17:11:31.586Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:11:31.587Z","level":"WARN","message":"Job Scheduled for Retry (1/5): DISPATCH_ALERT","jobId":"job-test-1787418092405","nextAvailable":"2026-08-22T17:12:01.587Z"}
+{"timestamp":"2026-08-22T17:11:32.586Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:11:32.587Z","level":"WARN","message":"Job Scheduled for Retry (1/5): DISPATCH_ALERT","jobId":"job-test-1787418492934","nextAvailable":"2026-08-22T17:12:02.587Z"}
+{"timestamp":"2026-08-22T17:11:33.586Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:11:33.587Z","level":"WARN","message":"Job Scheduled for Retry (1/5): DISPATCH_ALERT","jobId":"job-test-1787418521034","nextAvailable":"2026-08-22T17:12:03.587Z"}
+{"timestamp":"2026-08-22T17:11:34.588Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:11:34.589Z","level":"WARN","message":"Job Scheduled for Retry (1/5): DISPATCH_ALERT","jobId":"job-test-1787418560310","nextAvailable":"2026-08-22T17:12:04.589Z"}
+{"timestamp":"2026-08-22T17:11:35.588Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:11:35.589Z","level":"WARN","message":"Job Scheduled for Retry (1/5): DISPATCH_ALERT","jobId":"job-test-1787418598713","nextAvailable":"2026-08-22T17:12:05.589Z"}
+{"timestamp":"2026-08-22T17:11:36.590Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:11:36.591Z","level":"WARN","message":"Job Scheduled for Retry (1/5): DISPATCH_ALERT","jobId":"job-test-1787418626746","nextAvailable":"2026-08-22T17:12:06.590Z"}
+{"timestamp":"2026-08-22T17:11:37.589Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:11:37.590Z","level":"WARN","message":"Job Scheduled for Retry (1/5): DISPATCH_ALERT","jobId":"job-test-1787418666352","nextAvailable":"2026-08-22T17:12:07.590Z"}
+{"timestamp":"2026-08-22T17:12:01.615Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:12:01.616Z","level":"WARN","message":"Job Scheduled for Retry (2/5): DISPATCH_ALERT","jobId":"job-test-1787418092405","nextAvailable":"2026-08-22T17:13:01.616Z"}
+{"timestamp":"2026-08-22T17:12:02.617Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:12:02.618Z","level":"WARN","message":"Job Scheduled for Retry (2/5): DISPATCH_ALERT","jobId":"job-test-1787418492934","nextAvailable":"2026-08-22T17:13:02.618Z"}
+{"timestamp":"2026-08-22T17:12:03.617Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:12:03.618Z","level":"WARN","message":"Job Scheduled for Retry (2/5): DISPATCH_ALERT","jobId":"job-test-1787418521034","nextAvailable":"2026-08-22T17:13:03.618Z"}
+{"timestamp":"2026-08-22T17:12:04.618Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:12:04.619Z","level":"WARN","message":"Job Scheduled for Retry (2/5): DISPATCH_ALERT","jobId":"job-test-1787418560310","nextAvailable":"2026-08-22T17:13:04.619Z"}
+{"timestamp":"2026-08-22T17:12:05.619Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:12:05.620Z","level":"WARN","message":"Job Scheduled for Retry (2/5): DISPATCH_ALERT","jobId":"job-test-1787418598713","nextAvailable":"2026-08-22T17:13:05.620Z"}
+{"timestamp":"2026-08-22T17:12:06.621Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:12:06.621Z","level":"WARN","message":"Job Scheduled for Retry (2/5): DISPATCH_ALERT","jobId":"job-test-1787418626746","nextAvailable":"2026-08-22T17:13:06.621Z"}
+{"timestamp":"2026-08-22T17:12:07.621Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:12:07.622Z","level":"WARN","message":"Job Scheduled for Retry (2/5): DISPATCH_ALERT","jobId":"job-test-1787418666352","nextAvailable":"2026-08-22T17:13:07.622Z"}
+{"timestamp":"2026-08-22T17:13:02.412Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:13:02.413Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787418092405","nextAvailable":"2026-08-22T17:15:02.413Z"}
+{"timestamp":"2026-08-22T17:13:03.413Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:13:03.414Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787418492934","nextAvailable":"2026-08-22T17:15:03.413Z"}
+{"timestamp":"2026-08-22T17:13:04.415Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:13:04.415Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787418521034","nextAvailable":"2026-08-22T17:15:04.415Z"}
+{"timestamp":"2026-08-22T17:13:05.417Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:13:05.417Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787418560310","nextAvailable":"2026-08-22T17:15:05.417Z"}
+{"timestamp":"2026-08-22T17:13:06.417Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:13:06.418Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787418598713","nextAvailable":"2026-08-22T17:15:06.418Z"}
+{"timestamp":"2026-08-22T17:13:07.418Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:13:07.419Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787418626746","nextAvailable":"2026-08-22T17:15:07.419Z"}
+{"timestamp":"2026-08-22T17:13:08.419Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-22T17:13:08.420Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787418666352","nextAvailable":"2026-08-22T17:15:08.420Z"}

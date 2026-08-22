@@ -191,13 +191,13 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-5 shadow-lg transition-all hover:border-slate-300 dark:hover:border-slate-700/80 space-y-3 relative overflow-hidden"
     >
       {/* Community Megaphone Banner & Issue Followership Controls */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800/80 text-[11px] gap-2 flex-wrap">
+      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800/80 text-[11px] gap-2">
         <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="font-semibold">Community Discovery</span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Public Report</span>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap flex-1 justify-end">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
           {/* Issue Followership CTA */}
           <button
             onClick={handleToggleFollowIssue}
@@ -464,23 +464,23 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         return (
           <div className="space-y-2.5 pt-2">
             {/* Header with Multi-Statement Navigation */}
-            <div className="flex items-center justify-between gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex-wrap">
-              <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center justify-between gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>
+                <span className="truncate">
                   {totalResponses > 1
-                    ? 'Official State Institution Statements'
-                    : 'Official State Institution Response Summary'}
+                    ? 'Official State Statements'
+                    : 'Official State Response'}
                 </span>
                 {totalResponses > 1 && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/80 normal-case tracking-normal">
-                    {totalResponses} Statements Issued
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/80 normal-case tracking-normal shrink-0">
+                    {totalResponses} Issued
                   </span>
                 )}
               </div>
 
-              {totalResponses > 1 ? (
-                <div className="flex items-center gap-1.5 normal-case tracking-normal ml-auto">
+              {totalResponses > 1 && (
+                <div className="flex items-center gap-1.5 normal-case tracking-normal shrink-0">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -493,8 +493,8 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
-                  <span className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 select-none">
-                    {safeIndex + 1} / {totalResponses}
+                  <span className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 select-none">
+                    {safeIndex + 1}/{totalResponses}
                   </span>
                   <button
                     type="button"
@@ -509,10 +509,6 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              ) : (
-                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal lowercase tracking-normal">
-                  (click card or button for full communiqué)
-                </span>
               )}
             </div>
 
@@ -561,42 +557,39 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                 }}
                 className="group bg-slate-50 dark:bg-slate-950/90 border-l-4 border-l-emerald-500 border-y border-r border-slate-200 dark:border-slate-800 hover:border-emerald-500/80 rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-3 transition-all cursor-pointer hover:shadow-emerald-950/30"
               >
-                {/* Institution Premium Header */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 flex items-center justify-center shadow-md shrink-0">
-                      <div className="w-full h-full bg-white dark:bg-slate-900 rounded-[10px] flex items-center justify-center">
-                        <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                {/* Institution Clean X/Social Media Style Header */}
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 flex items-center justify-center shadow-xs shrink-0">
+                      <div className="w-full h-full bg-white dark:bg-slate-900 rounded-full flex items-center justify-center">
+                        <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       </div>
                     </div>
 
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-extrabold text-sm text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors truncate">
                           {resp.institutionName}
                         </span>
                         <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/80">
-                          VERIFIED STATE DESK
-                        </span>
                       </div>
 
-                      <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
-                        <span>{resp.responderName}</span>
-                        <span>•</span>
-                        <span className="text-slate-700 dark:text-slate-300 font-medium">{resp.responderTitle}</span>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        <span className="font-medium text-slate-700 dark:text-slate-300">{resp.responderName}</span>
+                        {resp.responderTitle && (
+                          <span className="text-slate-500 dark:text-slate-400 font-normal"> • {resp.responderTitle}</span>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Status Badge & Timestamp */}
                   <div className="text-right shrink-0">
-                    <span className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 uppercase tracking-wider block">
+                    <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/80 uppercase tracking-wider inline-block">
                       {resp.responseType.replace(/_/g, ' ')}
                     </span>
-                    <span className="text-[10px] text-slate-500 mt-1 block font-mono">
-                      {new Date(resp.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} •{' '}
-                      {new Date(resp.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block font-mono">
+                      {new Date(resp.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                     </span>
                   </div>
                 </div>

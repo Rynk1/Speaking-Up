@@ -195,42 +195,33 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
             </div>
           )}
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm sm:text-base tracking-tight truncate">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1 min-w-0">
+              <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-xs sm:text-base tracking-tight truncate">
                 {response.institutionName}
               </h3>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/80 shrink-0">
-                <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                VERIFIED STATE AUTHORITY
-              </span>
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap mt-0.5">
+            <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
               <span className="font-medium text-slate-800 dark:text-slate-300">{response.responderName}</span>
-              <span>•</span>
-              <span className="text-slate-600 dark:text-slate-400 truncate">{response.responderTitle}</span>
-              <span>•</span>
-              <span className="text-slate-500 dark:text-slate-500 font-mono text-[11px]">
-                {new Date(response.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
-                {new Date(response.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
+              {response.responderTitle && (
+                <span className="text-slate-500 dark:text-slate-400 font-normal"> • {response.responderTitle}</span>
+              )}
             </div>
           </div>
         </div>
 
         {/* Action badge & status */}
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <span className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border uppercase tracking-wider flex items-center gap-1 ${typeMeta.badgeBg}`}>
-            <TypeIcon className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{response.responseType.replace(/_/g, ' ')}</span>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className={`px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-md border uppercase tracking-wider flex items-center gap-1 ${typeMeta.badgeBg}`}>
+            <TypeIcon className="w-3 h-3" />
+            <span>{response.responseType.replace(/_/g, ' ')}</span>
           </span>
 
-          {response.resolutionStatus && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
-              STATUS: {response.resolutionStatus}
-            </span>
-          )}
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+            {new Date(response.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+          </span>
         </div>
       </div>
 

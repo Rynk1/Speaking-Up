@@ -59,6 +59,8 @@ export interface PostLocation {
   landmark?: string;
   latitude: number;
   longitude: number;
+  lat?: number;
+  lng?: number;
   accuracy?: 'exact' | 'approximate' | 'district_only' | 'hidden';
   visibility: 'exact' | 'approximate' | 'hidden';
 }

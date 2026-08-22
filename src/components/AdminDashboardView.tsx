@@ -21,7 +21,9 @@ import {
   ShieldCheck,
   UserCheck,
   Clock,
-  ExternalLink
+  ExternalLink,
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -31,6 +33,7 @@ export const AdminDashboardView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showMobileTabDropdown, setShowMobileTabDropdown] = useState(false);
 
   // Overview stats
   const [overview, setOverview] = useState<any>(null);
@@ -68,6 +71,18 @@ export const AdminDashboardView: React.FC = () => {
     jurisdiction: 'NATIONAL',
     alertMethod: 'OFFICIAL_EMAIL'
   });
+
+  const getTabLabel = (tab: AdminTab) => {
+    switch (tab) {
+      case 'overview': return 'System Overview';
+      case 'content': return 'Content Moderation';
+      case 'reports': return 'Abuse Flag Queue';
+      case 'users': return 'User Management';
+      case 'institutions': return 'State Institutions';
+      case 'privacy': return 'P³RE Privacy Engine';
+      case 'system': return 'Job Queue & Audit';
+    }
+  };
 
   // Load overview data
   const loadOverview = useCallback(async () => {
@@ -199,9 +214,9 @@ export const AdminDashboardView: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden min-h-[680px] flex flex-col md:flex-row text-slate-100">
-      {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-slate-950/80 border-b md:border-b-0 md:border-r border-slate-800 p-4 shrink-0 flex flex-col justify-between">
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden min-h-[680px] flex flex-col md:flex-row text-slate-100">
+      {/* Sidebar Navigation - Desktop */}
+      <aside className="hidden md:flex w-64 lg:w-72 bg-slate-950/90 border-r border-slate-800 p-4 shrink-0 flex-col justify-between">
         <div className="space-y-6">
           {/* Header Badge */}
           <div className="flex items-center gap-2.5 px-2">
@@ -327,11 +342,82 @@ export const AdminDashboardView: React.FC = () => {
         </div>
       </aside>
 
+      {/* Mobile Top Header with Breadcrumbs & Dropdown */}
+      <div className="md:hidden bg-slate-950/95 border-b border-slate-800 p-3.5 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shadow">
+              <ShieldAlert className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-extrabold text-xs text-white">ADMIN CONSOLE</span>
+              <div className="flex items-center gap-1 text-[10px] text-purple-400">
+                <span>Console</span>
+                <ChevronRight className="w-3 h-3 text-slate-600" />
+                <span className="font-bold">{getTabLabel(activeTab)}</span>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowMobileTabDropdown(!showMobileTabDropdown)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-purple-300 text-xs font-bold rounded-xl border border-slate-700 active:scale-95 transition-all"
+          >
+            <span>Switch Tab</span>
+            <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Mobile Dropdown Panel */}
+        {showMobileTabDropdown && (
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-2 space-y-1 shadow-2xl animate-in fade-in">
+            {(['overview', 'content', 'reports', 'users', 'institutions', 'privacy', 'system'] as AdminTab[]).map(tab => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveTab(tab);
+                  setShowMobileTabDropdown(false);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between ${
+                  activeTab === tab
+                    ? 'bg-purple-600 text-white font-bold'
+                    : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <span>{getTabLabel(tab)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Mobile Horizontal Pill Tab Scroller */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+          {(['overview', 'content', 'reports', 'users', 'institutions', 'privacy', 'system'] as AdminTab[]).map(tab => (
+            <button
+              key={`pill-adm-${tab}`}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap shrink-0 transition-all ${
+                activeTab === tab
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+              }`}
+            >
+              {getTabLabel(tab)}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Main Content Body */}
-      <main className="flex-1 p-4 sm:p-6 bg-slate-900/60 overflow-y-auto">
-        {/* Refresh Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
+      <main className="flex-1 p-4 sm:p-6 bg-slate-900/60 overflow-y-auto space-y-5">
+        {/* Top Header - Desktop view */}
+        <div className="hidden md:flex items-center justify-between pb-4 border-b border-slate-800">
           <div>
+            <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold mb-1">
+              <span>Admin Console</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+              <span className="text-slate-200">{getTabLabel(activeTab)}</span>
+            </div>
             <h1 className="text-lg font-bold text-white capitalize flex items-center gap-2">
               {activeTab === 'overview' && 'System Performance & Platform Overview'}
               {activeTab === 'content' && 'Civic Content & Report Moderation'}
@@ -349,10 +435,10 @@ export const AdminDashboardView: React.FC = () => {
           <button
             onClick={loadTabData}
             disabled={loading}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium border border-slate-700 flex items-center gap-1.5 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-purple-400' : ''}`} />
-            Refresh
+            <span>Refresh</span>
           </button>
         </div>
 

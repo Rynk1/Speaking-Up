@@ -57,7 +57,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
   const [activeTab, setActiveTab] = useState<InstitutionTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [showMobileTabDropdown, setShowMobileTabDropdown] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   const currentInstitution = institutions.find(i => i.id === selectedInstitutionId) || institutions[0];
 
@@ -240,70 +240,34 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
         </div>
       </aside>
 
-      {/* Mobile Top Header with Breadcrumbs & Dropdown */}
-      <div className="md:hidden bg-slate-950/95 border-b border-slate-800 p-3.5 space-y-2.5">
+      {/* Mobile Top Header with Interactive Breadcrumb Drawer Trigger */}
+      <div className="md:hidden bg-slate-950/95 border-b border-slate-800 p-3 sm:p-3.5 space-y-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 font-bold shadow">
+          <button
+            onClick={() => setShowMobileSidebar(true)}
+            className="flex items-center gap-2 group text-left cursor-pointer"
+          >
+            <div className="w-8 h-8 rounded-xl bg-amber-600 flex items-center justify-center text-slate-950 font-bold shadow-md group-active:scale-95 transition-transform">
               <Building2 className="w-4 h-4" />
             </div>
             <div>
-              <span className="font-extrabold text-xs text-white">{currentInstitution?.acronym || 'AGENCY PORTAL'}</span>
-              <div className="flex items-center gap-1 text-[10px] text-amber-400">
+              <span className="font-extrabold text-xs text-white block">{currentInstitution?.acronym || 'AGENCY PORTAL'}</span>
+              <div className="flex items-center gap-1 text-[11px] text-amber-400 font-semibold">
                 <span>Portal</span>
-                <ChevronRight className="w-3 h-3 text-slate-600" />
-                <span className="font-bold">{getTabLabel(activeTab)}</span>
+                <ChevronRight className="w-3 h-3 text-slate-500" />
+                <span className="text-white underline underline-offset-2 decoration-amber-500">{getTabLabel(activeTab)}</span>
               </div>
             </div>
-          </div>
+          </button>
 
           <button
-            onClick={() => setShowMobileTabDropdown(!showMobileTabDropdown)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-amber-300 text-xs font-bold rounded-xl border border-slate-700 active:scale-95 transition-all"
+            onClick={() => setShowMobileSidebar(true)}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold rounded-xl border border-slate-700 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
           >
-            <span>Switch Tab</span>
-            <ChevronDown className="w-3.5 h-3.5" />
+            <Layers className="w-3.5 h-3.5 text-amber-400" />
+            <span>Menu Drawer</span>
           </button>
         </div>
-
-        {/* Mobile Agency Selector */}
-        <div className="pt-1">
-          <select
-            value={currentInstitution?.id}
-            onChange={e => setSelectedInstitutionId(e.target.value)}
-            className="w-full p-2 bg-slate-900 text-amber-300 text-xs font-bold rounded-xl border border-slate-700 focus:outline-none"
-          >
-            {institutions.map((inst, idx) => (
-              <option key={inst.id ? `${inst.id}-${idx}` : `inst-m-opt-${idx}`} value={inst.id}>
-                {inst.shortName} ({inst.acronym})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Mobile Dropdown Panel */}
-        {showMobileTabDropdown && (
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-2 space-y-1 shadow-2xl animate-in fade-in">
-            {(['overview', 'alerts', 'urgent', 'responses', 'config'] as InstitutionTab[]).map(tab => (
-              <button
-                key={tab}
-                onClick={() => {
-                  setActiveTab(tab);
-                  setShowMobileTabDropdown(false);
-                }}
-                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between ${
-                  activeTab === tab
-                    ? 'bg-amber-600 text-slate-950 font-bold'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <span>{getTabLabel(tab)}</span>
-                {tab === 'alerts' && <span className="text-[10px] bg-red-900/60 text-red-300 px-1.5 py-0.2 rounded font-mono">{unansweredPosts.length}</span>}
-                {tab === 'urgent' && <span className="text-[10px] bg-amber-900/60 text-amber-300 px-1.5 py-0.2 rounded font-mono">{criticalPosts.length}</span>}
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* Mobile Horizontal Pill Tab Scroller */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
@@ -311,7 +275,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
             <button
               key={`pill-inst-${tab}`}
               onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap shrink-0 transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                 activeTab === tab
                   ? 'bg-amber-600 text-slate-950 shadow-md font-extrabold'
                   : 'bg-slate-900 text-slate-400 border border-slate-800'
@@ -322,6 +286,85 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
           ))}
         </div>
       </div>
+
+      {/* Mobile Left Sidebar Overlay Drawer */}
+      {showMobileSidebar && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          <div
+            onClick={() => setShowMobileSidebar(false)}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm animate-in fade-in"
+          />
+
+          <div className="relative w-4/5 max-w-xs bg-slate-950 border-r border-slate-800 h-full p-4 flex flex-col justify-between shadow-2xl z-10 animate-in slide-in-from-left duration-200">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-600 flex items-center justify-center text-slate-950 font-bold shadow-lg">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-sm text-white">AGENCY PORTAL</h2>
+                    <p className="text-[10px] text-amber-400 font-semibold">Verified Authority Desk</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowMobileSidebar(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                >
+                  <Check className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Agency Account Selector in Drawer */}
+              <div>
+                <label className="block text-[9px] text-slate-400 mb-1 uppercase font-bold tracking-wider">
+                  Select Agency Account:
+                </label>
+                <select
+                  value={currentInstitution?.id}
+                  onChange={e => setSelectedInstitutionId(e.target.value)}
+                  className="w-full p-2 bg-slate-900 text-amber-300 text-xs font-bold rounded-xl border border-slate-700 focus:outline-none"
+                >
+                  {institutions.map((inst, idx) => (
+                    <option key={inst.id ? `${inst.id}-${idx}` : `inst-drawer-opt-${idx}`} value={inst.id}>
+                      {inst.shortName} ({inst.acronym})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Navigation Tabs */}
+              <nav className="space-y-1.5">
+                {(['overview', 'alerts', 'urgent', 'responses', 'config'] as InstitutionTab[]).map(tab => (
+                  <button
+                    key={`drawer-inst-${tab}`}
+                    onClick={() => {
+                      setActiveTab(tab);
+                      setShowMobileSidebar(false);
+                    }}
+                    className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
+                      activeTab === tab
+                        ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
+                        : 'text-slate-300 hover:bg-slate-800/80'
+                    }`}
+                  >
+                    <span>{getTabLabel(tab)}</span>
+                    {tab === 'alerts' && unansweredPosts.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30">
+                        {unansweredPosts.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-500 space-y-1">
+              <div className="text-[10px] text-slate-400 truncate">{currentInstitution?.officialName}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Body */}
       <main className="flex-1 p-3.5 sm:p-6 bg-slate-900/60 overflow-y-auto space-y-5">
@@ -350,8 +393,8 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* KPI Cards Grid (2 Columns on Mobile) */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
               <div className="bg-slate-950/70 border border-slate-800 p-4 rounded-2xl space-y-1">
                 <div className="text-xs text-slate-400 uppercase font-semibold">Total Tagged Alerts</div>
                 <div className="text-2xl font-black text-white">{taggedPosts.length}</div>

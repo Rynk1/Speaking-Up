@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Megaphone,
   Plus,
@@ -34,7 +34,7 @@ interface HomeFeedViewProps {
   currentUser: any;
   setIsSpeakUpOpen: (open: boolean) => void;
   setSelectedInstitutionId: (id: string) => void;
-  setSharePost: (p: CivicPost | null) => void;
+  setSharePost: (p: CivicPost | null, r?: InstitutionResponse) => void;
   setEvidencePost: (p: CivicPost | null) => void;
   setResponsePost: (p: CivicPost | null) => void;
   setAbusePostId: (id: string | null) => void;
@@ -60,6 +60,7 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
   setSelectedStatement
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [feedTab, setFeedTab] = useState<'nearby_hot' | 'official_responded' | 'all'>('nearby_hot');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
@@ -67,6 +68,17 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
   const [filterUrgency, setFilterUrgency] = useState<string>('ALL');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [focusedResponseId, setFocusedResponseId] = useState<string | null>(null);
+
+  // Sync state from route location navigation (e.g. from detail view or modal)
+  useEffect(() => {
+    if (location.state?.tab) {
+      setFeedTab(location.state.tab);
+    }
+    if (location.state?.focusedResponseId) {
+      setFocusedResponseId(location.state.focusedResponseId);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [location.state]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -420,7 +432,7 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
                     navigate(`/post/${p.id}`);
                   }}
                   onPostUpdated={handleRefresh}
-                  onOpenShare={p => setSharePost(p)}
+                  onOpenShare={(p, r) => setSharePost(p, r)}
                   onOpenReportAbuse={id => setAbusePostId(id)}
                 />
               ))
@@ -452,7 +464,7 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
               <CivicPostCard
                 key={post.id ? `${post.id}-${idx}` : `post-${idx}`}
                 post={post}
-                onOpenShare={p => setSharePost(p)}
+                onOpenShare={(p, r) => setSharePost(p, r)}
                 onOpenAddEvidence={p => setEvidencePost(p)}
                 onOpenReportAbuse={id => setAbusePostId(id)}
                 onOpenCluster={cId => navigate(`/clusters/${cId}`)}

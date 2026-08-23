@@ -37,10 +37,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CivicPost, InstitutionResponse, CommunityEvidence } from '../types';
 import { api } from '../services/api';
 import { formatCount } from '../utils/format';
+import { SeenTooPromptModal } from './SeenTooPromptModal';
 
 interface CivicPostCardProps {
   post: CivicPost;
-  onOpenShare: (post: CivicPost) => void;
+  onOpenShare: (post: CivicPost, response?: InstitutionResponse) => void;
   onOpenAddEvidence: (post: CivicPost) => void;
   onOpenReportAbuse: (postId: string) => void;
   onOpenCluster?: (clusterId: string) => void;
@@ -70,6 +71,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isSeenTooPromptOpen, setIsSeenTooPromptOpen] = useState(false);
   const [isFollowingIssue, setIsFollowingIssue] = useState(false);
   const [activeResponseIndex, setActiveResponseIndex] = useState(0);
 
@@ -81,9 +83,13 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
   const handleToggleConfirm = async () => {
     if (isConfirming) return;
     setIsConfirming(true);
+    const willBeConfirmed = !post.userConfirmed;
     try {
       await api.toggleConfirmation(post.id);
       onPostUpdated();
+      if (willBeConfirmed) {
+        setIsSeenTooPromptOpen(true);
+      }
     } catch (err) {
       console.error('Error confirming post:', err);
     } finally {
@@ -684,7 +690,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5 sm:gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={e => {
@@ -695,12 +701,12 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                           onViewOfficialResponse(post, resp);
                         }
                       }}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold border border-slate-200 dark:border-slate-700 text-[11px] sm:text-xs transition-colors shrink-0"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold border border-slate-300 dark:border-slate-700 text-xs transition-colors shrink-0 cursor-pointer active:scale-95"
                       title="View this response formatted as a standalone reverse-hierarchy post in the feed"
                     >
                       <span className="hidden xs:inline sm:inline">Feed Post</span>
                       <span className="xs:hidden sm:hidden">Post</span>
-                      <ArrowRight className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                      <ArrowRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     </button>
 
                     <button
@@ -711,10 +717,10 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                           onViewOfficialResponse(post, resp);
                         }
                       }}
-                      className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-500/20 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-500/40 text-[11px] sm:text-xs transition-colors shrink-0"
+                      className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-500/20 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-500/40 text-xs transition-colors shrink-0 cursor-pointer active:scale-95"
                     >
                       <span>Communiqué</span>
-                      <ExternalLink className="w-3 h-3" />
+                      <ExternalLink className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -754,25 +760,24 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         </div>
       )}
 
-      {/* Core Action Bar: "I'M SEEING THIS TOO", Add Evidence, Share, Amplify, Comments */}
-      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-1 sm:gap-1.5 text-slate-700 dark:text-slate-300 w-full min-w-0">
-        {/* "I'M SEEING THIS TOO" Button */}
+      {/* Core Action Bar: "SEEN TOO", Share, Amplify, Comments */}
+      <div className="pt-2.5 sm:pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-1.5 sm:gap-2 text-slate-700 dark:text-slate-300 w-full min-w-0">
+        {/* "SEEN TOO" Button with count */}
         <button
           id={`confirm-post-btn-${post.id}`}
           onClick={handleToggleConfirm}
           disabled={isConfirming}
-          className={`flex items-center gap-1 px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-semibold shrink-0 transition-all ${
+          className={`h-9 sm:h-9.5 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-[13px] font-bold shrink-0 transition-all active:scale-95 flex items-center gap-1.5 shadow-xs cursor-pointer ${
             post.userConfirmed
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-slate-300 dark:border-slate-700/80'
+              ? 'bg-emerald-600 text-white shadow-emerald-900/30'
+              : 'bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-slate-300 dark:border-slate-700/80'
           }`}
-          title="Independently confirm that you observe or experience this issue"
+          title="Confirm you have seen this too"
         >
-          <CheckCircle2 className={`w-3 h-3 shrink-0 ${post.userConfirmed ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
-          <span className="whitespace-nowrap hidden xs:inline sm:inline">I’m Seeing This Too</span>
-          <span className="whitespace-nowrap xs:hidden sm:hidden">Seeing This</span>
+          <CheckCircle2 className={`w-4 h-4 shrink-0 ${post.userConfirmed ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
+          <span className="whitespace-nowrap">Seen Too</span>
           <span
-            className={`px-1 py-0.2 rounded text-[9px] sm:text-[10px] font-mono leading-none ${
+            className={`px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs font-mono font-bold leading-none ${
               post.userConfirmed ? 'bg-emerald-800 text-white' : 'bg-slate-200 dark:bg-slate-900 text-emerald-800 dark:text-emerald-300'
             }`}
           >
@@ -780,62 +785,52 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           </span>
         </button>
 
-        {/* Action Group: All aligned neatly with compact spacing */}
-        <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0">
-          {/* Add Evidence CTA */}
-          <button
-            onClick={() => onOpenAddEvidence(post)}
-            className="px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] sm:text-[11px] font-medium rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0"
-            title="Add field photos or status update"
-          >
-            <Camera className="w-3 h-3 text-sky-600 dark:text-sky-400 shrink-0" />
-            <span className="whitespace-nowrap hidden sm:inline">Evidence</span>
-          </button>
-
+        {/* Action Group: All aligned neatly with comfortable touch targets */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {/* Social Share */}
           <button
             id={`share-post-btn-${post.id}`}
             onClick={() => onOpenShare(post)}
-            className="px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] sm:text-[11px] font-medium rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0"
+            className="h-9 sm:h-9.5 px-2 sm:px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs sm:text-[13px] font-semibold rounded-xl border border-slate-300/80 dark:border-slate-700/80 flex items-center justify-center gap-1 sm:gap-1.5 transition-all shrink-0 active:scale-95 shadow-xs cursor-pointer"
             title="Share to WhatsApp, X, Facebook or Telegram"
           >
-            <Share2 className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span className="whitespace-nowrap hidden sm:inline">Share</span>
-            <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement?.shares || post.sharesCount || 0)}</span>
+            <Share2 className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="whitespace-nowrap hidden md:inline">Share</span>
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono font-medium">{formatCount(post.engagement?.shares || post.sharesCount || 0)}</span>
           </button>
 
           {/* Repost / Amplify */}
           <button
             onClick={handleToggleRepost}
-            className={`px-1.5 sm:px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-medium border flex items-center gap-1 transition-colors shrink-0 ${
+            className={`h-9 sm:h-9.5 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs sm:text-[13px] font-semibold border flex items-center justify-center gap-1 sm:gap-1.5 transition-all shrink-0 active:scale-95 shadow-xs cursor-pointer ${
               post.userReposted
                 ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
-                : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700/80'
+                : 'bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300/80 dark:border-slate-700/80'
             }`}
             title="Amplify on platform"
           >
-            <Repeat2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="whitespace-nowrap hidden sm:inline">Amplify</span>
-            <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement?.reposts || post.repostsCount || 0)}</span>
+            <Repeat2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="whitespace-nowrap hidden md:inline">Amplify</span>
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono font-medium">{formatCount(post.engagement?.reposts || post.repostsCount || 0)}</span>
           </button>
 
           {/* Comments Toggle */}
           <button
             onClick={() => setShowComments(!showComments)}
-            className="px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] sm:text-[11px] font-medium rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0"
+            className="h-9 sm:h-9.5 px-2 sm:px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs sm:text-[13px] font-semibold rounded-xl border border-slate-300/80 dark:border-slate-700/80 flex items-center justify-center gap-1 sm:gap-1.5 transition-all shrink-0 active:scale-95 shadow-xs cursor-pointer"
           >
-            <MessageSquare className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />
-            <span className="whitespace-nowrap hidden sm:inline">Comments</span>
-            <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.commentsList?.length || post.engagement?.comments || post.commentsCount || 0)}</span>
+            <MessageSquare className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+            <span className="whitespace-nowrap hidden md:inline">Comments</span>
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono font-medium">{formatCount(post.commentsList?.length || post.engagement?.comments || post.commentsCount || 0)}</span>
           </button>
 
           {/* Institution Rep CTA if viewing in official mode */}
           {userRole === 'institution_rep' && onOpenInstitutionResponse && (
             <button
               onClick={() => onOpenInstitutionResponse(post)}
-              className="px-1.5 sm:px-2 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 text-[10px] sm:text-[11px] font-bold rounded-lg flex items-center gap-1 shadow-sm transition-colors shrink-0"
+              className="h-9 sm:h-9.5 px-2.5 sm:px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs sm:text-[13px] font-bold rounded-xl flex items-center justify-center gap-1 shadow-sm transition-all shrink-0 active:scale-95 cursor-pointer"
             >
-              <Building2 className="w-3 h-3 shrink-0" />
+              <Building2 className="w-4 h-4 shrink-0" />
               <span className="whitespace-nowrap hidden sm:inline">Respond</span>
             </button>
           )}
@@ -971,6 +966,15 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Seen Too Evidence Prompt Modal */}
+      <SeenTooPromptModal
+        post={post}
+        isOpen={isSeenTooPromptOpen}
+        onClose={() => setIsSeenTooPromptOpen(false)}
+        onOpenAddEvidence={onOpenAddEvidence}
+        confirmationsCount={post.engagement?.confirmations || post.confirmationsCount || 0}
+      />
     </article>
   );
 };

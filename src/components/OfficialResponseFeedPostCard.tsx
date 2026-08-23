@@ -454,22 +454,22 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
       </div>
 
       {/* Simplified Core Action Bar (Single Row without horizontal scrolls) */}
-      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-1 sm:gap-1.5 text-slate-700 dark:text-slate-300 w-full min-w-0">
+      <div className="pt-2.5 sm:pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-1.5 sm:gap-2 text-slate-700 dark:text-slate-300 w-full min-w-0">
         {/* Helpful Upvote Button */}
         <button
           id={`vote-helpful-btn-${response.id}`}
           onClick={e => handleVote(e, 'helpful')}
-          className={`flex items-center gap-1 px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-semibold shrink-0 transition-all ${
+          className={`h-9 sm:h-9.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-[13px] font-bold shrink-0 transition-all active:scale-95 flex items-center gap-1.5 shadow-xs cursor-pointer ${
             helpfulVote === 'helpful'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-slate-300 dark:border-slate-700/80'
+              ? 'bg-emerald-600 text-white shadow-emerald-900/30'
+              : 'bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-slate-300 dark:border-slate-700/80'
           }`}
           title="Mark this official statement as helpful & transparent"
         >
-          <ThumbsUp className={`w-3 h-3 shrink-0 ${helpfulVote === 'helpful' ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
+          <ThumbsUp className={`w-4 h-4 shrink-0 ${helpfulVote === 'helpful' ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
           <span className="whitespace-nowrap hidden xs:inline sm:inline">Helpful</span>
           <span
-            className={`px-1 py-0.2 rounded text-[9px] sm:text-[10px] font-mono leading-none ${
+            className={`px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs font-mono font-bold leading-none ${
               helpfulVote === 'helpful' ? 'bg-emerald-800 text-white' : 'bg-slate-200 dark:bg-slate-900 text-emerald-800 dark:text-emerald-300'
             }`}
           >
@@ -478,21 +478,21 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
         </button>
 
         {/* Action Group: All aligned neatly with compact spacing */}
-        <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {/* Unhelpful Vote Button */}
           <button
             id={`vote-unhelpful-btn-${response.id}`}
             onClick={e => handleVote(e, 'unhelpful')}
-            className={`px-1.5 sm:px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-medium border flex items-center gap-1 transition-colors shrink-0 ${
+            className={`h-9 sm:h-9.5 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs sm:text-[13px] font-semibold border flex items-center justify-center gap-1 sm:gap-1.5 transition-all shrink-0 active:scale-95 shadow-xs cursor-pointer ${
               helpfulVote === 'unhelpful'
                 ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800'
-                : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700/80'
+                : 'bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300/80 dark:border-slate-700/80'
             }`}
             title="Mark statement as unclear or inadequate"
           >
-            <ThumbsDown className="w-3 h-3 text-rose-600 dark:text-rose-400 shrink-0" />
-            <span className="whitespace-nowrap hidden sm:inline">Unhelpful</span>
-            <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(unhelpfulCount)}</span>
+            <ThumbsDown className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span className="whitespace-nowrap hidden md:inline">Unhelpful</span>
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono font-medium">{formatCount(unhelpfulCount)}</span>
           </button>
 
           {/* Social Share Button */}
@@ -503,34 +503,34 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
                 onOpenShare(post, response);
               }
             }}
-            className="px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] sm:text-[11px] font-medium rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0 cursor-pointer active:scale-95"
+            className="h-9 sm:h-9.5 px-2 sm:px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs sm:text-[13px] font-semibold rounded-xl border border-slate-300/80 dark:border-slate-700/80 flex items-center justify-center gap-1 sm:gap-1.5 transition-all shrink-0 cursor-pointer active:scale-95 shadow-xs"
             title="Share Official Communiqué to WhatsApp, X, or Telegram"
           >
-            <Share2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="whitespace-nowrap hidden sm:inline">Share</span>
-            <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(post.engagement?.shares || post.sharesCount || 0)}</span>
+            <Share2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="whitespace-nowrap hidden md:inline">Share</span>
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono font-medium">{formatCount(post.engagement?.shares || post.sharesCount || 0)}</span>
           </button>
 
           {/* Reply / Comments Toggle Button */}
           <button
             id={`toggle-comments-btn-${response.id}`}
             onClick={() => setShowComments(!showComments)}
-            className="px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] sm:text-[11px] font-medium rounded-lg border border-slate-300 dark:border-slate-700/80 flex items-center gap-1 transition-colors shrink-0"
+            className="h-9 sm:h-9.5 px-2 sm:px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs sm:text-[13px] font-semibold rounded-xl border border-slate-300/80 dark:border-slate-700/80 flex items-center justify-center gap-1 sm:gap-1.5 transition-all shrink-0 cursor-pointer active:scale-95 shadow-xs"
             title="View citizen replies"
           >
-            <MessageSquare className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />
-            <span className="whitespace-nowrap hidden sm:inline">Replies</span>
-            <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-mono">{formatCount(comments.length || response.commentsCount || 0)}</span>
+            <MessageSquare className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+            <span className="whitespace-nowrap hidden md:inline">Replies</span>
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono font-medium">{formatCount(comments.length || response.commentsCount || 0)}</span>
           </button>
 
           {/* Full Communiqué Modal CTA */}
           <button
             id={`open-statement-modal-btn-${response.id}`}
             onClick={() => onOpenStatementModal(post, response)}
-            className="px-1.5 sm:px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-[10px] sm:text-[11px] font-bold rounded-lg border border-emerald-300 dark:border-emerald-500/40 flex items-center gap-1 transition-colors shrink-0"
+            className="h-9 sm:h-9.5 px-2.5 sm:px-3 py-1.5 bg-emerald-100 dark:bg-emerald-500/20 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs sm:text-[13px] font-bold rounded-xl border border-emerald-300 dark:border-emerald-500/40 flex items-center justify-center gap-1 sm:gap-1.5 transition-all shrink-0 cursor-pointer active:scale-95 shadow-xs"
             title="View full official communiqué statement"
           >
-            <ExternalLink className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <ExternalLink className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span className="whitespace-nowrap hidden sm:inline">Communiqué</span>
           </button>
         </div>

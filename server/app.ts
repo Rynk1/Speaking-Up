@@ -817,16 +817,25 @@ export function createApp() {
             createdAt: r.created_at
           };
         }),
-        communityEvidence: evidenceRows.map(e => ({
-          id: e.id,
-          postId: e.post_id,
-          userId: e.user_id,
-          userName: e.user_name,
-          userHandle: e.user_handle,
-          text: e.text,
-          statusUpdate: e.status_update,
-          createdAt: e.created_at
-        })),
+        communityEvidence: evidenceRows.map(e => {
+          let mediaArr = [];
+          try {
+            if (e.media_json) mediaArr = JSON.parse(e.media_json);
+          } catch {}
+          return {
+            id: e.id,
+            postId: e.post_id,
+            userId: e.user_id,
+            userName: e.user_name,
+            userHandle: e.user_handle,
+            userAvatar: e.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(e.user_handle || e.user_name)}`,
+            isVerified: e.is_verified !== undefined ? Boolean(e.is_verified) : true,
+            text: e.text,
+            media: mediaArr,
+            statusUpdate: e.status_update,
+            createdAt: e.created_at
+          };
+        }),
         commentsList: commentsRows.map(c => ({
           id: c.id,
           postId: c.post_id,
@@ -918,15 +927,17 @@ export function createApp() {
   app.post('/api/posts/:id/evidence', (req: AuthenticatedRequest, res) => {
     try {
       const postId = req.params.id;
-      const { text, statusUpdate, userName, userHandle } = req.body;
+      const { text, statusUpdate, userName, userHandle, media } = req.body;
       const id = `ev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
       const now = new Date().toISOString();
-      const user = req.user || { id: 'anon', name: userName || 'Citizen Witness', handle: userHandle || '@citizen' };
+      const user = req.user || { id: 'anon', name: userName || 'Citizen Witness', handle: userHandle || '@citizen', avatar: undefined };
+      const mediaJson = media && Array.isArray(media) && media.length > 0 ? JSON.stringify(media) : null;
+      const userAvatar = user.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.handle || user.name)}`;
 
       db.prepare(`
-        INSERT INTO community_evidence (id, post_id, user_id, user_name, user_handle, text, status_update, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, postId, user.id, user.name, user.handle, sanitizeText(text || ''), statusUpdate || 'still_ongoing', now);
+        INSERT INTO community_evidence (id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, text, status_update, media_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+      `).run(id, postId, user.id, user.name, user.handle, userAvatar, sanitizeText(text || ''), statusUpdate || 'still_ongoing', mediaJson, now);
 
       res.status(201).json({
         id,
@@ -934,8 +945,11 @@ export function createApp() {
         userId: user.id,
         userName: user.name,
         userHandle: user.handle,
+        userAvatar,
+        isVerified: true,
         text: sanitizeText(text || ''),
         statusUpdate: statusUpdate || 'still_ongoing',
+        media: media || [],
         createdAt: now
       });
     } catch (err: any) {

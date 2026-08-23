@@ -29,7 +29,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Modal States
-  const [sharePost, setSharePost] = useState<CivicPost | null>(null);
+  const [shareTarget, setShareTarget] = useState<{ post: CivicPost; response?: InstitutionResponse } | null>(null);
   const [evidencePost, setEvidencePost] = useState<CivicPost | null>(null);
   const [responsePost, setResponsePost] = useState<CivicPost | null>(null);
   const [abusePostId, setAbusePostId] = useState<string | null>(null);
@@ -106,7 +106,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
       {/* Main Dedicated Post Card */}
       <CivicPostCard
         post={post}
-        onOpenShare={p => setSharePost(p)}
+        onOpenShare={(p, r) => setShareTarget({ post: p, response: r })}
         onOpenAddEvidence={p => setEvidencePost(p)}
         onOpenReportAbuse={p => setAbusePostId(p)}
         onOpenCluster={cId => navigate(`/clusters/${cId}`)}
@@ -114,14 +114,17 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
         userRole={userRole as any}
         onOpenInstitutionResponse={p => setResponsePost(p)}
         onViewOfficialResponse={(p, r) => setSelectedStatement({ post: p, response: r })}
-        onViewResponseFeedPost={(p, r) => setSelectedStatement({ post: p, response: r })}
+        onViewResponseFeedPost={(p, r) => {
+          navigate('/', { state: { focusedResponseId: r.id, tab: 'official_responded' } });
+        }}
       />
 
       {/* Modals */}
       <SharePreviewModal
-        post={sharePost}
-        isOpen={!!sharePost}
-        onClose={() => setSharePost(null)}
+        post={shareTarget?.post || null}
+        response={shareTarget?.response || null}
+        isOpen={!!shareTarget}
+        onClose={() => setShareTarget(null)}
       />
 
       <AddEvidenceModal
@@ -154,7 +157,10 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
           onClose={() => setSelectedStatement(null)}
           onPostUpdated={fetchPost}
           onOpenAnotherResponse={newResp => setSelectedStatement({ post: selectedStatement.post, response: newResp })}
-          onViewAsFeedPost={() => {}}
+          onOpenShare={(p, r) => setShareTarget({ post: p, response: r })}
+          onViewAsFeedPost={(p, r) => {
+            navigate('/', { state: { focusedResponseId: r.id, tab: 'official_responded' } });
+          }}
         />
       )}
     </div>

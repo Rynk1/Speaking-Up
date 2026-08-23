@@ -147,6 +147,8 @@ export interface CommunityEvidence {
   userId: string;
   userName: string;
   userHandle: string;
+  userAvatar?: string;
+  isVerified?: boolean;
   text: string;
   media?: PostMedia[];
   statusUpdate: 'still_ongoing' | 'worsened' | 'improving' | 'resolved';
@@ -361,12 +363,65 @@ export type CreatorContext =
   | 'awareness'
   | 'call_to_action';
 
+export type PrimaryMediaType = 'video' | 'audio' | 'image' | 'text';
+
+export interface CleanMediaAsset {
+  id: string;
+  type: 'image' | 'video' | 'audio';
+  url: string;
+  thumbnailUrl?: string;
+  mimeType?: string;
+  caption?: string;
+  durationSeconds?: number;
+  isPiiStripped: boolean;
+}
+
+export interface AudiogramConfig {
+  audioUrl?: string;
+  transcriptSnippet?: string;
+  durationSeconds?: number;
+  waveformPoints?: number[];
+  speakerLabel?: string;
+}
+
+export interface StoryCardConfig {
+  title: string;
+  location: string;
+  institution: string;
+  category: string;
+  status: string;
+  confirmations: number;
+  isOfficial: boolean;
+  mediaUrl?: string;
+  mediaType: PrimaryMediaType;
+  qrCodeTargetUrl: string;
+  district: string;
+  region: string;
+}
+
+export interface VideoOverlayConfig {
+  topBanner: string;
+  locationBadge: string;
+  institutionBadge: string;
+  citizenCountBadge: string;
+  bottomCta: string;
+  aspectRatio: '9:16' | '16:9';
+}
+
+export interface CarouselSlide {
+  slideNumber: number;
+  title: string;
+  body: string;
+  visualPrompt: string;
+}
+
 export interface SocialSharePackage {
   id: string;
   postId: string;
   responseId?: string;
   platform: SocialPlatform;
   creatorContext: CreatorContext;
+  primaryMediaType?: PrimaryMediaType;
   headline: string;
   caption: string;
   body?: string;
@@ -376,11 +431,17 @@ export interface SocialSharePackage {
   canonicalUrl: string;
   pinnedComment?: string;
   threadParts?: string[];
+  cleanMediaAssets?: CleanMediaAsset[];
+  audiogramConfig?: AudiogramConfig;
+  storyCardConfig?: StoryCardConfig;
+  videoOverlayConfig?: VideoOverlayConfig;
+  carouselSlides?: CarouselSlide[];
   mediaSummary?: {
     image1x1Url?: string;
     story9x16Url?: string;
     video9x16Url?: string;
     thumbnail16x9Url?: string;
+    audioUrl?: string;
   };
   disclosures: {
     citizenAllegationNote: string;
@@ -395,10 +456,38 @@ export interface CreatorPackFile {
   content: string;
 }
 
+export interface VideoProductionKit {
+  hooks: { type: string; hook: string; style: string }[];
+  scripts: {
+    short30s: string;
+    standard60s: string;
+    deepDive: string;
+  };
+  bRollSuggestions: string[];
+  onScreenCaptions: string[];
+  pinnedComment: string;
+}
+
+export interface AudioProductionKit {
+  radioBulletinScript: string;
+  localDialectPhrasing: string;
+  soundbiteQuotes: string[];
+  podcastIntroOutro: string;
+  transcriptExcerpt: string;
+}
+
+export interface ThreadAndCarouselKit {
+  xThread: string[];
+  instagramCarousel: CarouselSlide[];
+  pressReleaseMarkdown: string;
+  embedHtml: string;
+}
+
 export interface CreatorPack {
   id: string;
   postId: string;
   responseId?: string;
+  primaryMediaType?: PrimaryMediaType;
   headline: string;
   shortSummary: string;
   longSummary: string;
@@ -420,6 +509,10 @@ export interface CreatorPack {
     institution: string;
     status: string;
   };
+  cleanMediaAssets?: CleanMediaAsset[];
+  videoProduction?: VideoProductionKit;
+  audioProduction?: AudioProductionKit;
+  threadAndCarousel?: ThreadAndCarouselKit;
   platformSpecificPackages: Record<SocialPlatform, Partial<SocialSharePackage>>;
   files: CreatorPackFile[];
 }

@@ -427,12 +427,25 @@ export function initDatabase() {
       user_id TEXT NOT NULL,
       user_name TEXT NOT NULL,
       user_handle TEXT NOT NULL,
+      user_avatar TEXT,
+      is_verified INTEGER DEFAULT 1,
       text TEXT NOT NULL,
       status_update TEXT DEFAULT 'still_ongoing',
+      media_json TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
     );
   `);
+
+  try {
+    db.exec(`ALTER TABLE community_evidence ADD COLUMN media_json TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE community_evidence ADD COLUMN user_avatar TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE community_evidence ADD COLUMN is_verified INTEGER DEFAULT 1;`);
+  } catch {}
 
   // Create Comments table
   db.exec(`

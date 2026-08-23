@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Institution, CivicPost, InstitutionResponse } from '../types';
 import { api } from '../services/api';
+import { CivicPostReportModal } from './CivicPostReportModal';
 
 export type InstitutionTab = 'overview' | 'alerts' | 'urgent' | 'responses' | 'config';
 
@@ -58,6 +59,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [selectedReportPost, setSelectedReportPost] = useState<CivicPost | null>(null);
 
   const currentInstitution = institutions.find(i => i.id === selectedInstitutionId) || institutions[0];
 
@@ -450,17 +452,15 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                       <div className="flex items-center justify-between pt-1 text-xs">
                         <span className="text-emerald-400 font-semibold">{post.engagement.confirmations} Confirmations</span>
                         <div className="flex items-center gap-2">
-                          {onSelectPost && (
-                            <button
-                              onClick={() => onSelectPost(post)}
-                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700"
-                            >
-                              Inspect
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setSelectedReportPost(post)}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Civic Post Report
+                          </button>
                           <button
                             onClick={() => onOpenResponseModal(post)}
-                            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-extrabold rounded-xl shadow-md transition-transform active:scale-95"
+                            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-extrabold rounded-xl shadow-md transition-transform active:scale-95 cursor-pointer"
                           >
                             Respond Officially
                           </button>
@@ -552,18 +552,16 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                             </button>
                           )}
 
-                          {onSelectPost && (
-                            <button
-                              onClick={() => onSelectPost(post)}
-                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700"
-                            >
-                              Inspect Post
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setSelectedReportPost(post)}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-amber-400" /> Civic Post Report
+                          </button>
 
                           <button
                             onClick={() => onOpenResponseModal(post)}
-                            className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-md transition-transform active:scale-95"
+                            className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-md transition-transform active:scale-95 cursor-pointer"
                           >
                             <Building2 className="w-3.5 h-3.5" />
                             <span>{hasResponded ? 'Update Public Statement' : 'Respond Officially'}</span>
@@ -602,7 +600,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                           {post.urgency} THREAT
                         </span>
                         <h3
-                          onClick={() => onSelectPost && onSelectPost(post)}
+                          onClick={() => setSelectedReportPost(post)}
                           className="font-bold text-base text-white hover:text-red-300 transition-colors cursor-pointer mt-1"
                         >
                           {post.title}
@@ -615,17 +613,15 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                     <p className="text-xs text-slate-300 bg-slate-900/60 p-3 rounded-xl border border-slate-800">{post.content}</p>
 
                     <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                      {onSelectPost && (
-                        <button
-                          onClick={() => onSelectPost(post)}
-                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700"
-                        >
-                          Inspect Post
-                        </button>
-                      )}
+                      <button
+                        onClick={() => setSelectedReportPost(post)}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-amber-400" /> Civic Post Report
+                      </button>
                       <button
                         onClick={() => onOpenResponseModal(post)}
-                        className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-transform"
+                        className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-transform cursor-pointer"
                       >
                         <Building2 className="w-3.5 h-3.5" /> Dispatch Statement
                       </button>
@@ -663,7 +659,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                             <ShieldCheck className="w-3.5 h-3.5" /> Official Statement Live
                           </span>
                           <h4
-                            onClick={() => onSelectPost && onSelectPost(post)}
+                            onClick={() => setSelectedReportPost(post)}
                             className="font-bold text-sm text-white hover:text-emerald-300 transition-colors cursor-pointer mt-1"
                           >
                             Re: {post.title}
@@ -685,7 +681,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                           {onViewResponseFeedPost && (
                             <button
                               onClick={() => onViewResponseFeedPost(post, resp)}
-                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[11px] font-semibold border border-slate-700"
+                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[11px] font-semibold border border-slate-700 cursor-pointer"
                             >
                               Feed Post View
                             </button>
@@ -693,19 +689,17 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                           {onViewOfficialResponse && (
                             <button
                               onClick={() => onViewOfficialResponse(post, resp)}
-                              className="px-3.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-[11px] font-semibold"
+                              className="px-3.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-[11px] font-semibold cursor-pointer"
                             >
                               Statement Thread →
                             </button>
                           )}
-                          {onSelectPost && (
-                            <button
-                              onClick={() => onSelectPost(post)}
-                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[11px] font-semibold border border-slate-700"
-                            >
-                              Inspect Post
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setSelectedReportPost(post)}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-[11px] font-semibold border border-slate-700 flex items-center gap-1 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-amber-400" /> Civic Post Report
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -754,6 +748,26 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
           </div>
         )}
       </main>
+
+      {/* Comprehensive Civic Post Report Pack Modal for State Institutions */}
+      <CivicPostReportModal
+        post={selectedReportPost}
+        isOpen={!!selectedReportPost}
+        onClose={() => setSelectedReportPost(null)}
+        currentInstitution={currentInstitution}
+        onOpenResponseModal={(p) => {
+          setSelectedReportPost(null);
+          onOpenResponseModal(p);
+        }}
+        onSelectPost={(p) => {
+          setSelectedReportPost(null);
+          if (onSelectPost) onSelectPost(p);
+        }}
+        onAcknowledgeAlert={async (postId) => {
+          await handleQuickAcknowledge(postId);
+        }}
+        isAcknowledging={actionLoading === `ack-${selectedReportPost?.id}`}
+      />
     </div>
   );
 };

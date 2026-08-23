@@ -65,7 +65,7 @@ export default function App() {
   const [isSpeakUpOpen, setIsSpeakUpOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [sharePost, setSharePost] = useState<CivicPost | null>(null);
+  const [shareTarget, setShareTarget] = useState<{ post: CivicPost; response?: InstitutionResponse } | null>(null);
   const [evidencePost, setEvidencePost] = useState<CivicPost | null>(null);
   const [responsePost, setResponsePost] = useState<CivicPost | null>(null);
   const [abusePostId, setAbusePostId] = useState<string | null>(null);
@@ -136,7 +136,7 @@ export default function App() {
   };
 
   const handleViewResponseFeedPost = useCallback((post: CivicPost, response: InstitutionResponse) => {
-    navigate(`/post/${post.id}`);
+    navigate('/', { state: { focusedResponseId: response.id, tab: 'official_responded' } });
   }, [navigate]);
 
   return (
@@ -193,7 +193,7 @@ export default function App() {
                 currentUser={currentUser}
                 setIsSpeakUpOpen={setIsSpeakUpOpen}
                 setSelectedInstitutionId={setSelectedInstitutionId}
-                setSharePost={setSharePost}
+                setSharePost={(p, r) => setShareTarget(p ? { post: p, response: r } : null)}
                 setEvidencePost={setEvidencePost}
                 setResponsePost={setResponsePost}
                 setAbusePostId={setAbusePostId}
@@ -432,9 +432,10 @@ export default function App() {
       />
 
       <SharePreviewModal
-        post={sharePost}
-        isOpen={!!sharePost}
-        onClose={() => setSharePost(null)}
+        post={shareTarget?.post || null}
+        response={shareTarget?.response || null}
+        isOpen={!!shareTarget}
+        onClose={() => setShareTarget(null)}
       />
 
       <AddEvidenceModal
@@ -479,6 +480,7 @@ export default function App() {
               response: newResp
             });
           }}
+          onOpenShare={(p, r) => setShareTarget({ post: p, response: r })}
           onViewAsFeedPost={handleViewResponseFeedPost}
         />
       )}

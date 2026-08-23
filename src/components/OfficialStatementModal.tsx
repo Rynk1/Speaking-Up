@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X,
   CheckCircle2,
@@ -238,6 +239,8 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
     }
   };
 
+  const navigate = useNavigate();
+
   const typeMeta = getResponseTypeMeta(response.responseType);
   const TypeIcon = typeMeta.icon;
 
@@ -269,40 +272,57 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
         className="relative w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] flex flex-col bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 overflow-hidden my-auto"
         onClick={e => e.stopPropagation()}
       >
-        {/* Top Official Header - Instagram & X Mobile Hierarchy */}
+        {/* Top Official Header */}
         <div
           id="statement-modal-header"
-          className="px-3.5 py-2.5 sm:px-5 sm:py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between gap-2.5 shrink-0"
+          className="px-3.5 py-3 sm:px-5 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between gap-3 shrink-0"
         >
           {/* Left: Institution avatar & Verified title */}
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="relative shrink-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div
+              className="relative shrink-0 cursor-pointer"
+              onClick={() => {
+                if (response.institutionId) {
+                  navigate(`/institutions/${response.institutionId}`);
+                  onClose();
+                }
+              }}
+            >
               {response.institutionLogo ? (
                 <img
                   src={response.institutionLogo}
                   alt={response.institutionName}
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover ring-1.5 ring-slate-200 dark:ring-slate-700 shrink-0"
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-700 shadow-xs"
                 />
               ) : (
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shrink-0 shadow-xs font-bold text-sm">
-                  <Landmark className="w-4 h-4 sm:w-5 sm:h-5" />
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shrink-0 shadow-xs font-bold text-sm">
+                  <Landmark className="w-5 h-5" />
                 </div>
               )}
             </div>
 
             <div className="min-w-0 flex-1 leading-tight">
-              <div className="flex items-center gap-1 min-w-0">
-                <span className="font-bold text-[13px] sm:text-base text-slate-900 dark:text-slate-100 truncate tracking-tight hover:underline cursor-pointer">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (response.institutionId) {
+                      navigate(`/institutions/${response.institutionId}`);
+                      onClose();
+                    }
+                  }}
+                  className="font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100 truncate tracking-tight hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-left cursor-pointer"
+                >
                   {response.institutionName}
-                </span>
+                </button>
                 <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 fill-emerald-500/15" />
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
-                <span className="truncate">{response.responderName}</span>
+              <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5 font-normal">
+                <span className="truncate font-medium text-slate-700 dark:text-slate-300">{response.responderName}</span>
                 {response.responderTitle && (
                   <>
                     <span className="text-slate-300 dark:text-slate-600">•</span>
-                    <span className="truncate hidden sm:inline text-slate-400">{response.responderTitle}</span>
+                    <span className="truncate hidden sm:inline text-slate-500 dark:text-slate-400">{response.responderTitle}</span>
                   </>
                 )}
                 <span className="text-slate-300 dark:text-slate-600">•</span>
@@ -313,8 +333,8 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             </div>
           </div>
 
-          {/* Right Action Bar - Compact X buttons */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Right Action Bar */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {onViewAsFeedPost && (
               <button
                 id="statement-view-feed-btn"
@@ -322,8 +342,8 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   onViewAsFeedPost(post, response);
                   onClose();
                 }}
-                title="View in main feed"
-                className="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 rounded-full transition-colors flex items-center gap-1 text-[11px] sm:text-xs font-semibold cursor-pointer active:scale-95"
+                title="View formatted as a dedicated feed post"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
               >
                 <ArrowUpRight className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Feed View</span>
@@ -334,7 +354,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
               id="statement-share-btn"
               onClick={handleShareClick}
               title="Share Official Communiqué"
-              className="px-2.5 sm:px-3 py-1 sm:py-1.5 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-full transition-colors flex items-center gap-1 text-[11px] sm:text-xs font-semibold cursor-pointer active:scale-95"
+              className="h-8 sm:h-9 px-2.5 sm:px-3 text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300/80 dark:border-slate-700/80 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer active:scale-95 shadow-xs"
             >
               <Share2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span className="hidden sm:inline">Share</span>
@@ -343,16 +363,17 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             <button
               id="statement-print-btn"
               onClick={handlePrint}
-              title="Print"
-              className="p-1.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors hidden sm:flex items-center text-xs cursor-pointer"
+              title="Print Communiqué"
+              className="h-8 sm:h-9 w-8 sm:w-9 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl transition-colors hidden sm:flex items-center justify-center text-xs cursor-pointer shadow-xs"
             >
-              <Printer className="w-3.5 h-3.5" />
+              <Printer className="w-4 h-4" />
             </button>
 
             <button
               id="statement-close-btn"
               onClick={onClose}
-              className="p-1.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors ml-0.5 cursor-pointer active:scale-95"
+              title="Close modal"
+              className="h-8 sm:h-9 w-8 sm:w-9 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl transition-colors flex items-center justify-center cursor-pointer active:scale-95 shadow-xs"
             >
               <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
@@ -360,7 +381,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div id="statement-modal-body" className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+        <div id="statement-modal-body" className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
           {/* Main Statement Content Block */}
           <div className="p-4 sm:p-6 space-y-4">
             {/* Action Badges & Ref Header Row */}
@@ -383,7 +404,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   <button
                     id="copy-ref-number-btn"
                     onClick={handleCopyRef}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono text-[11px] transition-colors"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono text-[11px] transition-colors cursor-pointer"
                   >
                     <FileCheck2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     <span>{response.referenceNumber}</span>
@@ -404,20 +425,20 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
             {/* Title & Author Info Section */}
             <div className="space-y-3 pt-1">
-              <h2 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
+              <h2 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight leading-snug">
                 {response.statementTitle || `Official Communiqué regarding ${post.title}`}
               </h2>
 
               {/* Responder Author Box */}
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80">
                 <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 flex items-center justify-center shrink-0 font-bold text-xs">
                   <User className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">
+                  <p className="font-bold text-slate-900 dark:text-slate-100 text-xs sm:text-sm truncate">
                     {response.responderName}
                   </p>
-                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 truncate">
                     {response.responderTitle} • {response.institutionName}
                   </p>
                 </div>
@@ -425,7 +446,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             </div>
 
             {/* Body Statement Content */}
-            <div className="p-4 sm:p-5 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 leading-relaxed space-y-3 text-xs sm:text-sm shadow-xs">
+            <div className="p-4 sm:p-5 rounded-xl bg-slate-50/70 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 leading-relaxed space-y-3 text-xs sm:text-sm shadow-xs">
               {(response.fullStatement || response.message).split('\n\n').map((paragraph, idx) => (
                 <p key={`p-${idx}`} className="whitespace-pre-line">
                   {paragraph}
@@ -435,19 +456,19 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
             {/* Action Timeline Progress Steps */}
             {timelineSteps.length > 0 && (
-              <div id="statement-timeline-section" className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/60 dark:bg-slate-850/50 space-y-3">
+              <div id="statement-timeline-section" className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50 dark:bg-slate-950/90 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     Official Action & Resolution Timeline
                   </h4>
-                  <span className="text-[10px] text-slate-400">Live dispatch</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">Live dispatch</span>
                 </div>
                 <div className="space-y-3 pt-1">
                   {timelineSteps.map((step, idx) => (
                     <div key={`step-${idx}-${step.step.slice(0, 8)}`} className="flex items-start gap-3 relative">
                       {idx !== timelineSteps.length - 1 && (
-                        <div className="absolute left-3.5 top-6 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700" />
+                        <div className="absolute left-3.5 top-6 bottom-0 w-0.5 bg-slate-300 dark:bg-slate-700" />
                       )}
                       <div className="z-10 mt-0.5 shrink-0">
                         {step.status === 'completed' ? (
@@ -459,7 +480,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                             <Clock className="w-4 h-4" />
                           </div>
                         ) : (
-                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center">
+                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center border border-slate-300 dark:border-slate-700">
                             <span className="text-xs font-semibold">{idx + 1}</span>
                           </div>
                         )}
@@ -470,13 +491,13 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                             {step.step}
                           </p>
                           {step.timestamp && (
-                            <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 shrink-0">
                               {step.timestamp}
                             </span>
                           )}
                         </div>
                         {step.description && (
-                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
                             {step.description}
                           </p>
                         )}
@@ -491,7 +512,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Documents */}
               {response.documents && response.documents.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 space-y-2">
                   <h5 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-blue-500" />
                     Official Directives & Documents
@@ -503,12 +524,12 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                         href={doc.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 hover:border-blue-400 transition-colors text-xs"
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 hover:border-blue-400 transition-colors text-xs text-slate-800 dark:text-slate-200"
                       >
-                        <span className="font-medium text-slate-800 dark:text-slate-200 truncate mr-2">
+                        <span className="font-medium truncate mr-2">
                           📄 {doc.title}
                         </span>
-                        {doc.size && <span className="text-[10px] text-slate-400 font-mono shrink-0">{doc.size}</span>}
+                        {doc.size && <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono shrink-0">{doc.size}</span>}
                       </a>
                     ))}
                   </div>
@@ -517,7 +538,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
               {/* Hotlines */}
               {response.hotlines && response.hotlines.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 space-y-2">
                   <h5 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Phone className="w-3.5 h-3.5 text-emerald-500" />
                     Direct Agency Contact & Hotlines
@@ -526,14 +547,14 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                     {response.hotlines.map((line, idx) => (
                       <div
                         key={`line-${idx}`}
-                        className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 text-xs"
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 text-xs text-slate-800 dark:text-slate-200"
                       >
-                        <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                        <span className="font-medium truncate">
                           📞 {line}
                         </span>
                         <a
                           href={`tel:${line.split(' ')[0].replace(/[^0-9+]/g, '')}`}
-                          className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-semibold hover:bg-emerald-200"
+                          className="px-2.5 py-1 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-semibold hover:bg-emerald-200 dark:hover:bg-emerald-900"
                         >
                           Call
                         </a>
@@ -544,12 +565,12 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
               )}
             </div>
 
-            {/* Ultra-Compact & Space-Efficient Transparency Rating bar */}
-            <div className="flex items-center justify-between gap-2.5 p-2 sm:p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/80 border border-slate-200 dark:border-slate-800/80 text-xs">
+            {/* Transparency Rating bar */}
+            <div className="flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 text-xs">
               <div className="flex items-center gap-2 min-w-0">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 hidden sm:block" />
                 <div className="min-w-0">
-                  <span className="font-semibold text-slate-900 dark:text-slate-200 text-[11px] sm:text-xs truncate block">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100 text-[11px] sm:text-xs truncate block">
                     Clear and transparent statement?
                   </span>
                   <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 truncate hidden sm:block">
@@ -561,27 +582,27 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                 <button
                   id="vote-helpful-btn"
                   onClick={() => handleVote('helpful')}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
                     helpfulVote === 'helpful'
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                       : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-slate-700'
                   }`}
                   title="Mark statement as clear and transparent"
                 >
-                  <ThumbsUp className="w-3 h-3" />
+                  <ThumbsUp className="w-3.5 h-3.5" />
                   <span>Clear ({helpfulCount})</span>
                 </button>
                 <button
                   id="vote-unhelpful-btn"
                   onClick={() => handleVote('unhelpful')}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
                     helpfulVote === 'unhelpful'
                       ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
                       : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-slate-700'
                   }`}
                   title="Mark statement as unclear or inadequate"
                 >
-                  <ThumbsDown className="w-3 h-3" />
+                  <ThumbsDown className="w-3.5 h-3.5" />
                   <span>Unclear ({unhelpfulCount})</span>
                 </button>
               </div>
@@ -589,55 +610,59 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
           </div>
 
           {/* REVERSE CONTEXT: "In Response To Citizen Issue Report" */}
-          <div id="statement-parent-post-context" className="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-900/60 space-y-3">
+          <div id="statement-parent-post-context" className="p-4 sm:p-5 bg-slate-100/70 dark:bg-slate-950/80 border-t border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 In Direct Response To Citizen Issue
               </span>
               <div className="flex items-center gap-2">
-                {onViewAsFeedPost && (
-                  <button
-                    onClick={() => {
-                      onViewAsFeedPost(post, response);
-                      onClose();
-                    }}
-                    className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-semibold flex items-center gap-1"
-                  >
-                    <span>View Feed Post</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <span className="text-xs text-slate-500 hidden sm:inline">
-                  {post.location.landmark || post.location.district}, {post.location.region}
+                <button
+                  onClick={() => {
+                    navigate(`/post/${post.id}`);
+                    onClose();
+                  }}
+                  className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <span>View Original Report</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline">
+                  • {post.location.landmark || post.location.district}, {post.location.region}
                 </span>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col sm:flex-row gap-3 items-start">
+            <div
+              onClick={() => {
+                navigate(`/post/${post.id}`);
+                onClose();
+              }}
+              className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 shadow-xs flex flex-col sm:flex-row gap-3 items-start cursor-pointer transition-colors group"
+            >
               {post.media && post.media.length > 0 && (
                 <img
                   src={post.media[0].url}
                   alt={post.title}
-                  className="w-full sm:w-28 h-24 sm:h-20 rounded-lg object-cover shrink-0 border border-slate-200 dark:border-slate-700"
+                  className="w-full sm:w-28 h-24 sm:h-20 rounded-lg object-cover shrink-0 border border-slate-200 dark:border-slate-800"
                 />
               )}
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                     {post.category}
                   </span>
-                  <span className="text-[11px] text-slate-500 truncate">
-                    Reported by <strong className="text-slate-700 dark:text-slate-300">{post.authorName}</strong> ({post.authorHandle})
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    Reported by <strong className="text-slate-700 dark:text-slate-300">{post.authorName}</strong> (@{post.authorHandle})
                   </span>
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm line-clamp-2">
+                <h4 className="font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 text-xs sm:text-sm line-clamp-2 transition-colors">
                   {post.title}
                 </h4>
-                <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
+                <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
                   {post.content}
                 </p>
-                <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-400">
+                <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-500 dark:text-slate-400">
                   <span>👥 {post.engagement.confirmations} confirmations</span>
                   <span>💬 {post.engagement.comments} comments</span>
                   <span>📅 {new Date(post.createdAt).toLocaleDateString()}</span>
@@ -715,7 +740,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                         id="submit-statement-reply-btn"
                         type="submit"
                         disabled={!newCommentText.trim() || submittingComment}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors cursor-pointer"
                       >
                         <Send className="w-3.5 h-3.5" />
                         <span>{submittingComment ? 'Posting...' : 'Post Reply'}</span>
@@ -735,7 +760,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   comments.map(c => (
                     <div
                       key={c.id}
-                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/70 dark:border-slate-800 space-y-1"
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-1"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -782,7 +807,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                   post.commentsList.map(c => (
                     <div
                       key={c.id}
-                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/70 dark:border-slate-800 space-y-1"
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-1"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -810,7 +835,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
           {/* TAB 3: OTHER AGENCY STATEMENTS */}
           {activeTab === 'agency_thread' && (
             <div id="tab-content-agency-thread" className="p-4 sm:p-5 space-y-3 bg-white dark:bg-slate-900">
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                 <span>Other state institutions that issued statements on this report:</span>
                 <span className="font-semibold text-emerald-600 dark:text-emerald-400">{otherAgencyResponses.length} Communiqué{otherAgencyResponses.length > 1 ? 's' : ''}</span>
               </div>
@@ -824,7 +849,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                     key={r.id}
                     id={`agency-response-card-${r.id}`}
                     onClick={(e) => handleSelectAnotherResponse(r, e)}
-                    className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 space-y-2 hover:border-emerald-500 dark:hover:border-emerald-500/80 transition-all cursor-pointer shadow-xs hover:shadow-sm group"
+                    className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-2 hover:border-emerald-500 dark:hover:border-emerald-500/80 transition-all cursor-pointer shadow-xs hover:shadow-sm group"
                   >
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 min-w-0">
@@ -849,17 +874,17 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
                       <button
                         type="button"
                         onClick={(e) => handleSelectAnotherResponse(r, e)}
-                        className="text-xs px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 group-hover:bg-emerald-600 text-emerald-700 dark:text-emerald-300 group-hover:text-white border border-emerald-500/30 group-hover:border-emerald-600 font-semibold flex items-center gap-1 transition-all"
+                        className="text-xs px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/80 group-hover:bg-emerald-600 text-emerald-700 dark:text-emerald-300 group-hover:text-white border border-emerald-500/30 group-hover:border-emerald-600 font-semibold flex items-center gap-1 transition-all cursor-pointer"
                       >
                         <span>View Statement</span>
                         <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
-                      {r.statementTitle ? <strong className="text-slate-800 dark:text-slate-100">"{r.statementTitle}" — </strong> : null}
+                    <p className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                      {r.statementTitle ? <strong className="text-slate-900 dark:text-slate-100">"{r.statementTitle}" — </strong> : null}
                       {r.message}
                     </p>
-                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500 dark:text-slate-400">
                       <span>{r.responderName ? `By ${r.responderName} (${r.responderTitle || 'Spokesperson'})` : 'Official Agency Statement'}</span>
                       <span>{new Date(r.createdAt).toLocaleDateString()}</span>
                     </div>

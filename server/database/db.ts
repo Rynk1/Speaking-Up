@@ -147,6 +147,54 @@ export function initDatabase() {
     );
   `);
 
+  // Moderation Events Log (Phase 16 & 28)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS moderation_events (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      moderator_id TEXT NOT NULL,
+      classification TEXT NOT NULL, -- SAFE, NEEDS_REVIEW, RESTRICTED, REMOVED, LEGAL_REVIEW, EMERGENCY_RISK
+      action TEXT NOT NULL, -- APPROVE, HOLD, REMOVE, ESCALATE, RESTRICT
+      reason TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Institution Internal Assignments (Phase 12 & 32)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institution_assignments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      assigned_to_user_id TEXT NOT NULL,
+      assigned_by_user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ASSIGNED',
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Institution Clarification Requests (Phase 12 & 32)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS clarification_requests (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      official_user_id TEXT NOT NULL,
+      question TEXT NOT NULL,
+      public_response TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      created_at TEXT NOT NULL,
+      responded_at TEXT,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
   // Post Signal & Institutional Priority Scores Cache
   db.exec(`
     CREATE TABLE IF NOT EXISTS post_signal_scores (
@@ -814,6 +862,9 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_inst_deliveries_post ON institution_deliveries(post_id);
     CREATE INDEX IF NOT EXISTS idx_inst_deliveries_inst ON institution_deliveries(institution_id);
     CREATE INDEX IF NOT EXISTS idx_outcome_confirmations_post ON outcome_confirmations(post_id);
+    CREATE INDEX IF NOT EXISTS idx_moderation_events_post ON moderation_events(post_id);
+    CREATE INDEX IF NOT EXISTS idx_inst_assignments_inst ON institution_assignments(institution_id);
+    CREATE INDEX IF NOT EXISTS idx_clarification_requests_post ON clarification_requests(post_id);
   `);
 
   console.log('Database tables and indexes verified successfully.');

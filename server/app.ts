@@ -26,6 +26,7 @@ import { ShareLinkService } from './social/ShareLinkService';
 import { ShareAnalyticsService } from './social/ShareAnalyticsService';
 import { PLATFORM_CAPABILITIES } from './social/PlatformCapabilityRegistry';
 import { InstitutionRoutingService } from './services/InstitutionRoutingService';
+import { DatabaseBackupService } from './database/backup';
 import { CivicSignalService } from './services/CivicSignalService';
 
 export function createApp() {
@@ -1442,6 +1443,101 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Action report error: ${err.message}`);
       res.status(500).json({ error: 'Failed to record institutional action' });
+    }
+  });
+
+  // INSTITUTION ASSIGNMENT API
+  app.post('/api/posts/:id/assign', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const postId = req.params.id;
+      const user = req.user!;
+      const { institutionId, assignedToUserId, notes } = req.body;
+
+      if (!institutionId || !assignedToUserId) {
+        return res.status(400).json({ error: 'Institution ID and assigned user ID are required' });
+      }
+
+      const assignId = `asgn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO institution_assignments (id, post_id, institution_id, assigned_to_user_id, assigned_by_user_id, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(assignId, postId, institutionId, assignedToUserId, user.id, notes ? sanitizeText(notes) : null, now);
+
+      res.status(201).json({ success: true, assignId });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to assign issue internally' });
+    }
+  });
+
+  // INSTITUTION CLARIFICATION REQUEST API
+  app.post('/api/posts/:id/clarify', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const postId = req.params.id;
+      const user = req.user!;
+      const { institutionId, question } = req.body;
+
+      if (!institutionId || !question) {
+        return res.status(400).json({ error: 'Institution ID and question are required' });
+      }
+
+      const clarifyId = `clar-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO clarification_requests (id, post_id, institution_id, official_user_id, question, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(clarifyId, postId, institutionId, user.id, sanitizeText(question), now);
+
+      res.status(201).json({ success: true, clarifyId });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to record clarification request' });
+    }
+  });
+
+  // ADMIN MODERATION CLASSIFICATION API
+  app.post('/api/admin/moderation/classify', requireRole(['MODERATOR', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const { postId, classification, action, reason, notes } = req.body;
+      if (!postId || !classification || !action) {
+        return res.status(400).json({ error: 'Post ID, classification, and action are required' });
+      }
+
+      const validClassifications = ['SAFE', 'NEEDS_REVIEW', 'RESTRICTED', 'REMOVED', 'LEGAL_REVIEW', 'EMERGENCY_RISK'];
+      if (!validClassifications.includes(classification)) {
+        return res.status(400).json({ error: 'Invalid moderation classification' });
+      }
+
+      const evtId = `mod-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO moderation_events (id, post_id, moderator_id, classification, action, reason, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(evtId, postId, req.user!.id, classification, action, sanitizePlainText(reason || 'Moderation Review'), notes ? sanitizeText(notes) : null, now);
+
+      if (action === 'REMOVE') {
+        db.prepare("UPDATE posts SET moderation_status = 'rejected', report_lifecycle_status = 'REMOVED' WHERE id = ?").run(postId);
+      } else if (action === 'HOLD') {
+        db.prepare("UPDATE posts SET moderation_status = 'flagged', report_lifecycle_status = 'HELD' WHERE id = ?").run(postId);
+      } else if (action === 'APPROVE') {
+        db.prepare("UPDATE posts SET moderation_status = 'approved', report_lifecycle_status = 'PUBLISHED' WHERE id = ?").run(postId);
+      }
+
+      res.json({ success: true, eventId: evtId });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to record moderation classification' });
+    }
+  });
+
+  // ADMIN BACKUP API
+  app.post('/api/admin/backup', requireRole(['ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const backupResult = DatabaseBackupService.performOnlineBackup();
+      res.json(backupResult);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Backup failed' });
     }
   });
 

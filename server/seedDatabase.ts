@@ -38,32 +38,38 @@ export async function seedDatabaseIfEmpty() {
         severity: p.severity
       });
 
-      for (const r of p.officialResponses || []) {
-        insertResponseOrIgnore.run({
-          id: r.id,
-          post_id: p.id,
-          institution_id: r.institutionId,
-          institution_name: r.institutionName,
-          institution_logo: r.institutionLogo || null,
-          response_type: r.responseType,
-          message: r.message,
-          statement_title: r.statementTitle || null,
-          full_statement: r.fullStatement || r.message,
-          reference_number: r.referenceNumber || null,
-          action_timeline_json: r.actionTimeline ? JSON.stringify(r.actionTimeline) : null,
-          resolution_status: r.resolutionStatus || 'IN_PROGRESS',
-          documents_json: r.documents ? JSON.stringify(r.documents) : null,
-          hotlines_json: r.hotlines ? JSON.stringify(r.hotlines) : null,
-          helpful_count: r.helpfulCount || 0,
-          unhelpful_count: r.unhelpfulCount || 0,
-          official: r.official ? 1 : 0,
-          verified: r.verified ? 1 : 0,
-          responder_name: r.responderName,
-          responder_title: r.responderTitle,
-          redirected_to_institution_id: r.redirectedToInstitutionId || null,
-          redirected_to_institution_name: r.redirectedToInstitutionName || null,
-          created_at: r.createdAt || new Date().toISOString()
-        });
+      const postExists = db.prepare('SELECT id FROM posts WHERE id = ?').get(p.id);
+      if (postExists) {
+        for (const r of p.officialResponses || []) {
+          const instExists = db.prepare('SELECT id FROM institutions WHERE id = ?').get(r.institutionId);
+          if (instExists) {
+            insertResponseOrIgnore.run({
+              id: r.id,
+              post_id: p.id,
+              institution_id: r.institutionId,
+              institution_name: r.institutionName,
+              institution_logo: r.institutionLogo || null,
+              response_type: r.responseType,
+              message: r.message,
+              statement_title: r.statementTitle || null,
+              full_statement: r.fullStatement || r.message,
+              reference_number: r.referenceNumber || null,
+              action_timeline_json: r.actionTimeline ? JSON.stringify(r.actionTimeline) : null,
+              resolution_status: r.resolutionStatus || 'IN_PROGRESS',
+              documents_json: r.documents ? JSON.stringify(r.documents) : null,
+              hotlines_json: r.hotlines ? JSON.stringify(r.hotlines) : null,
+              helpful_count: r.helpfulCount || 0,
+              unhelpful_count: r.unhelpfulCount || 0,
+              official: r.official ? 1 : 0,
+              verified: r.verified ? 1 : 0,
+              responder_name: r.responderName,
+              responder_title: r.responderTitle,
+              redirected_to_institution_id: r.redirectedToInstitutionId || null,
+              redirected_to_institution_name: r.redirectedToInstitutionName || null,
+              created_at: r.createdAt || new Date().toISOString()
+            });
+          }
+        }
       }
     }
     return;

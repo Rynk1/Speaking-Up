@@ -134,6 +134,84 @@ export function initDatabase() {
     );
   `);
 
+  // Attributed User Amplifications table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS amplifications (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      ip_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      UNIQUE(post_id, user_id)
+    );
+  `);
+
+  // Post Signal & Institutional Priority Scores Cache
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_signal_scores (
+      post_id TEXT PRIMARY KEY,
+      severity_score REAL NOT NULL DEFAULT 0.0,
+      confidence_score REAL NOT NULL DEFAULT 0.0,
+      confirmation_count INTEGER NOT NULL DEFAULT 0,
+      amplification_count INTEGER NOT NULL DEFAULT 0,
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      ips_score REAL NOT NULL DEFAULT 0.0,
+      formula_version TEXT NOT NULL DEFAULT 'v1.0',
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Institution Alert Deliveries Log
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institution_deliveries (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      channel_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      gateway_response TEXT,
+      idempotency_key TEXT,
+      dispatched_at TEXT NOT NULL,
+      delivered_at TEXT,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Institution Resolution Actions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institution_actions (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      action_title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      evidence_urls_json TEXT DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+      actor_name TEXT NOT NULL,
+      actor_title TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Community Outcome Confirmations
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS outcome_confirmations (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      vote TEXT NOT NULL,
+      comment TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      UNIQUE(post_id, user_id)
+    );
+  `);
+
   // Create Institution Channels table (Data-driven alert routing)
   db.exec(`
     CREATE TABLE IF NOT EXISTS institution_channels (
@@ -730,6 +808,12 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_social_shares_post ON social_share_events(post_id);
     CREATE INDEX IF NOT EXISTS idx_social_clicks_ref ON social_click_events(referral_code);
     CREATE INDEX IF NOT EXISTS idx_creator_refs_code ON creator_referrals(code);
+    CREATE INDEX IF NOT EXISTS idx_amplifications_post ON amplifications(post_id);
+    CREATE INDEX IF NOT EXISTS idx_amplifications_user ON amplifications(user_id);
+    CREATE INDEX IF NOT EXISTS idx_signal_scores_ips ON post_signal_scores(ips_score);
+    CREATE INDEX IF NOT EXISTS idx_inst_deliveries_post ON institution_deliveries(post_id);
+    CREATE INDEX IF NOT EXISTS idx_inst_deliveries_inst ON institution_deliveries(institution_id);
+    CREATE INDEX IF NOT EXISTS idx_outcome_confirmations_post ON outcome_confirmations(post_id);
   `);
 
   console.log('Database tables and indexes verified successfully.');

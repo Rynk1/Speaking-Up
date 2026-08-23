@@ -17,6 +17,9 @@ import { processMediaFile } from './media/mediaPipeline';
 import { PrivacyOrchestrator } from './privacy/privacyOrchestrator';
 import { analyzeContextualSensitivity } from './detection/geminiDetector';
 import { InstitutionAlertService } from './alerts/alertEngine';
+import { AlertOrchestrator } from './alerts/AlertOrchestrator';
+import { ChannelHealthMonitor } from './alerts/ChannelHealthMonitor';
+import { EscalationEngine } from './alerts/EscalationEngine';
 import { jobQueue } from './jobs/jobQueue';
 import { eventBus } from './events/eventBus';
 import { setupSSERoute } from './events/sseStream';
@@ -933,7 +936,7 @@ export function createApp() {
       const now = new Date().toISOString();
       const user = req.user || { id: 'anon', name: userName || 'Citizen Witness', handle: userHandle || '@citizen', avatar: undefined };
       const mediaJson = media && Array.isArray(media) && media.length > 0 ? JSON.stringify(media) : null;
-      const userAvatar = user.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.handle || user.name)}`;
+      const userAvatar = (user as any).avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.handle || user.name)}`;
 
       db.prepare(`
         INSERT INTO community_evidence (id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, text, status_update, media_json, created_at)
@@ -1353,6 +1356,124 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Alert dispatch endpoint error: ${err.message}`);
       res.status(500).json({ error: err.message || 'Alert dispatch failed' });
+    }
+  });
+
+  // ONE-TOUCH ACKNOWLEDGEMENT API
+  app.post('/api/posts/:id/acknowledge', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const postId = req.params.id;
+      const user = req.user!;
+      const { institutionId } = req.body;
+      const instId = institutionId || user.institutionId || 'ghana-police-service';
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        UPDATE alerts
+        SET awareness_status = 'ACKNOWLEDGED', acknowledged_by_user_id = ?, acknowledged_at = ?
+        WHERE post_id = ? AND institution_id = ?
+      `).run(user.id, now, postId, instId);
+
+      db.prepare("UPDATE posts SET accountability_status = 'ACKNOWLEDGED' WHERE id = ?").run(postId);
+
+      eventBus.emitReportEvent({
+        reportId: postId,
+        eventType: 'INSTITUTION_ACKNOWLEDGED',
+        actorType: 'INSTITUTION',
+        actorId: user.id,
+        institutionId: instId,
+        metadata: { officerName: user.name || 'Duty Officer', time: now }
+      });
+
+      res.json({ success: true, status: 'ACKNOWLEDGED', time: now });
+    } catch (err: any) {
+      logger.error(`Acknowledge error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to record acknowledgement' });
+    }
+  });
+
+  // INBOUND TWO-WAY WHATSAPP / SMS INTERACTIVE WEBHOOK
+  app.post('/api/alerts/webhook/whatsapp', (req, res) => {
+    try {
+      const payload = req.body;
+      const text = payload.text || payload.command || '';
+      const postId = payload.postId || (payload.ref ? payload.ref.replace(/^GH-/i, 'post-') : 'post-1');
+      const institutionId = payload.institutionId || 'ghana-police-service';
+
+      const match = text.match(/(?:ACK|ACKNOWLEDGE)\s*(GH-[\w\-]+|post-[\w\-]+)?/i);
+      let command: 'ACK' | 'ASSIGN' | 'RESPOND' = 'ACK';
+      if (text.toUpperCase().includes('ASSIGN')) command = 'ASSIGN';
+      else if (text.toUpperCase().includes('RESPOND')) command = 'RESPOND';
+
+      if (match || text.toUpperCase().startsWith('ACK')) {
+        const result = AlertOrchestrator.handleInboundCommand(postId, institutionId, command, 'WhatsApp Duty Officer');
+        return res.json({
+          status: 'SUCCESS',
+          command,
+          result,
+          reply: `✓ Received. Report ${postId} recorded as ACKNOWLEDGED in SpeakUp.`
+        });
+      }
+
+      res.json({ status: 'PROCESSED', message: 'Webhook event logged' });
+    } catch (err: any) {
+      logger.error(`Inbound WhatsApp webhook error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to process WhatsApp webhook' });
+    }
+  });
+
+  // INSTITUTIONAL PARTNERSHIP PROGRAMME & ONBOARDING API
+  app.put('/api/admin/institutions/:id/partnership', requireRole(['ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const instId = req.params.id;
+      const { partnershipStatus, operatingAgreement, slaPolicy, escalationPolicy } = req.body;
+
+      db.prepare(`
+        UPDATE institutions
+        SET partnership_status = COALESCE(?, partnership_status),
+            operating_agreement_json = COALESCE(?, operating_agreement_json),
+            sla_policy_json = COALESCE(?, sla_policy_json),
+            escalation_policy_json = COALESCE(?, escalation_policy_json)
+        WHERE id = ?
+      `).run(
+        partnershipStatus || null,
+        operatingAgreement ? JSON.stringify(operatingAgreement) : null,
+        slaPolicy ? JSON.stringify(slaPolicy) : null,
+        escalationPolicy ? JSON.stringify(escalationPolicy) : null,
+        instId
+      );
+
+      res.json({ success: true, institutionId: instId, partnershipStatus });
+    } catch (err: any) {
+      logger.error(`Partnership update error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to update partnership profile' });
+    }
+  });
+
+  // LIVE CHANNEL HEALTH API
+  app.get('/api/institutions/:id/channels/health', async (req, res) => {
+    try {
+      const instId = req.params.id;
+      const healthResults = await ChannelHealthMonitor.checkAllChannels();
+      const channels = db.prepare('SELECT * FROM institution_channels WHERE institution_id = ?').all(instId);
+
+      res.json({
+        institutionId: instId,
+        channels,
+        providerHealth: healthResults
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch channel health' });
+    }
+  });
+
+  // SLA ESCALATION CHECK API
+  app.post('/api/admin/alerts/check-escalations', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const result = EscalationEngine.checkAndEscalateOverdueAlerts();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Escalation check failed' });
     }
   });
 

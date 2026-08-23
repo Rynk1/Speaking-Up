@@ -8,9 +8,104 @@ import {
 } from './seedData';
 
 export async function seedDatabaseIfEmpty() {
-  const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as any).count;
-  if (userCount > 0) {
-    console.log('Database already contains seed data. Syncing any missing official responses...');
+  const instCount = (db.prepare('SELECT COUNT(*) as count FROM institutions').get() as any).count;
+  if (instCount > 0) {
+    console.log('Database already contains seed data. Syncing any missing default users, posts, and official responses...');
+
+    const hashedPassword = await bcrypt.hash('Password123!', 10);
+    const now = new Date().toISOString();
+
+    // Ensure core users exist
+    const defaultUsers = [
+      { id: 'user-current', email: 'citizen@speakup.gh', password_hash: hashedPassword, name: 'Kofi Mensah', handle: 'kofi_speakup', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80', role: 'CITIZEN', is_verified: 1, followers_count: 0 },
+      { id: 'user-kofi-mensah', email: 'kofi.mensah@speakup.gh', password_hash: hashedPassword, name: 'Kofi Mensah', handle: 'kofi_m_accra', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80', role: 'CITIZEN', is_verified: 1, followers_count: 0 },
+      { id: 'user-yaw-boateng', email: 'yaw.b@speakup.gh', password_hash: hashedPassword, name: 'Yaw Boateng', handle: 'yaw_kumasi', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80', role: 'CITIZEN', is_verified: 1, followers_count: 0 },
+      { id: 'user-dr-owusu', email: 'dr.owusu@speakup.gh', password_hash: hashedPassword, name: 'Dr. Evelyn Owusu', handle: 'drevelyn_health', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80', role: 'CITIZEN', is_verified: 1, followers_count: 0 },
+      { id: 'user-fatima-tamale', email: 'fatima@speakup.gh', password_hash: hashedPassword, name: 'Fatima Al-Hassan', handle: 'fatima_tamale', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=120&auto=format&fit=crop&q=80', role: 'CITIZEN', is_verified: 1, followers_count: 0 },
+      { id: 'user-selorm-it', email: 'selorm@speakup.gh', password_hash: hashedPassword, name: 'Selorm Kpodo', handle: 'selorm_tech', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80', role: 'CITIZEN', is_verified: 1, followers_count: 0 },
+      { id: 'user-mensah-cc', email: 'mensah.cc@speakup.gh', password_hash: hashedPassword, name: 'Grace Mensah', handle: 'grace_capecoast', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=80', role: 'CITIZEN', is_verified: 1, followers_count: 0 }
+    ];
+
+    const insertUserOrIgnore = db.prepare(`
+      INSERT OR IGNORE INTO users (id, email, password_hash, name, handle, avatar, role, is_verified, followers_count, created_at, updated_at)
+      VALUES (@id, @email, @password_hash, @name, @handle, @avatar, @role, @is_verified, @followers_count, @created_at, @updated_at)
+    `);
+
+    for (const u of defaultUsers) {
+      insertUserOrIgnore.run({ ...u, created_at: now, updated_at: now });
+    }
+
+    const insertPostOrIgnore = db.prepare(`
+      INSERT OR IGNORE INTO posts (
+        id, title, content, original_language, translated_text, author_id, author_name, author_handle,
+        author_avatar, author_visibility, is_verified_citizen, category, subcategory, urgency, severity,
+        region, district, landmark, latitude, longitude, location_accuracy, location_visibility,
+        hashtags_json, visibility, moderation_status, issue_cluster_id, views_count, reposts_count,
+        shares_count, confirmations_count, comments_count, created_at, updated_at
+      ) VALUES (
+        @id, @title, @content, @original_language, @translated_text, @author_id, @author_name, @author_handle,
+        @author_avatar, @author_visibility, @is_verified_citizen, @category, @subcategory, @urgency, @severity,
+        @region, @district, @landmark, @latitude, @longitude, @location_accuracy, @location_visibility,
+        @hashtags_json, @visibility, @moderation_status, @issue_cluster_id, @views_count, @reposts_count,
+        @shares_count, @confirmations_count, @comments_count, @created_at, @updated_at
+      )
+    `);
+
+    const insertMediaOrIgnore = db.prepare(`
+      INSERT OR IGNORE INTO media (id, post_id, type, url, thumbnail_url, caption, mime_type, uploaded_at)
+      VALUES (@id, @post_id, @type, @url, @thumbnail_url, @caption, @mime_type, @uploaded_at)
+    `);
+
+    for (const p of INITIAL_POSTS) {
+      insertPostOrIgnore.run({
+        id: p.id,
+        title: p.title,
+        content: p.content,
+        original_language: p.originalLanguage || 'English',
+        translated_text: p.translatedText || null,
+        author_id: p.authorId || 'user-kofi-mensah',
+        author_name: p.authorName,
+        author_handle: p.authorHandle,
+        author_avatar: p.authorAvatar || null,
+        author_visibility: p.authorVisibility || 'public',
+        is_verified_citizen: p.isVerifiedCitizen ? 1 : 0,
+        category: p.category,
+        subcategory: p.subcategory || null,
+        urgency: p.urgency,
+        severity: p.severity,
+        region: p.location.region,
+        district: p.location.district,
+        landmark: p.location.landmark || null,
+        latitude: p.location.latitude || null,
+        longitude: p.location.longitude || null,
+        location_accuracy: p.location.accuracy || 'exact',
+        location_visibility: p.location.visibility || 'exact',
+        hashtags_json: JSON.stringify(p.hashtags || []),
+        visibility: p.visibility || 'public',
+        moderation_status: p.moderationStatus || 'approved',
+        issue_cluster_id: p.issueClusterId || null,
+        views_count: p.engagement.views || 10,
+        reposts_count: p.engagement.reposts || 0,
+        shares_count: p.engagement.shares || 0,
+        confirmations_count: p.engagement.confirmations || 1,
+        comments_count: p.engagement.comments || 0,
+        created_at: p.createdAt || now,
+        updated_at: p.updatedAt || now
+      });
+
+      for (const m of p.media || []) {
+        insertMediaOrIgnore.run({
+          id: m.id,
+          post_id: p.id,
+          type: m.type,
+          url: m.url,
+          thumbnail_url: m.thumbnailUrl || null,
+          caption: m.caption || null,
+          mime_type: m.mimeType || 'image/jpeg',
+          uploaded_at: now
+        });
+      }
+    }
     const insertResponseOrIgnore = db.prepare(`
       INSERT OR IGNORE INTO institution_responses (
         id, post_id, institution_id, institution_name, institution_logo, response_type, message,

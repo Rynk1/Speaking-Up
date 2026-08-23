@@ -109,11 +109,14 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS institutions (
       id TEXT PRIMARY KEY,
       official_name TEXT NOT NULL,
+      legal_name TEXT,
       short_name TEXT NOT NULL,
       acronym TEXT NOT NULL,
       mandate TEXT NOT NULL,
       category TEXT NOT NULL,
       jurisdiction TEXT NOT NULL DEFAULT 'NATIONAL',
+      scope TEXT NOT NULL DEFAULT 'NATIONAL',
+      parent_ministry_id TEXT,
       logo TEXT,
       official_website TEXT,
       official_contacts_json TEXT,
@@ -121,6 +124,12 @@ export function initDatabase() {
       email_channels_json TEXT,
       whatsapp_channels_json TEXT,
       alert_method TEXT NOT NULL DEFAULT 'OFFICIAL_EMAIL',
+      partnership_status TEXT NOT NULL DEFAULT 'IDENTIFIED',
+      operating_agreement_json TEXT,
+      sla_policy_json TEXT,
+      escalation_policy_json TEXT,
+      api_credentials_json TEXT,
+      webhook_config_json TEXT,
       active_mentions_count INTEGER NOT NULL DEFAULT 0,
       unanswered_mentions_count INTEGER NOT NULL DEFAULT 0,
       official_responses_count INTEGER NOT NULL DEFAULT 0,
@@ -131,6 +140,24 @@ export function initDatabase() {
       verified_by TEXT,
       next_review_date TEXT,
       created_at TEXT NOT NULL
+    );
+  `);
+
+  // Create Institution Users & RBAC Roles table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institution_users (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'DUTY_OFFICER', -- ADMIN, DUTY_OFFICER, CASE_OFFICER, COMMUNICATIONS_OFFICER, REGIONAL_OFFICER, EXECUTIVE_OBSERVER
+      department TEXT,
+      regional_scope TEXT,
+      district_scope TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
+      UNIQUE(user_id, institution_id)
     );
   `);
 
@@ -260,21 +287,96 @@ export function initDatabase() {
     );
   `);
 
-  // Create Institution Channels table (Data-driven alert routing)
+  // Create Institution Channels table (Data-driven alert routing & Channel Health)
   db.exec(`
     CREATE TABLE IF NOT EXISTS institution_channels (
       id TEXT PRIMARY KEY,
       institution_id TEXT NOT NULL,
-      channel_type TEXT NOT NULL, -- 'EMAIL', 'WEBHOOK', 'SMS', 'WHATSAPP'
+      channel_type TEXT NOT NULL, -- 'EMAIL', 'WEBHOOK', 'SMS', 'WHATSAPP', 'PUSH'
       endpoint TEXT NOT NULL,
       priority INTEGER NOT NULL DEFAULT 1,
       enabled INTEGER NOT NULL DEFAULT 1,
       verified INTEGER NOT NULL DEFAULT 1,
+      health_status TEXT NOT NULL DEFAULT 'OPERATIONAL', -- 'OPERATIONAL', 'DEGRADED', 'DOWN'
+      failure_count INTEGER NOT NULL DEFAULT 0,
+      last_health_check TEXT,
       region TEXT,
       district TEXT,
       department TEXT,
       secret_key TEXT,
       created_at TEXT NOT NULL,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Create Core Alerts Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS alerts (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      cluster_id TEXT,
+      institution_id TEXT NOT NULL,
+      priority_tier TEXT NOT NULL DEFAULT 'TIER_1', -- TIER_0_DASHBOARD, TIER_1_IMMEDIATE, TIER_2_HIGH, TIER_3_CRITICAL, TIER_4_ESCALATION, TIER_5_EXCEPTIONAL
+      urgency TEXT NOT NULL DEFAULT 'NORMAL',
+      awareness_status TEXT NOT NULL DEFAULT 'UNOPENED', -- UNOPENED, VIEWED, ACKNOWLEDGED
+      transport_status TEXT NOT NULL DEFAULT 'QUEUED', -- QUEUED, SENDING, SENT, DELIVERED, FAILED, EXPIRED, SUPPRESSED
+      acknowledged_by_user_id TEXT,
+      acknowledged_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Create Alert Escalations Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS alert_escalations (
+      id TEXT PRIMARY KEY,
+      alert_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      escalation_level INTEGER NOT NULL DEFAULT 1,
+      escalated_to_role TEXT NOT NULL,
+      escalated_to_user_id TEXT,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING', -- PENDING, RESOLVED, EXPIRED
+      created_at TEXT NOT NULL,
+      resolved_at TEXT,
+      FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Create Channel Health Logs Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS channel_health_logs (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      channel_type TEXT NOT NULL,
+      status TEXT NOT NULL, -- OPERATIONAL, DEGRADED, DOWN
+      response_time_ms INTEGER,
+      error_message TEXT,
+      checked_at TEXT NOT NULL,
+      FOREIGN KEY (channel_id) REFERENCES institution_channels(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Create Dead Letter Queue Alerts Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dead_letter_alerts (
+      id TEXT PRIMARY KEY,
+      alert_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      channel_type TEXT NOT NULL,
+      last_error TEXT NOT NULL,
+      retry_attempts INTEGER NOT NULL DEFAULT 3,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
       FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
     );
   `);
@@ -553,6 +655,55 @@ export function initDatabase() {
       FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
     );
   `);
+
+  // Safe ALTER migrations for institutions table
+  const instCols = [
+    { name: 'legal_name', type: 'TEXT' },
+    { name: 'scope', type: "TEXT NOT NULL DEFAULT 'NATIONAL'" },
+    { name: 'parent_ministry_id', type: 'TEXT' },
+    { name: 'partnership_status', type: "TEXT NOT NULL DEFAULT 'IDENTIFIED'" },
+    { name: 'operating_agreement_json', type: 'TEXT' },
+    { name: 'sla_policy_json', type: 'TEXT' },
+    { name: 'escalation_policy_json', type: 'TEXT' },
+    { name: 'api_credentials_json', type: 'TEXT' },
+    { name: 'webhook_config_json', type: 'TEXT' }
+  ];
+  for (const col of instCols) {
+    try {
+      db.exec(`ALTER TABLE institutions ADD COLUMN ${col.name} ${col.type}`);
+    } catch (e) {
+      // Column exists
+    }
+  }
+
+  // Safe ALTER migrations for institution_channels
+  const chanCols = [
+    { name: 'health_status', type: "TEXT NOT NULL DEFAULT 'OPERATIONAL'" },
+    { name: 'failure_count', type: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'last_health_check', type: 'TEXT' }
+  ];
+  for (const col of chanCols) {
+    try {
+      db.exec(`ALTER TABLE institution_channels ADD COLUMN ${col.name} ${col.type}`);
+    } catch (e) {
+      // Column exists
+    }
+  }
+
+  // Safe ALTER migrations for alert_attempts
+  const attemptCols = [
+    { name: 'provider_message_id', type: 'TEXT' },
+    { name: 'request_id', type: 'TEXT' },
+    { name: 'retry_count', type: 'INTEGER DEFAULT 0' },
+    { name: 'failure_reason', type: 'TEXT' }
+  ];
+  for (const col of attemptCols) {
+    try {
+      db.exec(`ALTER TABLE alert_attempts ADD COLUMN ${col.name} ${col.type}`);
+    } catch (e) {
+      // Column exists
+    }
+  }
 
   // Safe ALTER migrations
   const postCols = [

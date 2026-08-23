@@ -379,6 +379,33 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            {/* Multi-Channel Health & Partnership Status Header */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-950 text-emerald-400 rounded-xl border border-emerald-800/60">
+                  <Radio className="w-4 h-4 animate-pulse" />
+                </div>
+                <div>
+                  <div className="font-bold text-white flex items-center gap-2">
+                    Multi-Channel Alert Dispatch Systems
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-300 font-bold border border-emerald-700/60">
+                      LIVE & OPERATIONAL
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Email, SMS, WhatsApp, Webhook & Dashboard Inbox Active
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                <span>Partnership Stage:</span>
+                <span className="px-2.5 py-1 bg-amber-950 text-amber-300 border border-amber-800/80 rounded-lg font-bold uppercase tracking-wider">
+                  DESIGNATED OFFICER (PILOT)
+                </span>
+              </div>
+            </div>
+
             {/* KPI Cards Grid (2 Columns on Mobile) */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
               <div className="bg-slate-950/70 border border-slate-800 p-4 rounded-2xl space-y-1">
@@ -713,10 +740,49 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
         {/* TAB 5: AGENCY CONFIG */}
         {activeTab === 'config' && (
           <div className="space-y-4">
-            <div className="p-5 sm:p-6 bg-slate-950/80 border border-slate-800 rounded-3xl space-y-4 text-xs">
+            <div className="p-5 sm:p-6 bg-slate-950/80 border border-slate-800 rounded-3xl space-y-5 text-xs">
               <h3 className="font-bold text-sm text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                <Settings className="w-4 h-4" /> Agency Profile & Dispatch Integration Settings
+                <Settings className="w-4 h-4" /> Agency Profile & Multi-Channel Dispatch Integration
               </h3>
+
+              {/* Multi-Channel Health Matrix */}
+              <div className="space-y-2.5 bg-slate-900/90 p-4 rounded-2xl border border-slate-800">
+                <div className="font-bold text-white text-xs flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-emerald-400" /> Channel Health & Fallback Status
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-[11px]">
+                  <div className="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                    <div className="text-slate-400 font-semibold mb-0.5">Dashboard</div>
+                    <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 🟢 Operational
+                    </span>
+                  </div>
+                  <div className="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                    <div className="text-slate-400 font-semibold mb-0.5">Official Email</div>
+                    <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 🟢 Operational
+                    </span>
+                  </div>
+                  <div className="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                    <div className="text-slate-400 font-semibold mb-0.5">Emergency SMS</div>
+                    <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 🟢 Operational
+                    </span>
+                  </div>
+                  <div className="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                    <div className="text-slate-400 font-semibold mb-0.5">WhatsApp API</div>
+                    <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 🟢 Operational
+                    </span>
+                  </div>
+                  <div className="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                    <div className="text-slate-400 font-semibold mb-0.5">Webhook API</div>
+                    <span className="text-amber-400 font-bold flex items-center justify-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-400"></span> 🟡 Degraded
+                    </span>
+                  </div>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
                 <div className="p-4 bg-slate-900 rounded-2xl border border-slate-800 space-y-1">

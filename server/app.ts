@@ -25,6 +25,8 @@ import { SocialDistributionService } from './social/SocialDistributionService';
 import { ShareLinkService } from './social/ShareLinkService';
 import { ShareAnalyticsService } from './social/ShareAnalyticsService';
 import { PLATFORM_CAPABILITIES } from './social/PlatformCapabilityRegistry';
+import { InstitutionRoutingService } from './services/InstitutionRoutingService';
+import { CivicSignalService } from './services/CivicSignalService';
 
 export function createApp() {
   const app = express();
@@ -858,36 +860,22 @@ export function createApp() {
     try {
       const postId = req.params.id;
       const userId = req.user?.id || `guest-${req.ip || '127.0.0.1'}`;
-      const now = new Date().toISOString();
-
-      const existing = db.prepare('SELECT * FROM confirmations WHERE post_id = ? AND user_id = ?').get(postId, userId);
-      let confirmed = false;
-
-      if (existing) {
-        db.prepare('DELETE FROM confirmations WHERE post_id = ? AND user_id = ?').run(postId, userId);
-        db.prepare('UPDATE posts SET confirmations_count = MAX(0, confirmations_count - 1) WHERE id = ?').run(postId);
-        confirmed = false;
-      } else {
-        db.prepare('INSERT INTO confirmations (id, post_id, user_id, created_at) VALUES (?, ?, ?, ?)').run(`conf-${Date.now()}`, postId, userId, now);
-        db.prepare('UPDATE posts SET confirmations_count = confirmations_count + 1 WHERE id = ?').run(postId);
-        confirmed = true;
-      }
-
-      const updated = db.prepare('SELECT confirmations_count FROM posts WHERE id = ?').get(postId) as any;
-      res.json({ success: true, confirmed, confirmationsCount: updated?.confirmations_count || 0 });
+      const result = CivicSignalService.recordConfirmation(postId, userId, req.ip || '127.0.0.1');
+      res.json({ success: true, confirmed: result.confirmed, confirmationsCount: result.count, ipsScore: result.ipsScore });
     } catch (err: any) {
       logger.error(`Confirm toggle error: ${err.message}`);
       res.status(500).json({ error: 'Failed to toggle confirmation' });
     }
   });
 
-  app.post('/api/posts/:id/repost', (req, res) => {
+  app.post('/api/posts/:id/repost', (req: AuthenticatedRequest, res) => {
     try {
       const postId = req.params.id;
-      db.prepare('UPDATE posts SET reposts_count = reposts_count + 1 WHERE id = ?').run(postId);
-      const updated = db.prepare('SELECT reposts_count FROM posts WHERE id = ?').get(postId) as any;
-      res.json({ reposted: true, repostsCount: updated?.reposts_count || 1 });
+      const userId = req.user?.id || `guest-${req.ip || '127.0.0.1'}`;
+      const result = CivicSignalService.recordAmplification(postId, userId, req.ip || '127.0.0.1');
+      res.json({ reposted: result.amplified, repostsCount: result.count, ipsScore: result.ipsScore });
     } catch (err: any) {
+      logger.error(`Repost toggle error: ${err.message}`);
       res.status(500).json({ error: 'Failed to toggle repost' });
     }
   });
@@ -1409,7 +1397,114 @@ export function createApp() {
     }
   });
 
+  // INSTITUTION RESOLUTION ACTION API
+  app.post('/api/posts/:id/actions', requireRole(['INSTITUTION_REP', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const postId = req.params.id;
+      const user = req.user!;
+      const { institutionId, actionTitle, description, evidenceUrls, status, actorName, actorTitle } = req.body;
+
+      if (!actionTitle || !description || !institutionId) {
+        return res.status(400).json({ error: 'Action title, description, and institution ID are required' });
+      }
+
+      const actionId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO institution_actions (id, post_id, institution_id, action_title, description, evidence_urls_json, status, actor_name, actor_title, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        actionId,
+        postId,
+        institutionId,
+        sanitizePlainText(actionTitle),
+        sanitizeText(description),
+        JSON.stringify(evidenceUrls || []),
+        status || 'ACTION_TAKEN',
+        actorName ? sanitizePlainText(actorName) : (user.name || user.email || 'Duty Officer'),
+        actorTitle ? sanitizePlainText(actorTitle) : 'Duty Officer',
+        now
+      );
+
+      db.prepare("UPDATE posts SET accountability_status = 'ACTION_REPORTED' WHERE id = ?").run(postId);
+
+      eventBus.emitReportEvent({
+        reportId: postId,
+        eventType: 'INSTITUTION_ACTION_REPORTED',
+        actorType: 'INSTITUTION',
+        actorId: user.id,
+        institutionId,
+        metadata: { actionId, actionTitle, status }
+      });
+
+      res.status(201).json({ success: true, actionId });
+    } catch (err: any) {
+      logger.error(`Action report error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to record institutional action' });
+    }
+  });
+
+  // COMMUNITY OUTCOME CONFIRMATION API
+  app.post('/api/posts/:id/outcome-confirm', (req: AuthenticatedRequest, res) => {
+    try {
+      const postId = req.params.id;
+      const userId = req.user?.id || `guest-${req.ip || '127.0.0.1'}`;
+      const { vote, comment } = req.body;
+
+      if (!vote || !['CONFIRMED_RESOLVED', 'DISPUTED_STILL_ONGOING'].includes(vote)) {
+        return res.status(400).json({ error: 'Valid vote is required (CONFIRMED_RESOLVED or DISPUTED_STILL_ONGOING)' });
+      }
+
+      const confirmId = `out-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO outcome_confirmations (id, post_id, user_id, vote, comment, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(post_id, user_id) DO UPDATE SET vote = excluded.vote, comment = excluded.comment, created_at = excluded.created_at
+      `).run(confirmId, postId, userId, vote, comment ? sanitizeText(comment) : null, now);
+
+      // Recalculate outcome confidence ratio
+      const votes = db.prepare('SELECT vote, COUNT(*) as c FROM outcome_confirmations WHERE post_id = ? GROUP BY vote').all(postId) as any[];
+      let confirmedCount = 0;
+      let disputedCount = 0;
+      for (const v of votes) {
+        if (v.vote === 'CONFIRMED_RESOLVED') confirmedCount = v.c;
+        else if (v.vote === 'DISPUTED_STILL_ONGOING') disputedCount = v.c;
+      }
+
+      const total = confirmedCount + disputedCount;
+      if (total >= 3) {
+        if (confirmedCount > disputedCount) {
+          db.prepare("UPDATE posts SET accountability_status = 'COMMUNITY_CONFIRMED' WHERE id = ?").run(postId);
+        } else {
+          db.prepare("UPDATE posts SET accountability_status = 'COMMUNITY_DISPUTED' WHERE id = ?").run(postId);
+        }
+      }
+
+      res.json({ success: true, confirmedCount, disputedCount });
+    } catch (err: any) {
+      logger.error(`Outcome confirmation error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to record outcome confirmation' });
+    }
+  });
+
   // INSTITUTION DIRECTORY API
+  app.get('/api/institutions/resolve', (req, res) => {
+    try {
+      const { category, region, district } = req.query;
+      const candidates = InstitutionRoutingService.resolveResponsibleInstitutions(
+        (category as string) || '',
+        (region as string) || undefined,
+        (district as string) || undefined
+      );
+      res.json(candidates);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to resolve responsible institutions' });
+    }
+  });
+
   app.get('/api/institutions', (req, res) => {
     const insts = db.prepare('SELECT * FROM institutions ORDER BY official_name ASC').all() as any[];
     res.json(insts.map(i => ({

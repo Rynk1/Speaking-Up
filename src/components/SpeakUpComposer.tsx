@@ -404,6 +404,30 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
             </div>
           )}
 
+          {/* Emergency Safety Protocol Notice when Urgency is Critical */}
+          {(urgency === 'CRITICAL' || category === 'Emergency & Disaster') && (
+            <div className="p-3 bg-red-950/90 border border-red-700/80 rounded-xl text-xs text-red-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
+                <div>
+                  <div className="font-extrabold text-red-200 uppercase tracking-wider text-[10px]">
+                    CRITICAL SAFETY NOTICE
+                  </div>
+                  <div className="text-[11px] text-red-200/90">
+                    If lives are in immediate danger, call <strong>112</strong> now. SpeakUp will create a public record and dispatch multi-channel alerts to tagged institutions.
+                  </div>
+                </div>
+              </div>
+
+              <a
+                href="tel:112"
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white font-extrabold rounded-lg text-xs flex items-center gap-1 shrink-0 shadow-md transition-colors"
+              >
+                CALL 112 NOW
+              </a>
+            </div>
+          )}
+
           {/* Quick Voice Bar */}
           <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">

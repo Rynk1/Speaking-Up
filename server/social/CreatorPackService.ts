@@ -298,6 +298,11 @@ export class CreatorPackService {
         content: longSummary
       },
       {
+        filename: 'suggested-script.txt',
+        mimeType: 'text/plain',
+        content: `[INTRO HOOK]\n${videoProduction.scripts.standard60s}`
+      },
+      {
         filename: 'video-teleprompter-scripts.txt',
         mimeType: 'text/plain',
         content: `=== 30-SECOND VIDEO SCRIPT ===\n${videoProduction.scripts.short30s}\n\n` +
@@ -347,7 +352,7 @@ export class CreatorPackService {
       shortSummary,
       longSummary,
       hookText,
-      suggestedNarrationScript: videoProduction.scripts.standard60s,
+      suggestedNarrationScript: `[INTRO HOOK]\n${videoProduction.scripts.standard60s}`,
       hashtags,
       attributionText,
       sourceUrl: linkInfo.shortUrl,

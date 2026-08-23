@@ -235,6 +235,8 @@ export interface CivicPost {
   officialResponses: InstitutionResponse[];
   communityEvidence: CommunityEvidence[];
   commentsList?: PostComment[];
+  reportLifecycleStatus?: string;
+  accountabilityStatus?: string;
   createdAt: string;
   updatedAt: string;
 }

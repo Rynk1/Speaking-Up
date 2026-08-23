@@ -46,9 +46,17 @@ export class PrivacyOrchestrator {
     const submissionId = input.submissionId || `sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const sourceTextId = `src-txt-${Date.now()}`;
 
-    // Verify author ID exists in users table or default to 'user-current'
+    // Verify author ID exists in users table, else create default user record if missing
     const requestedAuthorId = input.authorId || 'user-current';
-    const userRow = db.prepare('SELECT id FROM users WHERE id = ?').get(requestedAuthorId) as any;
+    let userRow = db.prepare('SELECT id FROM users WHERE id = ?').get(requestedAuthorId) as any;
+    if (!userRow) {
+      db.prepare(`
+        INSERT INTO users (id, email, password_hash, name, handle, role, is_verified, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'Citizen Observer', ?, 'CITIZEN', 1, ?, ?)
+        ON CONFLICT DO NOTHING
+      `).run(requestedAuthorId, `${requestedAuthorId}@speakup.gh`, `@${requestedAuthorId}`, now, now);
+      userRow = db.prepare('SELECT id FROM users WHERE id = ?').get(requestedAuthorId) as any;
+    }
     const authorId = userRow ? userRow.id : 'user-current';
 
     try {

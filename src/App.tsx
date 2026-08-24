@@ -68,6 +68,7 @@ export default function App() {
   const [shareTarget, setShareTarget] = useState<{ post: CivicPost; response?: InstitutionResponse } | null>(null);
   const [evidencePost, setEvidencePost] = useState<CivicPost | null>(null);
   const [responsePost, setResponsePost] = useState<CivicPost | null>(null);
+  const [editingResponse, setEditingResponse] = useState<InstitutionResponse | null>(null);
   const [abusePostId, setAbusePostId] = useState<string | null>(null);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
   const [selectedStatement, setSelectedStatement] = useState<{ post: CivicPost; response: InstitutionResponse } | null>(null);
@@ -355,7 +356,10 @@ export default function App() {
                   posts={posts}
                   selectedInstitutionId={selectedInstitutionId}
                   setSelectedInstitutionId={setSelectedInstitutionId}
-                  onOpenResponseModal={p => setResponsePost(p)}
+                  onOpenResponseModal={(p, resp) => {
+                    setResponsePost(p);
+                    setEditingResponse(resp || null);
+                  }}
                   onPostUpdated={refreshPosts}
                   onViewOfficialResponse={(p, r) => setSelectedStatement({ post: p, response: r })}
                   onViewResponseFeedPost={handleViewResponseFeedPost}
@@ -447,8 +451,12 @@ export default function App() {
 
       <InstitutionResponseModal
         post={responsePost}
+        existingResponse={editingResponse}
         isOpen={!!responsePost}
-        onClose={() => setResponsePost(null)}
+        onClose={() => {
+          setResponsePost(null);
+          setEditingResponse(null);
+        }}
         onResponseSubmitted={refreshPosts}
         institutionsList={institutions}
         currentInstitutionId={selectedInstitutionId}

@@ -1884,27 +1884,90 @@ export function createApp() {
     }
   });
 
+  // WORKFLOW STATUS TRANSITION API
+  app.put('/api/posts/:id/status', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const postId = req.params.id;
+      const user = req.user!;
+      const { status } = req.body;
+
+      const validStatuses = [
+        'NEW_AWARENESS',
+        'URGENT',
+        'TRENDING',
+        'ASSIGNED',
+        'UNDER_REVIEW',
+        'RESPONDED',
+        'ACTION_REPORTED',
+        'CITIZEN_FOLLOW_UP',
+        'CLOSED'
+      ];
+
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      }
+
+      const now = new Date().toISOString();
+      db.prepare('UPDATE posts SET accountability_status = ?, updated_at = ? WHERE id = ?').run(status, now, postId);
+
+      eventBus.emitReportEvent({
+        reportId: postId,
+        eventType: 'INSTITUTION_STATUS_CHANGED',
+        actorType: 'INSTITUTION',
+        actorId: user.id,
+        institutionId: user.institutionId || 'ghana-police-service',
+        metadata: { newStatus: status, timestamp: now }
+      });
+
+      res.json({ success: true, postId, status });
+    } catch (err: any) {
+      logger.error(`Status transition error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to update issue status' });
+    }
+  });
+
   // INSTITUTION ASSIGNMENT API
   app.post('/api/posts/:id/assign', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
     try {
       const postId = req.params.id;
       const user = req.user!;
-      const { institutionId, assignedToUserId, notes } = req.body;
+      const { institutionId, assignedToUserId, assignedDepartment, assignedOfficer, notes } = req.body;
 
-      if (!institutionId || !assignedToUserId) {
-        return res.status(400).json({ error: 'Institution ID and assigned user ID are required' });
+      if (!institutionId) {
+        return res.status(400).json({ error: 'Institution ID is required' });
       }
 
       const assignId = `asgn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const targetUser = assignedToUserId || `dept-${assignedDepartment || 'rapid-response'}`;
       const now = new Date().toISOString();
 
       db.prepare(`
         INSERT INTO institution_assignments (id, post_id, institution_id, assigned_to_user_id, assigned_by_user_id, notes, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(assignId, postId, institutionId, assignedToUserId, user.id, notes ? sanitizeText(notes) : null, now);
+      `).run(
+        assignId,
+        postId,
+        institutionId,
+        targetUser,
+        user.id,
+        notes ? sanitizeText(notes) : `Assigned to ${assignedDepartment || 'Department'} (${assignedOfficer || 'Officer'})`,
+        now
+      );
 
-      res.status(201).json({ success: true, assignId });
+      db.prepare("UPDATE posts SET accountability_status = 'ASSIGNED', updated_at = ? WHERE id = ?").run(now, postId);
+
+      eventBus.emitReportEvent({
+        reportId: postId,
+        eventType: 'INSTITUTION_ASSIGNED',
+        actorType: 'INSTITUTION',
+        actorId: user.id,
+        institutionId,
+        metadata: { assignId, department: assignedDepartment, officer: assignedOfficer }
+      });
+
+      res.status(201).json({ success: true, assignId, department: assignedDepartment, officer: assignedOfficer });
     } catch (err: any) {
+      logger.error(`Assignment error: ${err.message}`);
       res.status(500).json({ error: 'Failed to assign issue internally' });
     }
   });

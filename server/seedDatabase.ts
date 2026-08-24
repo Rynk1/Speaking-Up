@@ -9,11 +9,57 @@ import {
 
 export async function seedDatabaseIfEmpty() {
   const instCount = (db.prepare('SELECT COUNT(*) as count FROM institutions').get() as any).count;
+  const hashedPassword = await bcrypt.hash('Password123!', 10);
+  const now = new Date().toISOString();
+
+  // Always ensure all initial institutions exist
+  const insertInstitutionOrIgnore = db.prepare(`
+    INSERT OR IGNORE INTO institutions (
+      id, official_name, short_name, acronym, mandate, category, jurisdiction, logo, official_website,
+      official_contacts_json, social_accounts_json, email_channels_json, whatsapp_channels_json,
+      alert_method, active_mentions_count, unanswered_mentions_count, official_responses_count,
+      avg_response_hours, verification_status, source_documents_json, verification_date, verified_by,
+      next_review_date, created_at
+    ) VALUES (
+      @id, @official_name, @short_name, @acronym, @mandate, @category, @jurisdiction, @logo, @official_website,
+      @official_contacts_json, @social_accounts_json, @email_channels_json, @whatsapp_channels_json,
+      @alert_method, @active_mentions_count, @unanswered_mentions_count, @official_responses_count,
+      @avg_response_hours, @verification_status, @source_documents_json, @verification_date, @verified_by,
+      @next_review_date, @created_at
+    )
+  `);
+
+  for (const inst of INITIAL_INSTITUTIONS) {
+    insertInstitutionOrIgnore.run({
+      id: inst.id,
+      official_name: inst.officialName,
+      short_name: inst.shortName,
+      acronym: inst.acronym,
+      mandate: inst.mandate,
+      category: inst.categories[0] || 'Infrastructure & Roads',
+      jurisdiction: inst.jurisdiction || 'NATIONAL',
+      logo: inst.logo || null,
+      official_website: inst.officialWebsite || null,
+      official_contacts_json: JSON.stringify(inst.officialContacts || []),
+      social_accounts_json: JSON.stringify(inst.officialSocialAccounts || []),
+      email_channels_json: JSON.stringify(inst.emailChannels || []),
+      whatsapp_channels_json: JSON.stringify(inst.whatsappChannels || []),
+      alert_method: inst.alertMethod || 'OFFICIAL_EMAIL',
+      active_mentions_count: inst.activeMentionsCount || 0,
+      unanswered_mentions_count: inst.unansweredMentionsCount || 0,
+      official_responses_count: inst.officialResponsesCount || 0,
+      avg_response_hours: inst.avgResponseTimeHours || 4.0,
+      verification_status: inst.verificationStatus || 'VERIFIED',
+      source_documents_json: JSON.stringify(inst.sourceDocuments || []),
+      verification_date: inst.verificationDate || '2024-01-01',
+      verified_by: inst.verifiedBy || 'Civic Verification Desk',
+      next_review_date: inst.nextReviewDate || '2025-12-31',
+      created_at: now
+    });
+  }
+
   if (instCount > 0) {
     console.log('Database already contains seed data. Syncing any missing default users, posts, and official responses...');
-
-    const hashedPassword = await bcrypt.hash('Password123!', 10);
-    const now = new Date().toISOString();
 
     // Ensure core users exist
     const defaultUsers = [
@@ -171,9 +217,6 @@ export async function seedDatabaseIfEmpty() {
   }
 
   console.log('Seeding database with initial Ghana institutions, posts, users, and clusters...');
-
-  const hashedPassword = await bcrypt.hash('Password123!', 10);
-  const now = new Date().toISOString();
 
   // Default Users including all initial authors
   const defaultUsers = [

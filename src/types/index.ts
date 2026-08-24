@@ -40,7 +40,7 @@ export type ModerationStatus = 'approved' | 'under_review' | 'restricted' | 'hid
 
 export interface PostMedia {
   id: string;
-  type: 'image' | 'video' | 'audio';
+  type: 'image' | 'video' | 'audio' | 'document';
   url: string;
   thumbnailUrl?: string;
   caption?: string;
@@ -51,6 +51,7 @@ export interface PostMedia {
   mimeType?: string;
   sizeBytes?: number;
   fileName?: string;
+  isSystemThumbnail?: boolean;
 }
 
 export interface PostLocation {

@@ -31,12 +31,17 @@ import {
   Reply,
   AtSign,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  FileCheck,
+  Download,
+  Mic
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CivicPost, InstitutionResponse, CommunityEvidence } from '../types';
 import { api } from '../services/api';
 import { formatCount } from '../utils/format';
+import { determineEvidencePack } from '../utils/evidencePack';
 import { SeenTooPromptModal } from './SeenTooPromptModal';
 
 interface CivicPostCardProps {
@@ -78,7 +83,10 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const voiceMedia = post.media.find(m => m.type === 'audio');
-  const visualMedia = post.media.filter(m => m.type === 'image' || m.type === 'video');
+  const visualMedia = post.media.filter(m => (m.type === 'image' && !m.isSystemThumbnail) || m.type === 'video');
+  const documentMedia = post.media.filter(m => m.type === 'document');
+
+  const evidencePack = determineEvidencePack(post.media, post.content);
 
   const handleToggleConfirm = async () => {
     if (isConfirming) return;
@@ -238,6 +246,14 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
+          {/* Evidence Pack Badge */}
+          <span
+            className={`px-2 py-0.5 text-[10px] font-bold rounded-md border flex items-center gap-1 shrink-0 ${evidencePack.badgeColor}`}
+            title={evidencePack.description}
+          >
+            {evidencePack.typeLabel}
+          </span>
+
           {/* Issue Followership CTA */}
           <button
             onClick={handleToggleFollowIssue}
@@ -372,40 +388,92 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         )}
       </div>
 
-      {/* Voice Note Audio Player */}
+      {/* TikTok-Style Audio Post Background Card */}
       {voiceMedia && (
-        <div className="bg-slate-50 dark:bg-slate-800/90 border border-emerald-200 dark:border-emerald-900/40 p-3 rounded-xl flex items-center justify-between gap-3">
+        <div
+          className="relative rounded-2xl overflow-hidden border border-emerald-500/40 shadow-xl my-2 bg-slate-950 aspect-[16/9] sm:aspect-[21/9] flex items-end group"
+          style={{
+            backgroundImage: `url(${evidencePack.backgroundThumbnailUrl || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=800&auto=format&fit=crop&q=80'})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+          }}
+        >
+          {/* TikTok Dark Overlay Gradient */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-slate-950/30 group-hover:via-slate-950/60 transition-all"></div>
+
           <audio
             ref={audioRef}
             src={voiceMedia.url}
             onEnded={() => setIsPlayingAudio(false)}
             className="hidden"
           />
-          <div className="flex items-center gap-2.5 flex-1">
+
+          <div className="relative z-10 p-4 w-full flex items-center gap-3">
             <button
               onClick={toggleAudioPlayback}
-              className="w-9 h-9 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center flex-shrink-0 shadow-md transition-transform active:scale-95"
+              className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white flex items-center justify-center flex-shrink-0 shadow-xl transition-all active:scale-95 ring-4 ring-slate-900/60"
             >
-              {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+              {isPlayingAudio ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
             </button>
-            <div className="flex-1">
+
+            <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className="font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                  <Volume2 className="w-3.5 h-3.5" /> Citizen Voice Recording
+                <span className="font-extrabold text-white flex items-center gap-1.5 drop-shadow">
+                  <Mic className="w-4 h-4 text-emerald-400 animate-pulse" />
+                  Citizen Voice Recording
                 </span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400">{voiceMedia.duration || 12}s</span>
+                <span className="text-[11px] font-mono text-emerald-300 font-bold bg-slate-900/80 px-2 py-0.5 rounded-full border border-emerald-500/40">
+                  {voiceMedia.duration || 12}s
+                </span>
               </div>
-              {/* Audio Waveform visualization */}
-              <div className="flex items-center gap-1 h-4">
-                {(voiceMedia.waveform || [30, 60, 80, 45, 90, 75, 40, 85, 60, 35, 70, 95, 50, 65, 40]).map((h, i) => (
+
+              {/* TikTok Animated Waveform */}
+              <div className="flex items-center gap-1 h-5 bg-slate-900/60 p-1 rounded-lg backdrop-blur-xs border border-slate-700/60">
+                {(voiceMedia.waveform || [35, 60, 80, 45, 90, 75, 40, 85, 60, 35, 70, 95, 50, 65, 40, 80, 55, 90]).map((h, i) => (
                   <div
                     key={i}
-                    style={{ height: `${isPlayingAudio ? Math.max(20, (h + (i % 3) * 20) % 100) : h}%` }}
-                    className={`flex-1 rounded-full transition-all duration-150 ${isPlayingAudio ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                    style={{ height: `${isPlayingAudio ? Math.max(25, (h + (i % 4) * 20) % 100) : h}%` }}
+                    className={`flex-1 rounded-full transition-all duration-150 ${isPlayingAudio ? 'bg-emerald-400 shadow-xs' : 'bg-slate-400'}`}
                   />
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Evidence Attachments */}
+      {documentMedia.length > 0 && (
+        <div className="bg-slate-50 dark:bg-slate-950/70 p-3 rounded-xl border border-sky-200 dark:border-sky-900/50 space-y-2">
+          <div className="text-xs font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1.5">
+            <FileText className="w-4 h-4 text-sky-500" />
+            Documentary Evidence Attachments ({documentMedia.length}):
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {documentMedia.map((doc, dIdx) => (
+              <a
+                key={doc.id || `doc-${dIdx}`}
+                href={doc.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2.5 bg-white dark:bg-slate-900 hover:bg-sky-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between gap-2 text-xs transition-colors group"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-950 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0 border border-sky-300 dark:border-sky-800">
+                    <FileCheck className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-sky-600 dark:group-hover:text-sky-300">
+                      {doc.fileName || doc.caption || 'Official Evidence Document'}
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                      {doc.mimeType || 'Document'} {doc.sizeBytes ? `• ${(doc.sizeBytes / 1024).toFixed(0)} KB` : ''}
+                    </div>
+                  </div>
+                </div>
+                <Download className="w-4 h-4 text-slate-400 group-hover:text-sky-500 shrink-0" />
+              </a>
+            ))}
           </div>
         </div>
       )}

@@ -335,31 +335,6 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
 
           {/* Right Action Bar */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {onViewAsFeedPost && (
-              <button
-                id="statement-view-feed-btn"
-                onClick={() => {
-                  onViewAsFeedPost(post, response);
-                  onClose();
-                }}
-                title="View formatted as a dedicated feed post"
-                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
-              >
-                <ArrowUpRight className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Feed View</span>
-              </button>
-            )}
-
-            <button
-              id="statement-share-btn"
-              onClick={handleShareClick}
-              title="Share Official Communiqué"
-              className="h-8 sm:h-9 px-2.5 sm:px-3 text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300/80 dark:border-slate-700/80 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer active:scale-95 shadow-xs"
-            >
-              <Share2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="hidden sm:inline">Share</span>
-            </button>
-
             <button
               id="statement-print-btn"
               onClick={handlePrint}
@@ -902,19 +877,30 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
             <span className="truncate">Ghana National Civic Transparency Record</span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              id="statement-share-btn"
+              onClick={handleShareClick}
+              title="Share Official Communiqué"
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300/80 dark:border-slate-700/80 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer active:scale-95 shadow-xs"
+            >
+              <Share2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Share</span>
+            </button>
             {onViewAsFeedPost && (
               <button
+                id="statement-view-feed-btn"
                 onClick={() => {
                   onViewAsFeedPost(post, response);
                   onClose();
                 }}
-                className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Open in Feed</span>
               </button>
             )}
             <button
+              id="statement-close-btn"
               onClick={onClose}
               className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             >

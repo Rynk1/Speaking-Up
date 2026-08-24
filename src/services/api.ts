@@ -323,6 +323,36 @@ export const api = {
     return res.json();
   },
 
+  async updatePostStatus(postId: string, status: string): Promise<{ success: boolean; status: string }> {
+    const res = await fetch(`/api/posts/${postId}/status`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) throw new Error('Failed to update issue status');
+    return res.json();
+  },
+
+  async assignPost(postId: string, data: { institutionId: string; assignedDepartment?: string; assignedOfficer?: string; notes?: string }): Promise<{ success: boolean; assignId: string }> {
+    const res = await fetch(`/api/posts/${postId}/assign`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to assign post');
+    return res.json();
+  },
+
+  async requestClarification(postId: string, data: { institutionId: string; question: string }): Promise<{ success: boolean; clarifyId: string }> {
+    const res = await fetch(`/api/posts/${postId}/clarify`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to request clarification');
+    return res.json();
+  },
+
   // Institutions
   async getInstitutions(category?: string, search?: string): Promise<Institution[]> {
     const query = new URLSearchParams();

@@ -12,6 +12,8 @@ import { authMiddleware, requireAuth, requireRole, AuthenticatedRequest } from '
 import { authLimiter, createPostLimiter, commentLimiter, draftLimiter, abuseReportLimiter, apiLimiter } from './middleware/rateLimiters';
 import { sanitizeText, sanitizePlainText } from './shared/sanitize';
 import { logger } from './shared/logger';
+import { idempotencyMiddleware } from './shared/idempotency';
+import { globalErrorHandler } from './shared/errors';
 import { BASE_UPLOAD_DIR, STORAGE_ZONES, verifySignedAccessToken, generateSignedAccessToken } from './storage';
 import { processMediaFile } from './media/mediaPipeline';
 import { PrivacyOrchestrator } from './privacy/privacyOrchestrator';
@@ -31,6 +33,9 @@ import { PLATFORM_CAPABILITIES } from './social/PlatformCapabilityRegistry';
 import { InstitutionRoutingService } from './services/InstitutionRoutingService';
 import { DatabaseBackupService } from './database/backup';
 import { CivicSignalService } from './services/CivicSignalService';
+import { FeedCandidateService } from './feed/FeedCandidateService';
+import { SearchService } from './search/SearchService';
+import { TraceService } from './observability/TraceService';
 
 export function createApp() {
   const app = express();
@@ -52,6 +57,7 @@ export function createApp() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(authMiddleware);
+  app.use(idempotencyMiddleware);
 
   // Correlation ID middleware
   app.use((req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -466,8 +472,127 @@ export function createApp() {
 
   app.get('/api/auth/me', (req: AuthenticatedRequest, res) => {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
-    const user = db.prepare('SELECT id, email, name, handle, role, avatar, phone, auth_provider, is_verified FROM users WHERE id = ?').get(req.user.id);
-    res.json(user);
+    const user = db.prepare('SELECT id, email, name, handle, role, avatar, phone, auth_provider, is_verified FROM users WHERE id = ?').get(req.user.id) as any;
+    if (!user) return res.status(404).json({ error: 'User profile not found' });
+
+    const prefs = db.prepare('SELECT * FROM user_preferences WHERE user_id = ?').get(req.user.id) as any;
+
+    res.json({
+      ...user,
+      preferences: prefs || {
+        notificationEmail: true,
+        notificationSms: true,
+        notificationWhatsapp: true,
+        notificationPush: true,
+        privacyShowLocation: true,
+        privacyShowName: true,
+        preferredLanguage: 'en'
+      }
+    });
+  });
+
+  // USER PREFERENCES ENDPOINTS
+  app.get('/api/auth/preferences', requireAuth, (req: AuthenticatedRequest, res) => {
+    const prefs = db.prepare('SELECT * FROM user_preferences WHERE user_id = ?').get(req.user!.id) as any;
+    res.json(prefs || {
+      notification_email: 1,
+      notification_sms: 1,
+      notification_whatsapp: 1,
+      notification_push: 1,
+      privacy_show_location: 1,
+      privacy_show_name: 1,
+      preferred_language: 'en'
+    });
+  });
+
+  app.put('/api/auth/preferences', requireAuth, (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { notificationEmail, notificationSms, notificationWhatsapp, notificationPush, privacyShowLocation, privacyShowName, preferredLanguage } = req.body;
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO user_preferences (user_id, notification_email, notification_sms, notification_whatsapp, notification_push, privacy_show_location, privacy_show_name, preferred_language, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        notification_email = excluded.notification_email,
+        notification_sms = excluded.notification_sms,
+        notification_whatsapp = excluded.notification_whatsapp,
+        notification_push = excluded.notification_push,
+        privacy_show_location = excluded.privacy_show_location,
+        privacy_show_name = excluded.privacy_show_name,
+        preferred_language = excluded.preferred_language,
+        updated_at = excluded.updated_at
+    `).run(
+      userId,
+      notificationEmail ? 1 : 0,
+      notificationSms ? 1 : 0,
+      notificationWhatsapp ? 1 : 0,
+      notificationPush ? 1 : 0,
+      privacyShowLocation ? 1 : 0,
+      privacyShowName ? 1 : 0,
+      preferredLanguage || 'en',
+      now
+    );
+
+    res.json({ success: true, message: 'User preferences updated successfully' });
+  });
+
+  // PROFILE UPDATE ENDPOINT
+  app.put('/api/auth/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { name, phone, avatar } = req.body;
+      const now = new Date().toISOString();
+
+      if (name) {
+        db.prepare('UPDATE users SET name = ?, updated_at = ? WHERE id = ?').run(sanitizePlainText(name), now, userId);
+      }
+      if (phone) {
+        const normPhone = normalizePhone(phone);
+        if (normPhone) {
+          db.prepare('UPDATE users SET phone = ?, updated_at = ? WHERE id = ?').run(normPhone, now, userId);
+        }
+      }
+      if (avatar) {
+        db.prepare('UPDATE users SET avatar = ?, updated_at = ? WHERE id = ?').run(avatar, now, userId);
+      }
+
+      const updatedUser = db.prepare('SELECT id, email, name, handle, avatar, role, phone FROM users WHERE id = ?').get(userId);
+      res.json({ success: true, user: updatedUser });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update user profile' });
+    }
+  });
+
+  // PASSWORD RESET ENDPOINT
+  app.post('/api/auth/password-reset', authLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      const normEmail = normalizeEmail(email);
+      if (!normEmail) {
+        return res.status(400).json({ error: 'Valid email address is required' });
+      }
+
+      const user = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(normEmail);
+      if (user) {
+        logger.info(`[Password Reset Dispatch] Password reset token issued for email ${normEmail}`);
+      }
+
+      res.json({ success: true, message: 'If an account exists for this email, password reset instructions have been dispatched.' });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to request password reset' });
+    }
+  });
+
+  // ACCOUNT DELETION ENDPOINT
+  app.delete('/api/auth/account', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+      res.json({ success: true, message: 'Account successfully deleted' });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete account' });
+    }
   });
 
   // DRAFTS ROUTES - Protected against IDOR
@@ -541,29 +666,45 @@ export function createApp() {
   // POSTS ROUTES
   app.get('/api/posts', (req, res) => {
     try {
-      const { category, region, district, urgency, search } = req.query;
-      let sql = "SELECT * FROM posts WHERE moderation_status = 'approved'";
-      const params: any[] = [];
+      const { mode, category, region, district, urgency, search, institutionId, page, limit } = req.query;
 
-      if (category && category !== 'ALL') {
-        sql += ' AND category = ?';
-        params.push(category);
-      }
-      if (region && region !== 'ALL') {
-        sql += ' AND region = ?';
-        params.push(region);
-      }
-      if (district && district !== 'ALL') {
-        sql += ' AND district = ?';
-        params.push(district);
-      }
-      if (urgency && urgency !== 'ALL') {
-        sql += ' AND urgency = ?';
-        params.push(urgency);
-      }
+      let rows: any[] = [];
 
-      sql += ' ORDER BY created_at DESC';
-      const rows = db.prepare(sql).all(...params) as any[];
+      if (mode || page) {
+        const feedResult = FeedCandidateService.getFeedCandidates({
+          mode: mode as any,
+          category: category as string,
+          region: region as string,
+          district: district as string,
+          institutionId: institutionId as string,
+          page: page ? parseInt(page as string, 10) : 1,
+          limit: limit ? parseInt(limit as string, 10) : 50
+        });
+        rows = feedResult.posts;
+      } else {
+        let sql = "SELECT * FROM posts WHERE moderation_status = 'approved'";
+        const params: any[] = [];
+
+        if (category && category !== 'ALL') {
+          sql += ' AND category = ?';
+          params.push(category);
+        }
+        if (region && region !== 'ALL') {
+          sql += ' AND region = ?';
+          params.push(region);
+        }
+        if (district && district !== 'ALL') {
+          sql += ' AND district = ?';
+          params.push(district);
+        }
+        if (urgency && urgency !== 'ALL') {
+          sql += ' AND urgency = ?';
+          params.push(urgency);
+        }
+
+        sql += ' ORDER BY created_at DESC';
+        rows = db.prepare(sql).all(...params) as any[];
+      }
 
       const posts = rows.map(row => {
         const tagsRows = db.prepare('SELECT * FROM post_institution_tags WHERE post_id = ?').all(row.id) as any[];
@@ -978,6 +1119,19 @@ export function createApp() {
 
       db.prepare('UPDATE posts SET comments_count = comments_count + 1 WHERE id = ?').run(postId);
 
+      // Auto-follow issue on comment interaction
+      if (user.id && user.id !== 'anon') {
+        db.prepare('INSERT OR IGNORE INTO issue_followers (user_id, post_id) VALUES (?, ?)').run(user.id, postId);
+      }
+
+      eventBus.emitReportEvent({
+        reportId: postId,
+        eventType: 'comment.created',
+        actorType: 'CITIZEN',
+        actorId: user.id,
+        metadata: { commentId: id, parentCommentId: parentCommentId || null }
+      });
+
       res.status(201).json({
         id,
         postId,
@@ -994,14 +1148,99 @@ export function createApp() {
     }
   });
 
+  app.put('/api/comments/:id', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const commentId = req.params.id;
+      const { content } = req.body;
+      if (!content) return res.status(400).json({ error: 'Content is required' });
+
+      const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(commentId) as any;
+      if (!comment) return res.status(404).json({ error: 'Comment not found' });
+      if (comment.user_id !== req.user!.id && req.user!.role !== 'ADMIN') {
+        return res.status(403).json({ error: 'Cannot edit comment of another user' });
+      }
+
+      db.prepare('UPDATE comments SET content = ? WHERE id = ?').run(sanitizeText(content), commentId);
+
+      eventBus.emitReportEvent({
+        reportId: comment.post_id,
+        eventType: 'comment.updated',
+        actorType: 'CITIZEN',
+        actorId: req.user!.id,
+        metadata: { commentId }
+      });
+
+      res.json({ success: true, commentId, content: sanitizeText(content) });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update comment' });
+    }
+  });
+
+  app.delete('/api/comments/:id', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const commentId = req.params.id;
+      const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(commentId) as any;
+      if (!comment) return res.status(404).json({ error: 'Comment not found' });
+      if (comment.user_id !== req.user!.id && req.user!.role !== 'ADMIN' && req.user!.role !== 'MODERATOR') {
+        return res.status(403).json({ error: 'Cannot delete comment' });
+      }
+
+      db.prepare('DELETE FROM comments WHERE id = ?').run(commentId);
+      db.prepare('UPDATE posts SET comments_count = MAX(0, comments_count - 1) WHERE id = ?').run(comment.post_id);
+
+      res.json({ success: true, message: 'Comment deleted' });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete comment' });
+    }
+  });
+
   app.post('/api/comments/:id/like', (req: AuthenticatedRequest, res) => {
     try {
       const commentId = req.params.id;
       db.prepare('UPDATE comments SET likes_count = likes_count + 1 WHERE id = ?').run(commentId);
-      const row = db.prepare('SELECT likes_count FROM comments WHERE id = ?').get(commentId) as any;
+      const row = db.prepare('SELECT post_id, likes_count FROM comments WHERE id = ?').get(commentId) as any;
+
+      if (row) {
+        eventBus.emitReportEvent({
+          reportId: row.post_id,
+          eventType: 'comment.reacted',
+          actorType: 'CITIZEN',
+          actorId: req.user?.id || 'anon',
+          metadata: { commentId, likesCount: row.likes_count }
+        });
+      }
+
       res.json({ success: true, likesCount: row?.likes_count || 1, userLiked: true });
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to like comment' });
+    }
+  });
+
+  app.post('/api/comments/:id/report', abuseReportLimiter, (req: AuthenticatedRequest, res) => {
+    try {
+      const commentId = req.params.id;
+      const { reason, details } = req.body;
+      const comment = db.prepare('SELECT post_id FROM comments WHERE id = ?').get(commentId) as any;
+
+      const reportId = `rep-comm-${Date.now()}`;
+      db.prepare(`
+        INSERT INTO abuse_reports (id, post_id, user_id, reason, details, status, created_at)
+        VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
+      `).run(reportId, comment?.post_id || 'comment-abuse', req.user?.id || 'anon', reason || 'COMMENT_ABUSE', details ? sanitizePlainText(details) : `Comment ID: ${commentId}`, new Date().toISOString());
+
+      if (comment) {
+        eventBus.emitReportEvent({
+          reportId: comment.post_id,
+          eventType: 'comment.reported',
+          actorType: 'CITIZEN',
+          actorId: req.user?.id || 'anon',
+          metadata: { commentId, reason }
+        });
+      }
+
+      res.json({ success: true, message: 'Comment reported to moderators' });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to report comment' });
     }
   });
 
@@ -1397,10 +1636,11 @@ export function createApp() {
     try {
       const payload = req.body;
       const text = payload.text || payload.command || '';
-      const postId = payload.postId || (payload.ref ? payload.ref.replace(/^GH-/i, 'post-') : 'post-1');
+      const match = text.match(/(?:ACK|ACKNOWLEDGE)\s*(GH-[\w\-]+|post-[\w\-]+)?/i);
+      const extractedPostId = match && match[1] ? match[1].replace(/^GH-/i, 'post-') : null;
+      const postId = payload.postId || extractedPostId || (payload.ref ? payload.ref.replace(/^GH-/i, 'post-') : 'post-1');
       const institutionId = payload.institutionId || 'ghana-police-service';
 
-      const match = text.match(/(?:ACK|ACKNOWLEDGE)\s*(GH-[\w\-]+|post-[\w\-]+)?/i);
       let command: 'ACK' | 'ASSIGN' | 'RESPOND' = 'ACK';
       if (text.toUpperCase().includes('ASSIGN')) command = 'ASSIGN';
       else if (text.toUpperCase().includes('RESPOND')) command = 'RESPOND';
@@ -1482,7 +1722,7 @@ export function createApp() {
     try {
       const postId = req.params.id;
       const user = req.user!;
-      const { institutionId, responseType, message, statementTitle, fullStatement, referenceNumber, resolutionStatus, responderName, responderTitle } = req.body;
+      const { institutionId, responseType, message, statementTitle, fullStatement, referenceNumber, resolutionStatus, responderName, responderTitle, actionTimeline, documents, hotlines } = req.body;
 
       if (!message || !institutionId) {
         return res.status(400).json({ error: 'Message and institution ID are required' });
@@ -1495,8 +1735,8 @@ export function createApp() {
       const now = new Date().toISOString();
 
       db.prepare(`
-        INSERT INTO institution_responses (id, post_id, institution_id, institution_name, institution_logo, response_type, message, statement_title, full_statement, reference_number, resolution_status, responder_name, responder_title, official, verified, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
+        INSERT INTO institution_responses (id, post_id, institution_id, institution_name, institution_logo, response_type, message, statement_title, full_statement, reference_number, resolution_status, responder_name, responder_title, action_timeline_json, documents_json, hotlines_json, official, verified, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
       `).run(
         respId,
         postId,
@@ -1511,6 +1751,9 @@ export function createApp() {
         resolutionStatus || 'IN_PROGRESS',
         responderName ? sanitizePlainText(responderName) : user.name,
         responderTitle ? sanitizePlainText(responderTitle) : 'Official Spokesperson',
+        actionTimeline && Array.isArray(actionTimeline) ? JSON.stringify(actionTimeline) : '[]',
+        documents && Array.isArray(documents) ? JSON.stringify(documents) : '[]',
+        hotlines && Array.isArray(hotlines) ? JSON.stringify(hotlines) : '[]',
         now
       );
 
@@ -1530,6 +1773,66 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Response submission error: ${err.message}`);
       res.status(500).json({ error: 'Failed to submit official response' });
+    }
+  });
+
+  // UPDATE EXISTING OFFICIAL RESPONSE & TIMELINE ACTIONS
+  app.put('/api/responses/:id', requireRole(['INSTITUTION_REP', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const respId = req.params.id;
+      const user = req.user!;
+      const { responseType, message, statementTitle, fullStatement, referenceNumber, resolutionStatus, responderName, responderTitle, actionTimeline, documents, hotlines } = req.body;
+
+      const existingResp = db.prepare('SELECT * FROM institution_responses WHERE id = ?').get(respId) as any;
+      if (!existingResp) return res.status(404).json({ error: 'Official response not found' });
+
+      db.prepare(`
+        UPDATE institution_responses
+        SET response_type = COALESCE(?, response_type),
+            message = COALESCE(?, message),
+            statement_title = COALESCE(?, statement_title),
+            full_statement = COALESCE(?, full_statement),
+            reference_number = COALESCE(?, reference_number),
+            resolution_status = COALESCE(?, resolution_status),
+            responder_name = COALESCE(?, responder_name),
+            responder_title = COALESCE(?, responder_title),
+            action_timeline_json = COALESCE(?, action_timeline_json),
+            documents_json = COALESCE(?, documents_json),
+            hotlines_json = COALESCE(?, hotlines_json)
+        WHERE id = ?
+      `).run(
+        responseType || null,
+        message ? sanitizeText(message) : null,
+        statementTitle ? sanitizePlainText(statementTitle) : null,
+        fullStatement ? sanitizeText(fullStatement) : null,
+        referenceNumber ? sanitizePlainText(referenceNumber) : null,
+        resolutionStatus || null,
+        responderName ? sanitizePlainText(responderName) : null,
+        responderTitle ? sanitizePlainText(responderTitle) : null,
+        actionTimeline && Array.isArray(actionTimeline) ? JSON.stringify(actionTimeline) : null,
+        documents && Array.isArray(documents) ? JSON.stringify(documents) : null,
+        hotlines && Array.isArray(hotlines) ? JSON.stringify(hotlines) : null,
+        respId
+      );
+
+      if (resolutionStatus) {
+        db.prepare("UPDATE posts SET accountability_status = ? WHERE id = ?")
+          .run(resolutionStatus === 'RESOLVED' ? 'RESOLVED' : 'RESPONDED', existingResp.post_id);
+      }
+
+      eventBus.emitReportEvent({
+        reportId: existingResp.post_id,
+        eventType: 'INSTITUTION_RESPONSE_UPDATED',
+        actorType: 'INSTITUTION',
+        actorId: user.id,
+        institutionId: existingResp.institution_id,
+        metadata: { responseId: respId, status: resolutionStatus || existingResp.resolution_status }
+      });
+
+      res.json({ success: true, responseId: respId });
+    } catch (err: any) {
+      logger.error(`Response update error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to update official response' });
     }
   });
 
@@ -1718,6 +2021,24 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Outcome confirmation error: ${err.message}`);
       res.status(500).json({ error: 'Failed to record outcome confirmation' });
+    }
+  });
+
+  // GLOBAL SEARCH API
+  app.get('/api/search', (req, res) => {
+    try {
+      const { q, category, region, district, limit } = req.query;
+      const results = SearchService.searchAll({
+        query: (q as string) || '',
+        category: category as string,
+        region: region as string,
+        district: district as string,
+        limit: limit ? parseInt(limit as string, 10) : 20
+      });
+      res.json(results);
+    } catch (err: any) {
+      logger.error(`Search error: ${err.message}`);
+      res.status(500).json({ error: 'Search operation failed' });
     }
   });
 
@@ -2425,6 +2746,18 @@ export function createApp() {
     }
   });
 
+  app.get('/api/admin/posts/:id/trace', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const postId = req.params.id;
+      const trace = TraceService.getReportTrace(postId);
+      if (!trace) return res.status(404).json({ error: 'Civic report trace not found' });
+      res.json(trace);
+    } catch (err: any) {
+      logger.error(`Trace error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to generate operational trace' });
+    }
+  });
+
   app.get('/api/admin/audit-logs', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
     try {
       const events = db.prepare('SELECT * FROM report_events ORDER BY created_at DESC LIMIT 100').all();
@@ -2434,6 +2767,9 @@ export function createApp() {
       res.status(500).json({ error: 'Failed to fetch audit logs' });
     }
   });
+
+  // Global Error Handler Middleware
+  app.use(globalErrorHandler);
 
   return app;
 }

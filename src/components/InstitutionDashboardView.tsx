@@ -35,7 +35,7 @@ interface InstitutionDashboardViewProps {
   posts: CivicPost[];
   selectedInstitutionId: string;
   setSelectedInstitutionId: (id: string) => void;
-  onOpenResponseModal: (post: CivicPost) => void;
+  onOpenResponseModal: (post: CivicPost, existingResponse?: InstitutionResponse) => void;
   onPostUpdated: () => void;
   onViewOfficialResponse?: (post: CivicPost, response: InstitutionResponse) => void;
   onViewResponseFeedPost?: (post: CivicPost, response: InstitutionResponse) => void;
@@ -705,6 +705,12 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-slate-800 text-xs gap-2">
                         <span className="text-slate-400">{post.location.district} ({post.location.region})</span>
                         <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => onOpenResponseModal(post, resp)}
+                            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-extrabold text-[11px] rounded-xl flex items-center gap-1 shadow-sm cursor-pointer"
+                          >
+                            <Clock className="w-3.5 h-3.5" /> Edit Communiqué & Timeline
+                          </button>
                           {onViewResponseFeedPost && (
                             <button
                               onClick={() => onViewResponseFeedPost(post, resp)}

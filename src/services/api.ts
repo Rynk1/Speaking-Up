@@ -313,6 +313,16 @@ export const api = {
     return res.json();
   },
 
+  async updateInstitutionResponse(responseId: string, responseData: Partial<InstitutionResponse>): Promise<{ success: boolean; responseId: string }> {
+    const res = await fetch(`/api/responses/${responseId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(responseData)
+    });
+    if (!res.ok) throw new Error('Failed to update response statement');
+    return res.json();
+  },
+
   // Institutions
   async getInstitutions(category?: string, search?: string): Promise<Institution[]> {
     const query = new URLSearchParams();

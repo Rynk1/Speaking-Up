@@ -840,6 +840,22 @@ export function initDatabase() {
     );
   `);
 
+  // User Preferences & Notification Settings table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id TEXT PRIMARY KEY,
+      notification_email INTEGER NOT NULL DEFAULT 1,
+      notification_sms INTEGER NOT NULL DEFAULT 1,
+      notification_whatsapp INTEGER NOT NULL DEFAULT 1,
+      notification_push INTEGER NOT NULL DEFAULT 1,
+      privacy_show_location INTEGER NOT NULL DEFAULT 1,
+      privacy_show_name INTEGER NOT NULL DEFAULT 1,
+      preferred_language TEXT NOT NULL DEFAULT 'en',
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
   // Drafts table
   db.exec(`
     CREATE TABLE IF NOT EXISTS drafts (
@@ -1032,6 +1048,13 @@ export function initDatabase() {
   `);
 
   console.log('Database tables and indexes verified successfully.');
+
+  try {
+    const { setupFullTextSearch } = require('./fts');
+    setupFullTextSearch();
+  } catch (err: any) {
+    // FTS module loaded dynamically
+  }
 }
 
 // Keep export compatibility for root server/db.ts

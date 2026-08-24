@@ -10,7 +10,9 @@ export const STORAGE_ZONES = {
   ORIGINAL: path.join(BASE_UPLOAD_DIR, 'original'),
   PROTECTED: path.join(BASE_UPLOAD_DIR, 'protected'),
   PUBLIC: path.join(BASE_UPLOAD_DIR, 'public'),
-  PROCESSING: path.join(BASE_UPLOAD_DIR, 'processing')
+  PROCESSING: path.join(BASE_UPLOAD_DIR, 'processing'),
+  THUMBNAILS: path.join(BASE_UPLOAD_DIR, 'thumbnails'),
+  SOCIAL: path.join(BASE_UPLOAD_DIR, 'social')
 };
 
 export function initStorageZones() {

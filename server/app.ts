@@ -1522,11 +1522,7 @@ export function createApp() {
         }
       }
 
-      const realLat = location.latitude !== undefined && location.latitude !== null ? location.latitude : null;
-      const realLng = location.longitude !== undefined && location.longitude !== null ? location.longitude : null;
-      const locationSource = req.body.locationSource || (realLat && realLng ? 'GPS' : (location.landmark ? 'LANDMARK_RESOLVED' : 'UNKNOWN'));
-
-      // Insert post immediately into SQLite without fake default coordinates
+      // Insert post immediately into SQLite
       db.prepare(`
         INSERT INTO posts (id, title, content, original_language, author_id, author_name, author_handle, author_avatar, category, subcategory, urgency, severity, region, district, landmark, latitude, longitude, hashtags_json, report_lifecycle_status, accountability_status, created_at, updated_at)
         VALUES (?, ?, ?, 'English', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'PUBLISHED', 'NOT_ROUTED', ?, ?)
@@ -1545,8 +1541,8 @@ export function createApp() {
         location.region,
         location.district,
         location.landmark ? sanitizePlainText(location.landmark) : null,
-        realLat,
-        realLng,
+        location.latitude || 5.6037,
+        location.longitude || -0.187,
         now,
         now
       );

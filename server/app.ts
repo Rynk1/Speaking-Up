@@ -1485,64 +1485,91 @@ export function createApp() {
 
   app.post('/api/posts', createPostLimiter, async (req: AuthenticatedRequest, res) => {
     try {
-      const { title, content, category, subcategory, urgency, severity, location, institutionTags, media } = req.body;
+      const { title, content, category, subcategory, urgency, severity, location, institutionTags, media, authorVisibility, locationSource } = req.body;
 
-      if (!title || !content || !category || !location || !location.region || !location.district) {
-        return res.status(400).json({ error: 'Missing required report fields: title, content, category, region, and district are mandatory' });
+      // Extract raw inputs
+      const rawTitle = title ? sanitizePlainText(title) : '';
+      const rawContent = content ? sanitizeText(content) : '';
+      const finalTitle = rawTitle || (rawContent ? rawContent.slice(0, 65) + (rawContent.length > 65 ? '...' : '') : 'Civic Report');
+      const finalContent = rawContent || finalTitle;
+
+      if (!finalTitle && !finalContent && (!media || media.length === 0)) {
+        return res.status(400).json({ error: 'Please provide post content, title, or media evidence' });
       }
 
       const postId = `post-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
       const now = new Date().toISOString();
-      const sanitizedTitle = sanitizePlainText(title);
-      const sanitizedContent = sanitizeText(content);
 
-      // Determine or ensure author account in users table (handling logged-in citizen or guest citizen)
-      let authorId = req.user?.id;
-      let authorName = req.user?.name || sanitizePlainText(req.body.authorName || 'Citizen Observer');
-      let authorHandle = req.user?.handle || sanitizePlainText(req.body.authorHandle || `@citizen_${Math.floor(100 + Math.random() * 900)}`);
-      const authorAvatar = req.user?.avatar || (req.body.authorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(authorHandle)}`);
+      // Determine author identity cleanly without creating fake user database accounts for anonymous/guest sessions
+      let authorId: string;
+      let authorName: string;
+      let authorHandle: string;
+      let authorAvatar: string | null = null;
+      let visibilityMode = authorVisibility || 'public';
 
-      if (authorId) {
-        const userExists = db.prepare('SELECT id FROM users WHERE id = ?').get(authorId);
-        if (!userExists) {
-          authorId = undefined;
+      if (req.user) {
+        authorId = req.user.id;
+        if (visibilityMode === 'anonymous') {
+          authorName = 'Anonymous Citizen';
+          authorHandle = 'citizen_confidential';
+        } else {
+          authorName = req.user.name;
+          authorHandle = req.user.handle;
+          authorAvatar = req.user.avatar || null;
         }
+      } else {
+        // Guest session or anonymous reporter without logged in account
+        authorId = `anon-actor-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        authorName = visibilityMode === 'anonymous' ? 'Anonymous Citizen' : sanitizePlainText(req.body.authorName || 'Citizen Observer');
+        authorHandle = visibilityMode === 'anonymous' ? 'citizen_confidential' : sanitizePlainText(req.body.authorHandle || `citizen_${Math.floor(100 + Math.random() * 900)}`);
+        authorAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(authorHandle)}`;
       }
 
-      if (!authorId) {
-        authorId = `user-citizen-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const guestEmail = `${authorId}@citizen.speakup.gh`;
-        try {
-          db.prepare(`
-            INSERT OR IGNORE INTO users (id, email, password_hash, name, handle, avatar, role, is_verified, followers_count, created_at, updated_at)
-            VALUES (?, ?, 'N/A', ?, ?, ?, 'CITIZEN', 1, 0, ?, ?)
-          `).run(authorId, guestEmail, authorName, authorHandle, authorAvatar, now, now);
-        } catch (uErr: any) {
-          logger.warn(`Could not create guest user record: ${uErr.message}`);
-        }
+      // Location resolution & NULL GPS defaults when unavailable
+      const safeRegion = location?.region || 'Greater Accra';
+      const safeDistrict = location?.district || 'Accra Metropolitan';
+      const safeLandmark = location?.landmark ? sanitizePlainText(location.landmark) : null;
+
+      const latitude = (location && typeof location.latitude === 'number') ? location.latitude : null;
+      const longitude = (location && typeof location.longitude === 'number') ? location.longitude : null;
+
+      let resolvedLocationSource = locationSource || 'UNKNOWN';
+      if (latitude !== null && longitude !== null) {
+        resolvedLocationSource = 'GPS';
+      } else if (safeLandmark) {
+        resolvedLocationSource = 'LANDMARK_RESOLVED';
+      } else if (location?.district) {
+        resolvedLocationSource = 'DISTRICT_ONLY';
       }
 
-      // Insert post immediately into SQLite
+      const inferredCategory = category || 'Other Community Concern';
+
+      // Insert post into SQLite database
       db.prepare(`
-        INSERT INTO posts (id, title, content, original_language, author_id, author_name, author_handle, author_avatar, category, subcategory, urgency, severity, region, district, landmark, latitude, longitude, hashtags_json, report_lifecycle_status, accountability_status, created_at, updated_at)
-        VALUES (?, ?, ?, 'English', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'PUBLISHED', 'NOT_ROUTED', ?, ?)
+        INSERT INTO posts (
+          id, title, content, original_language, author_id, author_name, author_handle, author_avatar,
+          author_visibility, category, subcategory, urgency, severity, region, district, landmark,
+          latitude, longitude, location_source, hashtags_json, report_lifecycle_status, accountability_status, created_at, updated_at
+        ) VALUES (?, ?, ?, 'English', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'PUBLISHED', 'NOT_ROUTED', ?, ?)
       `).run(
         postId,
-        sanitizedTitle,
-        sanitizedContent,
+        finalTitle,
+        finalContent,
         authorId,
         authorName,
         authorHandle,
         authorAvatar,
-        category,
+        visibilityMode,
+        inferredCategory,
         subcategory || null,
         urgency || 'NORMAL',
         severity || 'MODERATE',
-        location.region,
-        location.district,
-        location.landmark ? sanitizePlainText(location.landmark) : null,
-        location.latitude || 5.6037,
-        location.longitude || -0.187,
+        safeRegion,
+        safeDistrict,
+        safeLandmark,
+        latitude,
+        longitude,
+        resolvedLocationSource,
         now,
         now
       );

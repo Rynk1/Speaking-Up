@@ -710,7 +710,8 @@ export function initDatabase() {
   // Safe ALTER migrations
   const postCols = [
     { name: 'report_lifecycle_status', type: "TEXT NOT NULL DEFAULT 'PUBLISHED'" },
-    { name: 'accountability_status', type: "TEXT NOT NULL DEFAULT 'NOT_ROUTED'" }
+    { name: 'accountability_status', type: "TEXT NOT NULL DEFAULT 'NOT_ROUTED'" },
+    { name: 'location_source', type: "TEXT NOT NULL DEFAULT 'UNKNOWN'" }
   ];
   for (const col of postCols) {
     try {

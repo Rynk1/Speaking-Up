@@ -39,3 +39,26 @@ P³RE Storage Zones initialized successfully.
 {"timestamp":"2026-08-25T17:13:02.309Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787677787908","nextAvailable":"2026-08-25T17:15:02.309Z"}
 {"timestamp":"2026-08-25T17:13:03.310Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
 {"timestamp":"2026-08-25T17:13:03.311Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787677861434","nextAvailable":"2026-08-25T17:15:03.311Z"}
+{"timestamp":"2026-08-25T17:44:54.288Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:44:54.331Z","level":"WARN","message":"Job Scheduled for Retry (4/5): DISPATCH_ALERT","jobId":"job-test-1787677353953","nextAvailable":"2026-08-25T17:48:54.329Z"}
+{"timestamp":"2026-08-25T17:44:55.529Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:44:55.536Z","level":"WARN","message":"Job Scheduled for Retry (4/5): DISPATCH_ALERT","jobId":"job-test-1787677597214","nextAvailable":"2026-08-25T17:48:55.535Z"}
+{"timestamp":"2026-08-25T17:44:56.505Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:44:56.507Z","level":"WARN","message":"Job Scheduled for Retry (4/5): DISPATCH_ALERT","jobId":"job-test-1787677787908","nextAvailable":"2026-08-25T17:48:56.507Z"}
+{"timestamp":"2026-08-25T17:44:57.506Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:44:57.508Z","level":"WARN","message":"Job Scheduled for Retry (4/5): DISPATCH_ALERT","jobId":"job-test-1787677861434","nextAvailable":"2026-08-25T17:48:57.507Z"}
+5:46:50 PM [vite] (client) hmr update /src/components/CivicPostCard.tsx, /src/index.css
+{"timestamp":"2026-08-25T17:46:58.940Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:46:58.942Z","level":"WARN","message":"Job Scheduled for Retry (1/5): DISPATCH_ALERT","jobId":"job-test-1787680018040","nextAvailable":"2026-08-25T17:47:28.942Z"}
+{"timestamp":"2026-08-25T17:47:28.969Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:47:28.971Z","level":"WARN","message":"Job Scheduled for Retry (2/5): DISPATCH_ALERT","jobId":"job-test-1787680018040","nextAvailable":"2026-08-25T17:48:28.971Z"}
+{"timestamp":"2026-08-25T17:48:29.089Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:48:29.091Z","level":"WARN","message":"Job Scheduled for Retry (3/5): DISPATCH_ALERT","jobId":"job-test-1787680018040","nextAvailable":"2026-08-25T17:50:29.090Z"}
+{"timestamp":"2026-08-25T17:48:55.116Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:48:55.117Z","level":"ERROR","message":"Job Moved to DEAD_LETTER: DISPATCH_ALERT","jobId":"job-test-1787677353953","error":"Report undefined not found"}
+{"timestamp":"2026-08-25T17:48:56.117Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:48:56.117Z","level":"ERROR","message":"Job Moved to DEAD_LETTER: DISPATCH_ALERT","jobId":"job-test-1787677597214","error":"Report undefined not found"}
+{"timestamp":"2026-08-25T17:48:57.118Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:48:57.119Z","level":"ERROR","message":"Job Moved to DEAD_LETTER: DISPATCH_ALERT","jobId":"job-test-1787677787908","error":"Report undefined not found"}
+{"timestamp":"2026-08-25T17:48:58.119Z","level":"INFO","message":"[Worker] Dispatching alert to institution undefined for post undefined"}
+{"timestamp":"2026-08-25T17:48:58.119Z","level":"ERROR","message":"Job Moved to DEAD_LETTER: DISPATCH_ALERT","jobId":"job-test-1787677861434","error":"Report undefined not found"}

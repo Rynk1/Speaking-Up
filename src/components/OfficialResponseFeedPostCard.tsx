@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { CivicPost, InstitutionResponse, ResponseComment } from '../types';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { formatCount } from '../utils/format';
 
 interface OfficialResponseFeedPostCardProps {
@@ -46,13 +47,15 @@ interface OfficialResponseFeedPostCardProps {
 export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCardProps> = ({
   post,
   response: initialResponse,
-  currentUser,
+  currentUser: propUser,
   onOpenStatementModal,
   onJumpToOriginalPost,
   onPostUpdated,
   onOpenShare,
   onOpenReportAbuse
 }) => {
+  const { currentUser: authUser, requireAuth } = useAuth();
+  const currentUser = authUser || propUser;
   const [response, setResponse] = useState<InstitutionResponse>(initialResponse);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -75,51 +78,82 @@ export const OfficialResponseFeedPostCard: React.FC<OfficialResponseFeedPostCard
     setTimeout(() => setCopiedRef(false), 2000);
   };
 
-  const handleVote = async (e: React.MouseEvent, voteType: 'helpful' | 'unhelpful') => {
+  const handleVote = (e: React.MouseEvent, voteType: 'helpful' | 'unhelpful') => {
     e.stopPropagation();
-    try {
-      const res = await api.voteResponseHelpful(response.id, voteType, currentUser?.id);
-      setHelpfulCount(res.helpfulCount);
-      setUnhelpfulCount(res.unhelpfulCount);
-      setHelpfulVote(res.userVote as any);
-    } catch (err) {
-      console.error('Vote failed', err);
-    }
+    requireAuth(
+      async () => {
+        try {
+          const res = await api.voteResponseHelpful(response.id, voteType, currentUser?.id);
+          setHelpfulCount(res.helpfulCount);
+          setUnhelpfulCount(res.unhelpfulCount);
+          setHelpfulVote(res.userVote as any);
+        } catch (err) {
+          console.error('Vote failed', err);
+        }
+      },
+      { type: 'vote_response', responseId: response.id, voteType },
+      {
+        title: 'Sign In to Rate Statement',
+        description: 'Rate official government communications to ensure transparency and civic accountability.',
+        badge: 'Verification Required: Rate Communiqué'
+      }
+    );
   };
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCommentText.trim() || submittingComment) return;
 
-    try {
-      setSubmittingComment(true);
-      const newComment = await api.addResponseComment(response.id, newCommentText.trim(), {
-        userName: currentUser?.name || 'Concerned Citizen',
-        userHandle: currentUser?.handle || 'citizen_gh'
-      });
-      setComments(prev => [...prev, newComment]);
-      setNewCommentText('');
-      setResponse(prev => ({
-        ...prev,
-        commentsCount: (prev.commentsCount || 0) + 1
-      }));
-      if (onPostUpdated) onPostUpdated();
-    } catch (err) {
-      console.error('Error posting response comment:', err);
-    } finally {
-      setSubmittingComment(false);
-    }
+    const textToSend = newCommentText.trim();
+    requireAuth(
+      async () => {
+        try {
+          setSubmittingComment(true);
+          const newComment = await api.addResponseComment(response.id, textToSend, {
+            userName: currentUser?.name || 'Concerned Citizen',
+            userHandle: currentUser?.handle || 'citizen_gh'
+          });
+          setComments(prev => [...prev, newComment]);
+          setNewCommentText('');
+          setResponse(prev => ({
+            ...prev,
+            commentsCount: (prev.commentsCount || 0) + 1
+          }));
+          if (onPostUpdated) onPostUpdated();
+        } catch (err) {
+          console.error('Error posting response comment:', err);
+        } finally {
+          setSubmittingComment(false);
+        }
+      },
+      { type: 'like_response_comment', responseId: response.id, commentId: 'draft' },
+      {
+        title: 'Sign In to Reply to Communiqué',
+        description: 'Send feedback directly to the responding institution and citizen community.',
+        badge: 'Verification Required: Official Feedback'
+      }
+    );
   };
 
-  const handleLikeComment = async (commentId: string) => {
-    try {
-      const res = await api.likeResponseComment(commentId);
-      setComments(prev =>
-        prev.map(c => (c.id === commentId ? { ...c, likesCount: res.likesCount, userLiked: true } : c))
-      );
-    } catch (err) {
-      console.error('Like failed', err);
-    }
+  const handleLikeComment = (commentId: string) => {
+    requireAuth(
+      async () => {
+        try {
+          const res = await api.likeResponseComment(commentId);
+          setComments(prev =>
+            prev.map(c => (c.id === commentId ? { ...c, likesCount: res.likesCount, userLiked: true } : c))
+          );
+        } catch (err) {
+          console.error('Like failed', err);
+        }
+      },
+      { type: 'like_response_comment', responseId: response.id, commentId },
+      {
+        title: 'Sign In to Like Reply',
+        description: 'Like constructive citizen feedback on this official statement.',
+        badge: 'Verification Required: Like'
+      }
+    );
   };
 
   // Response Type Color & Icon

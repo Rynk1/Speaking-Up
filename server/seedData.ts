@@ -620,9 +620,49 @@ export const INITIAL_POSTS: CivicPost[] = [
         userId: 'user-abena-2',
         userName: 'Abena Serwaa',
         userHandle: 'abena_s',
-        text: 'I just crossed the overhead bridge. Water level is still rising towards the VIP bus station as of 4:00 AM.',
-        statusUpdate: 'still_ongoing',
+        userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+        text: 'I just crossed the overhead bridge. Water level is still rising towards the VIP bus station as of 4:00 AM. Avoid the ground terminal.',
+        statusUpdate: 'worsened',
+        media: [
+          {
+            id: 'media-evid-flood-1',
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800&auto=format&fit=crop&q=80',
+            caption: 'Water encroaching VIP terminal grounds at 4:15 AM',
+            uploadedAt: '2026-08-20T03:45:00Z'
+          }
+        ],
         createdAt: '2026-08-20T03:45:00Z'
+      },
+      {
+        id: 'evid-2',
+        postId: 'post-circle-flood-1',
+        userId: 'user-selorm-it',
+        userName: 'Selorm Kpodo',
+        userHandle: 'selorm_tech',
+        userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
+        text: 'NADMO rescue boat and AMA water pumps have arrived on site and started suctioning near the pedestrian walkway.',
+        statusUpdate: 'improving',
+        media: [
+          {
+            id: 'media-evid-flood-video',
+            type: 'video',
+            url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            thumbnailUrl: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=400&auto=format&fit=crop&q=80',
+            caption: 'Video footage of emergency water pumps operating near overhead bridge',
+            duration: 18,
+            uploadedAt: '2026-08-20T04:20:00Z'
+          },
+          {
+            id: 'media-evid-flood-audio',
+            type: 'audio',
+            url: 'https://cdn.freesound.org/previews/518/518882_11501906-lq.mp3',
+            caption: 'Field Voice Note: Resident warning commuters against walking in knee-deep current',
+            duration: 26,
+            uploadedAt: '2026-08-20T04:25:00Z'
+          }
+        ],
+        createdAt: '2026-08-20T04:20:00Z'
       }
     ],
     createdAt: '2026-08-20T01:30:00Z',
@@ -813,7 +853,28 @@ export const INITIAL_POSTS: CivicPost[] = [
         createdAt: '2026-08-18T16:00:00Z'
       }
     ],
-    communityEvidence: [],
+    communityEvidence: [
+      {
+        id: 'evid-motorway-1',
+        postId: 'post-motorway-pothole-1',
+        userId: 'user-kofi-mensah',
+        userName: 'Kofi Mensah',
+        userHandle: 'kofi_m_accra',
+        userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
+        text: 'Ghana Highway Authority mobile patch team is currently on the median with safety cones, hot mix asphalt and roller compactor.',
+        statusUpdate: 'improving',
+        media: [
+          {
+            id: 'media-evid-road-1',
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1584463699026-6819b1689255?w=800&auto=format&fit=crop&q=80',
+            caption: 'GHA road maintenance team laying cold-mix asphalt patch',
+            uploadedAt: '2026-08-19T10:15:00Z'
+          }
+        ],
+        createdAt: '2026-08-19T10:15:00Z'
+      }
+    ],
     createdAt: '2026-08-18T08:00:00Z',
     updatedAt: '2026-08-19T18:00:00Z'
   },
@@ -958,7 +1019,36 @@ export const INITIAL_POSTS: CivicPost[] = [
         createdAt: '2026-08-19T16:30:00Z'
       }
     ],
-    communityEvidence: [],
+    communityEvidence: [
+      {
+        id: 'evid-dumsor-1',
+        postId: 'post-kumasi-dumsor-1',
+        userId: 'user-dr-owusu',
+        userName: 'Dr. Emmanuel Owusu',
+        userHandle: 'drowusu_kumasi',
+        userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
+        text: 'ECG mobile diesel trailer has hooked up to the clinic panel. Vaccine cold chain is stabilized.',
+        statusUpdate: 'improving',
+        media: [
+          {
+            id: 'media-evid-dumsor-audio',
+            type: 'audio',
+            url: 'https://cdn.freesound.org/previews/518/518882_11501906-lq.mp3',
+            caption: 'Audio Soundbite: Clinic nurse confirming power transfer to mobile generator',
+            duration: 22,
+            uploadedAt: '2026-08-19T18:20:00Z'
+          },
+          {
+            id: 'media-evid-dumsor-img',
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=800&auto=format&fit=crop&q=80',
+            caption: 'ECG emergency power deployment at clinic entrance',
+            uploadedAt: '2026-08-19T18:25:00Z'
+          }
+        ],
+        createdAt: '2026-08-19T18:20:00Z'
+      }
+    ],
     createdAt: '2026-08-19T14:00:00Z',
     updatedAt: '2026-08-20T03:00:00Z'
   },
@@ -1030,7 +1120,30 @@ export const INITIAL_POSTS: CivicPost[] = [
     userBookmarked: false,
     userReposted: false,
     officialResponses: [],
-    communityEvidence: [],
+    communityEvidence: [
+      {
+        id: 'evid-tamale-1',
+        postId: 'post-tamale-drain-1',
+        userId: 'user-fatima-tamale',
+        userName: 'Fatima Alhassan',
+        userHandle: 'fatima_tamale',
+        userAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=80',
+        text: 'Local market association placed wooden warning planks and red hazard tape over the deep hole while awaiting TaMA engineers.',
+        statusUpdate: 'still_ongoing',
+        media: [
+          {
+            id: 'media-evid-tamale-vid',
+            type: 'video',
+            url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            thumbnailUrl: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=400&auto=format&fit=crop&q=80',
+            caption: 'Video of temporary danger markers set up near school gate',
+            duration: 14,
+            uploadedAt: '2026-08-19T14:30:00Z'
+          }
+        ],
+        createdAt: '2026-08-19T14:30:00Z'
+      }
+    ],
     createdAt: '2026-08-19T09:30:00Z',
     updatedAt: '2026-08-19T17:00:00Z'
   },
@@ -1305,7 +1418,36 @@ export const INITIAL_POSTS: CivicPost[] = [
         createdAt: '2026-08-19T19:00:00Z'
       }
     ],
-    communityEvidence: [],
+    communityEvidence: [
+      {
+        id: 'evid-cc-1',
+        postId: 'post-cape-coast-water-1',
+        userId: 'user-mensah-cc',
+        userName: 'Ekow Mensah',
+        userHandle: 'ekow_capecoast',
+        userAvatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=120&auto=format&fit=crop&q=80',
+        text: 'The main pipe pit has been excavated and the GWCL welders are clamping the new 16-inch flange adaptor.',
+        statusUpdate: 'improving',
+        media: [
+          {
+            id: 'media-evid-cc-pipe',
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1584463699026-6819b1689255?w=800&auto=format&fit=crop&q=80',
+            caption: 'GWCL civil repair team working on the fractured transmission line pit',
+            uploadedAt: '2026-08-19T19:15:00Z'
+          },
+          {
+            id: 'media-evid-cc-audio',
+            type: 'audio',
+            url: 'https://cdn.freesound.org/previews/518/518882_11501906-lq.mp3',
+            caption: 'Field Voice Note: Kotokuraba shopkeeper confirming water pressure reduction in trench',
+            duration: 19,
+            uploadedAt: '2026-08-19T19:20:00Z'
+          }
+        ],
+        createdAt: '2026-08-19T19:15:00Z'
+      }
+    ],
     createdAt: '2026-08-19T15:30:00Z',
     updatedAt: '2026-08-19T19:00:00Z'
   }

@@ -211,6 +211,29 @@ export async function seedDatabaseIfEmpty() {
             });
           }
         }
+
+        for (const ev of p.communityEvidence || []) {
+          const insertEvidenceOrReplace = db.prepare(`
+            INSERT OR REPLACE INTO community_evidence (
+              id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, text, status_update, media_json, created_at
+            ) VALUES (
+              @id, @post_id, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @text, @status_update, @media_json, @created_at
+            )
+          `);
+          insertEvidenceOrReplace.run({
+            id: ev.id,
+            post_id: p.id,
+            user_id: ev.userId,
+            user_name: ev.userName,
+            user_handle: ev.userHandle || ev.userName.toLowerCase().replace(/\s+/g, '_'),
+            user_avatar: ev.userAvatar || null,
+            is_verified: ev.isVerified !== false ? 1 : 0,
+            text: ev.text,
+            status_update: ev.statusUpdate || 'still_ongoing',
+            media_json: ev.media ? JSON.stringify(ev.media) : '[]',
+            created_at: ev.createdAt || now
+          });
+        }
       }
     }
     return;
@@ -536,6 +559,30 @@ export async function seedDatabaseIfEmpty() {
           created_at: rc.createdAt || now
         });
       }
+    }
+
+    const insertEvidence = db.prepare(`
+      INSERT OR REPLACE INTO community_evidence (
+        id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, text, status_update, media_json, created_at
+      ) VALUES (
+        @id, @post_id, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @text, @status_update, @media_json, @created_at
+      )
+    `);
+
+    for (const ev of p.communityEvidence || []) {
+      insertEvidence.run({
+        id: ev.id,
+        post_id: p.id,
+        user_id: ev.userId,
+        user_name: ev.userName,
+        user_handle: ev.userHandle || ev.userName.toLowerCase().replace(/\s+/g, '_'),
+        user_avatar: ev.userAvatar || null,
+        is_verified: ev.isVerified !== false ? 1 : 0,
+        text: ev.text,
+        status_update: ev.statusUpdate || 'still_ongoing',
+        media_json: ev.media ? JSON.stringify(ev.media) : '[]',
+        created_at: ev.createdAt || now
+      });
     }
   }
 

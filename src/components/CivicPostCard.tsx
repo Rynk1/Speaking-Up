@@ -40,8 +40,9 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { CivicPost, InstitutionResponse, CommunityEvidence } from '../types';
 import { api } from '../services/api';
-import { formatCount } from '../utils/format';
-import { determineEvidencePack } from '../utils/evidencePack';
+import { useAuth } from '../context/AuthContext';
+import { formatCount, formatCivicDate } from '../utils/format';
+import { CommunityEvidenceSection } from './CommunityEvidenceSection';
 import { SeenTooPromptModal } from './SeenTooPromptModal';
 
 interface CivicPostCardProps {
@@ -69,6 +70,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
   onViewOfficialResponse,
   onViewResponseFeedPost
 }) => {
+  const { currentUser, requireAuth } = useAuth();
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -86,85 +88,174 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
   const visualMedia = post.media.filter(m => (m.type === 'image' && !m.isSystemThumbnail) || m.type === 'video');
   const documentMedia = post.media.filter(m => m.type === 'document');
 
-  const evidencePack = determineEvidencePack(post.media, post.content);
-
-  const handleToggleConfirm = async () => {
-    if (isConfirming) return;
-    setIsConfirming(true);
-    const willBeConfirmed = !post.userConfirmed;
-    try {
-      await api.toggleConfirmation(post.id);
-      onPostUpdated();
-      if (willBeConfirmed) {
-        setIsSeenTooPromptOpen(true);
+  const handleToggleConfirm = () => {
+    requireAuth(
+      async () => {
+        if (isConfirming) return;
+        setIsConfirming(true);
+        const willBeConfirmed = !post.userConfirmed;
+        try {
+          await api.toggleConfirmation(post.id);
+          onPostUpdated();
+          if (willBeConfirmed) {
+            setIsSeenTooPromptOpen(true);
+          }
+        } catch (err) {
+          console.error('Error confirming post:', err);
+        } finally {
+          setIsConfirming(false);
+        }
+      },
+      { type: 'seen_too', postId: post.id },
+      {
+        title: 'Sign In to Confirm Issue',
+        description: "Confirming you've seen this issue gives verified signal to state responders and local authorities.",
+        badge: "Verification Required: 'Seen This Too'"
       }
-    } catch (err) {
-      console.error('Error confirming post:', err);
-    } finally {
-      setIsConfirming(false);
-    }
+    );
   };
 
-  const handleToggleFollowIssue = async () => {
-    if (isFollowingIssue) return;
-    setIsFollowingIssue(true);
-    try {
-      await api.toggleFollowIssue(post.id);
-      onPostUpdated();
-    } catch (err) {
-      console.error('Error following issue:', err);
-    } finally {
-      setIsFollowingIssue(false);
-    }
+  const handleOpenAddEvidence = () => {
+    requireAuth(
+      () => onOpenAddEvidence(post),
+      { type: 'add_evidence', postId: post.id },
+      {
+        title: 'Sign In to Add Evidence',
+        description: 'Submit on-the-ground photos, videos, voice updates or progress notes.',
+        badge: 'Verification Required: Field Evidence'
+      }
+    );
   };
 
-  const handleToggleBookmark = async () => {
-    try {
-      await api.toggleBookmark(post.id);
-      onPostUpdated();
-    } catch (err) {
-      console.error('Error bookmarking:', err);
-    }
+  const handleToggleFollowIssue = () => {
+    requireAuth(
+      async () => {
+        if (isFollowingIssue) return;
+        setIsFollowingIssue(true);
+        try {
+          await api.toggleFollowIssue(post.id);
+          onPostUpdated();
+        } catch (err) {
+          console.error('Error following issue:', err);
+        } finally {
+          setIsFollowingIssue(false);
+        }
+      },
+      { type: 'follow_issue', postId: post.id },
+      {
+        title: 'Sign In to Follow Updates',
+        description: 'Receive real-time notifications when institutions respond or resolve this issue.',
+        badge: 'Verification Required: Follow Issue'
+      }
+    );
   };
 
-  const handleToggleRepost = async () => {
-    try {
-      await api.toggleRepost(post.id);
-      onPostUpdated();
-    } catch (err) {
-      console.error('Error reposting:', err);
-    }
+  const handleToggleBookmark = () => {
+    requireAuth(
+      async () => {
+        try {
+          await api.toggleBookmark(post.id);
+          onPostUpdated();
+        } catch (err) {
+          console.error('Error bookmarking:', err);
+        }
+      },
+      { type: 'bookmark', postId: post.id },
+      {
+        title: 'Sign In to Bookmark',
+        description: 'Save important civic reports to your personal dashboard to track anytime.',
+        badge: 'Verification Required: Bookmark'
+      }
+    );
+  };
+
+  const handleToggleRepost = () => {
+    requireAuth(
+      async () => {
+        try {
+          await api.toggleRepost(post.id);
+          onPostUpdated();
+        } catch (err) {
+          console.error('Error reposting:', err);
+        }
+      },
+      { type: 'amplify', postId: post.id },
+      {
+        title: 'Sign In to Amplify Alert',
+        description: 'Amplify this civic alert to boost its visibility across your district and tagged institutions.',
+        badge: 'Verification Required: Amplify'
+      }
+    );
   };
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim()) return;
 
-    setIsSubmittingComment(true);
-    try {
-      await api.addComment(post.id, {
-        content: commentText.trim(),
-        parentCommentId: replyingToCommentId || undefined,
-        userName: 'Citizen Participant',
-        userHandle: 'citizen_gh'
-      });
-      setCommentText('');
-      setReplyingToCommentId(null);
-      onPostUpdated();
-    } catch (err) {
-      console.error('Error adding comment:', err);
-    } finally {
-      setIsSubmittingComment(false);
-    }
+    const textToSend = commentText.trim();
+    const parentIdToSend = replyingToCommentId || undefined;
+
+    requireAuth(
+      async () => {
+        setIsSubmittingComment(true);
+        try {
+          await api.addComment(post.id, {
+            content: textToSend,
+            parentCommentId: parentIdToSend,
+            userName: currentUser?.name || 'Citizen Participant',
+            userHandle: currentUser?.handle || 'citizen_gh'
+          });
+          setCommentText('');
+          setReplyingToCommentId(null);
+          onPostUpdated();
+        } catch (err) {
+          console.error('Error adding comment:', err);
+        } finally {
+          setIsSubmittingComment(false);
+        }
+      },
+      { type: 'comment', postId: post.id, content: textToSend, parentCommentId: parentIdToSend },
+      {
+        title: 'Sign In to Submit Comment',
+        description: 'Join verified community deliberations and tag state institutions directly.',
+        badge: 'Verification Required: Comment'
+      }
+    );
   };
 
-  const handleLikeComment = async (commentId: string) => {
-    try {
-      await api.likeComment(commentId);
-      onPostUpdated();
-    } catch (err) {
-      console.error('Error liking comment:', err);
-    }
+  const handleReplyToComment = (c: any) => {
+    requireAuth(
+      () => {
+        setShowComments(true);
+        setReplyingToCommentId(c.id);
+        setCommentText(`@${c.userHandle} `);
+      },
+      { type: 'reply', postId: post.id, parentCommentId: c.id, initialText: `@${c.userHandle} ` },
+      {
+        title: 'Sign In to Reply',
+        description: `Sign in to reply directly to @${c.userHandle} on this civic report.`,
+        badge: 'Verification Required: Reply'
+      }
+    );
+  };
+
+  const handleLikeComment = (commentId: string) => {
+    requireAuth(
+      async () => {
+        try {
+          await api.likeComment(commentId);
+          onPostUpdated();
+        } catch (err) {
+          console.error('Error liking comment:', err);
+        }
+      },
+      { type: 'like_comment', postId: post.id, commentId },
+      {
+        title: 'Sign In to Like Comment',
+        description: 'Like helpful community observations and verified citizen reports.',
+        badge: 'Verification Required: Like'
+      }
+    );
   };
 
   const toggleAudioPlayback = () => {
@@ -238,27 +329,21 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
       id={`civic-post-${post.id}`}
       className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-5 shadow-lg transition-all hover:border-slate-300 dark:hover:border-slate-700/80 space-y-3 relative overflow-hidden"
     >
-      {/* Community Megaphone Banner & Issue Followership Controls */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800/80 text-[11px] gap-2">
-        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Public Report</span>
+      {/* Header Bar: Threat Level & Issue Followership Controls */}
+      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800/80 text-[11px] gap-1.5 sm:gap-2 flex-nowrap min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 shrink">
+          {/* Category Tag */}
+          <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/80 truncate">
+            {post.category}
+          </span>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
-          {/* Evidence Pack Badge */}
-          <span
-            className={`px-2 py-0.5 text-[10px] font-bold rounded-md border flex items-center gap-1 shrink-0 ${evidencePack.badgeColor}`}
-            title={evidencePack.description}
-          >
-            {evidencePack.typeLabel}
-          </span>
-
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap justify-end shrink-0">
           {/* Issue Followership CTA */}
           <button
             onClick={handleToggleFollowIssue}
             disabled={isFollowingIssue}
-            className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95 shrink-0 ${
+            className={`px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95 shrink-0 ${
               post.userFollowed
                 ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/40'
                 : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700'
@@ -267,26 +352,28 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
           >
             {post.userFollowed ? (
               <>
-                <BellRing className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                <span className="font-semibold">Following</span>
-                <span className="text-[10px] opacity-80">({formatCount(post.engagement?.followersCount || post.followersCount || 0)})</span>
+                <BellRing className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="font-semibold hidden xs:inline">Following</span>
+                <span className="font-semibold xs:hidden">Followed</span>
+                <span className="text-[9.5px] sm:text-[10px] opacity-80">({formatCount(post.engagement?.followersCount || post.followersCount || 0)})</span>
               </>
             ) : (
               <>
-                <BellPlus className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                <BellPlus className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
                 <span className="font-semibold">Follow</span>
-                <span className="text-[10px] opacity-80">({formatCount(post.engagement?.followersCount || post.followersCount || 0)})</span>
+                <span className="text-[9.5px] sm:text-[10px] opacity-80">({formatCount(post.engagement?.followersCount || post.followersCount || 0)})</span>
               </>
             )}
           </button>
 
+          {/* Threat Urgency Badge restored to Right Side */}
           {getUrgencyBadge()}
 
           {/* Menu Dropdown */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
             >
               <MoreVertical className="w-3.5 h-3.5" />
             </button>
@@ -298,7 +385,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                     setShowMenu(false);
                     onOpenShare(post);
                   }}
-                  className="w-full text-left px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center gap-2"
+                  className="w-full text-left px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center gap-2 cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5" /> Share / Export
                 </button>
@@ -307,7 +394,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                     setShowMenu(false);
                     onOpenReportAbuse(post.id);
                   }}
-                  className="w-full text-left px-2 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center gap-2"
+                  className="w-full text-left px-2 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center gap-2 cursor-pointer"
                 >
                   <Flag className="w-3.5 h-3.5" /> Report Violation
                 </button>
@@ -361,7 +448,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
               <span>•</span>
               <span className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                 <Clock className="w-3 h-3 shrink-0" />
-                {new Date(post.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                {formatCivicDate(post.createdAt)}
               </span>
             </div>
           </div>
@@ -393,7 +480,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         <div
           className="relative rounded-2xl overflow-hidden border border-emerald-500/40 shadow-xl my-2 bg-slate-950 aspect-[16/9] sm:aspect-[21/9] flex items-end group"
           style={{
-            backgroundImage: `url(${evidencePack.backgroundThumbnailUrl || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=800&auto=format&fit=crop&q=80'})`,
+            backgroundImage: `url(${voiceMedia.thumbnailUrl || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=800&auto=format&fit=crop&q=80'})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center'
           }}
@@ -696,13 +783,13 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
                     </div>
                   </div>
 
-                  {/* Status Badge & Timestamp */}
+                  {/* Status Badge & Timestamp (Mobile 20% reduced, desktop standard) */}
                   <div className="text-right shrink-0">
-                    <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/80 uppercase tracking-wider inline-block">
+                    <span className="px-1.5 py-0.5 sm:px-2 sm:py-0.5 text-[8px] sm:text-xs font-bold rounded sm:rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/80 uppercase tracking-normal sm:tracking-wider inline-block leading-tight">
                       {resp.responseType.replace(/_/g, ' ')}
                     </span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block font-mono">
-                      {new Date(resp.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    <span className="text-[8px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block font-mono">
+                      {formatCivicDate(resp.createdAt)}
                     </span>
                   </div>
                 </div>
@@ -798,24 +885,12 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         );
       })()}
 
-      {/* Community Evidence Updates */}
-      {post.communityEvidence && post.communityEvidence.length > 0 && (
-        <div className="bg-slate-50 dark:bg-slate-950/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800/80 space-y-2">
-          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-            <Camera className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-            Community Evidence & Field Updates ({post.communityEvidence.length}):
-          </div>
-          {post.communityEvidence.map((ev, idx) => (
-            <div key={ev.id ? `${ev.id}-${idx}` : `ev-${idx}`} className="text-xs text-slate-800 dark:text-slate-300 bg-white dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200 dark:border-slate-800/60">
-              <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
-                <span className="font-medium text-slate-700 dark:text-slate-300">{ev.userName}</span>
-                <span>{new Date(ev.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-              <p>{ev.text}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Citizen Field Evidence Section */}
+      <CommunityEvidenceSection
+        evidence={post.communityEvidence}
+        post={post}
+        onOpenAddEvidence={handleOpenAddEvidence}
+      />
 
       {/* Hashtags */}
       {post.hashtags && post.hashtags.length > 0 && (
@@ -1014,10 +1089,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setReplyingToCommentId(c.id);
-                        setCommentText(`@${c.userHandle} `);
-                      }}
+                      onClick={() => handleReplyToComment(c)}
                       className="flex items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 font-medium transition-colors"
                     >
                       <Reply className="w-3 h-3" />
@@ -1040,7 +1112,7 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         post={post}
         isOpen={isSeenTooPromptOpen}
         onClose={() => setIsSeenTooPromptOpen(false)}
-        onOpenAddEvidence={onOpenAddEvidence}
+        onOpenAddEvidence={handleOpenAddEvidence}
         confirmationsCount={post.engagement?.confirmations || post.confirmationsCount || 0}
       />
     </article>

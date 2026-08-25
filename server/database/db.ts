@@ -8,6 +8,8 @@ const db = new Database(dbPath);
 db.pragma('foreign_keys = ON');
 db.pragma('journal_mode = WAL');
 
+import { setupFullTextSearch } from './fts';
+
 export function initDatabase() {
   console.log(`Initializing SQLite database at: ${dbPath}`);
 
@@ -1050,10 +1052,9 @@ export function initDatabase() {
   console.log('Database tables and indexes verified successfully.');
 
   try {
-    const { setupFullTextSearch } = require('./fts');
     setupFullTextSearch();
   } catch (err: any) {
-    // FTS module loaded dynamically
+    console.warn('FTS initialization notice:', err?.message);
   }
 }
 

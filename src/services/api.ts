@@ -215,7 +215,10 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error('Failed to create post');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create post');
+    }
     return res.json();
   },
 

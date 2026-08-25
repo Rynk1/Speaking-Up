@@ -37,6 +37,7 @@ import {
 import { GHANA_REGIONS } from '../../server/seedData';
 import { api } from '../services/api';
 import { determineEvidencePack, getRandomSystemAudioThumbnail } from '../utils/evidencePack';
+import { useAuth } from '../context/AuthContext';
 
 interface SpeakUpComposerProps {
   isOpen: boolean;
@@ -70,6 +71,8 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
   onPostCreated,
   institutionsList
 }) => {
+  const { currentUser, requireAuth, savedPostDraft, savePostDraft, clearPostDraft } = useAuth();
+
   // Post state
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -118,19 +121,54 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset form when opened
+  // Sync author details when currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.name) setAuthorName(currentUser.name);
+      if (currentUser.handle) setAuthorHandle(currentUser.handle.replace(/^@/, ''));
+    }
+  }, [currentUser]);
+
+  // Load draft or restore form when opened
   useEffect(() => {
     if (isOpen) {
-      setTitle('');
-      setContent('');
-      setCreationMode('all');
-      setMediaList([]);
-      setSelectedInstitutions([]);
-      setAiSuggestions(null);
-      setRecordedAudioUrl(null);
       setSubmitError(null);
+      if (savedPostDraft) {
+        if (savedPostDraft.title) setTitle(savedPostDraft.title);
+        if (savedPostDraft.content) setContent(savedPostDraft.content);
+        if (savedPostDraft.creationMode) setCreationMode(savedPostDraft.creationMode);
+        if (savedPostDraft.category) setCategory(savedPostDraft.category);
+        if (savedPostDraft.urgency) setUrgency(savedPostDraft.urgency);
+        if (savedPostDraft.severity) setSeverity(savedPostDraft.severity);
+        if (savedPostDraft.region) setRegion(savedPostDraft.region);
+        if (savedPostDraft.district) setDistrict(savedPostDraft.district);
+        if (savedPostDraft.landmark) setLandmark(savedPostDraft.landmark);
+        if (savedPostDraft.authorVisibility) setAuthorVisibility(savedPostDraft.authorVisibility);
+        if (savedPostDraft.mediaList && Array.isArray(savedPostDraft.mediaList)) {
+          setMediaList(savedPostDraft.mediaList);
+        }
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, savedPostDraft]);
+
+  // Helper to persist current form state as draft
+  const persistDraft = (overrides?: any) => {
+    const draft = {
+      title,
+      content,
+      creationMode,
+      category,
+      urgency,
+      severity,
+      region,
+      district,
+      landmark,
+      authorVisibility,
+      mediaList,
+      ...overrides
+    };
+    savePostDraft(draft);
+  };
 
   // Voice recording logic
   const startVoiceRecording = async () => {
@@ -386,6 +424,22 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
       return;
     }
 
+    // Always keep draft saved in case auth prompt or navigation occurs
+    persistDraft();
+
+    if (!currentUser) {
+      requireAuth(
+        () => {},
+        { type: 'create_post' },
+        {
+          title: 'Sign In to Publish Report',
+          description: 'Your civic report draft is saved. Sign in or create an account to alert state bodies and publish.',
+          badge: 'Verification Required: Post'
+        }
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -393,21 +447,24 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
       const finalContent = content.trim() || (hasVideo ? `[Video Evidence Post] ${title.trim()}` : hasAudio ? `[Voice Recording Report] ${title.trim()}` : title.trim());
       const finalTitle = title.trim() || finalContent.slice(0, 65) + (finalContent.length > 65 ? '...' : '');
 
+      const safeRegion = region || 'Greater Accra';
+      const safeDistrict = district || 'Accra Metropolitan';
+
       const newPostPayload: any = {
         title: finalTitle,
         content: finalContent,
         originalLanguage,
         translatedText: aiSuggestions?.refinedText && useRefinedText ? aiSuggestions.refinedText : undefined,
-        authorName: authorVisibility === 'anonymous' ? 'Anonymous Citizen' : authorName,
-        authorHandle: authorVisibility === 'anonymous' ? 'citizen_confidential' : authorHandle,
+        authorName: authorVisibility === 'anonymous' ? 'Anonymous Citizen' : (currentUser?.name || authorName),
+        authorHandle: authorVisibility === 'anonymous' ? 'citizen_confidential' : (currentUser?.handle?.replace(/^@/, '') || authorHandle),
         authorVisibility,
         media: mediaList,
-        category,
-        urgency,
-        severity,
+        category: category || 'Infrastructure & Roads',
+        urgency: urgency || 'NORMAL',
+        severity: severity || 'MODERATE',
         location: {
-          region,
-          district,
+          region: safeRegion,
+          district: safeDistrict,
           landmark: landmark.trim() || undefined,
           latitude: 5.6037,
           longitude: -0.187,
@@ -422,10 +479,11 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           alertRequested: true
         })),
         suggestedInstitutions: aiSuggestions?.matchedInstitutionIds || [],
-        hashtags: aiSuggestions?.hashtags || [`#${region.replace(/\s+/g, '')}`, '#GhanaCivic', '#SpeakUp']
+        hashtags: aiSuggestions?.hashtags || [`#${safeRegion.replace(/\s+/g, '')}`, '#GhanaCivic', '#SpeakUp']
       };
 
       await api.createPost(newPostPayload);
+      clearPostDraft();
       setIsSubmitting(false);
       onPostCreated();
       onClose();

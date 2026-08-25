@@ -1483,13 +1483,12 @@ export function createApp() {
     }
   });
 
-  app.post('/api/posts', requireAuth, createPostLimiter, async (req: AuthenticatedRequest, res) => {
+  app.post('/api/posts', createPostLimiter, async (req: AuthenticatedRequest, res) => {
     try {
-      const user = req.user!;
       const { title, content, category, subcategory, urgency, severity, location, institutionTags, media } = req.body;
 
       if (!title || !content || !category || !location || !location.region || !location.district) {
-        return res.status(400).json({ error: 'Missing required report fields' });
+        return res.status(400).json({ error: 'Missing required report fields: title, content, category, region, and district are mandatory' });
       }
 
       const postId = `post-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -1497,18 +1496,44 @@ export function createApp() {
       const sanitizedTitle = sanitizePlainText(title);
       const sanitizedContent = sanitizeText(content);
 
+      // Determine or ensure author account in users table (handling logged-in citizen or guest citizen)
+      let authorId = req.user?.id;
+      let authorName = req.user?.name || sanitizePlainText(req.body.authorName || 'Citizen Observer');
+      let authorHandle = req.user?.handle || sanitizePlainText(req.body.authorHandle || `@citizen_${Math.floor(100 + Math.random() * 900)}`);
+      const authorAvatar = req.user?.avatar || (req.body.authorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(authorHandle)}`);
+
+      if (authorId) {
+        const userExists = db.prepare('SELECT id FROM users WHERE id = ?').get(authorId);
+        if (!userExists) {
+          authorId = undefined;
+        }
+      }
+
+      if (!authorId) {
+        authorId = `user-citizen-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const guestEmail = `${authorId}@citizen.speakup.gh`;
+        try {
+          db.prepare(`
+            INSERT OR IGNORE INTO users (id, email, password_hash, name, handle, avatar, role, is_verified, followers_count, created_at, updated_at)
+            VALUES (?, ?, 'N/A', ?, ?, ?, 'CITIZEN', 1, 0, ?, ?)
+          `).run(authorId, guestEmail, authorName, authorHandle, authorAvatar, now, now);
+        } catch (uErr: any) {
+          logger.warn(`Could not create guest user record: ${uErr.message}`);
+        }
+      }
+
       // Insert post immediately into SQLite
       db.prepare(`
-        INSERT INTO posts (id, title, content, author_id, author_name, author_handle, author_avatar, category, subcategory, urgency, severity, region, district, landmark, latitude, longitude, hashtags_json, report_lifecycle_status, accountability_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'PUBLISHED', 'NOT_ROUTED', ?, ?)
+        INSERT INTO posts (id, title, content, original_language, author_id, author_name, author_handle, author_avatar, category, subcategory, urgency, severity, region, district, landmark, latitude, longitude, hashtags_json, report_lifecycle_status, accountability_status, created_at, updated_at)
+        VALUES (?, ?, ?, 'English', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'PUBLISHED', 'NOT_ROUTED', ?, ?)
       `).run(
         postId,
         sanitizedTitle,
         sanitizedContent,
-        user.id,
-        user.name,
-        user.handle,
-        `https://api.dicebear.com/7.x/bottts/svg?seed=${user.handle}`,
+        authorId,
+        authorName,
+        authorHandle,
+        authorAvatar,
         category,
         subcategory || null,
         urgency || 'NORMAL',
@@ -1516,8 +1541,8 @@ export function createApp() {
         location.region,
         location.district,
         location.landmark ? sanitizePlainText(location.landmark) : null,
-        location.latitude || null,
-        location.longitude || null,
+        location.latitude || 5.6037,
+        location.longitude || -0.187,
         now,
         now
       );
@@ -1525,10 +1550,24 @@ export function createApp() {
       // Media persistence
       if (Array.isArray(media)) {
         for (const m of media) {
-          db.prepare(`
-            INSERT INTO media (id, post_id, type, url, mime_type, uploaded_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).run(`med-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`, postId, m.type || 'image', m.url, m.mimeType || 'image/jpeg', now);
+          if (m && m.url) {
+            try {
+              db.prepare(`
+                INSERT INTO media (id, post_id, type, url, mime_type, caption, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `).run(
+                m.id || `med-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+                postId,
+                m.type || 'image',
+                m.url,
+                m.mimeType || (m.type === 'video' ? 'video/mp4' : m.type === 'audio' ? 'audio/webm' : 'image/jpeg'),
+                m.caption ? sanitizePlainText(m.caption) : null,
+                now
+              );
+            } catch (mErr: any) {
+              logger.warn(`Media insert warning: ${mErr.message}`);
+            }
+          }
         }
       }
 
@@ -1538,50 +1577,70 @@ export function createApp() {
           const instId = tag.institutionId || tag.id;
           const instRow = db.prepare('SELECT * FROM institutions WHERE id = ?').get(instId) as any;
           if (instRow) {
-            db.prepare(`
-              INSERT INTO post_institution_tags (id, post_id, institution_id, institution_name, short_name, acronym, alert_requested, alert_status, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, 1, 'QUEUED', ?)
-            `).run(`tag-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`, postId, instRow.id, instRow.official_name, instRow.short_name, instRow.acronym, now);
+            try {
+              db.prepare(`
+                INSERT OR REPLACE INTO post_institution_tags (id, post_id, institution_id, institution_name, short_name, acronym, alert_requested, alert_status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 1, 'QUEUED', ?)
+              `).run(
+                `tag-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+                postId,
+                instRow.id,
+                instRow.official_name,
+                instRow.short_name,
+                instRow.acronym,
+                now
+              );
 
-            // Enqueue durable background job for alert dispatch
-            await jobQueue.enqueue('DISPATCH_ALERT', { postId, institutionId: instRow.id });
+              // Enqueue durable background job for alert dispatch
+              await jobQueue.enqueue('DISPATCH_ALERT', { postId, institutionId: instRow.id });
+            } catch (qErr: any) {
+              logger.warn(`Alert tag queue warning: ${qErr.message}`);
+            }
           }
         }
       }
 
       // Enqueue durable background job for P³RE privacy processing
-      await jobQueue.enqueue('PROCESS_PRIVACY', {
-        submissionId: postId,
-        authorId: user.id,
-        title: sanitizedTitle,
-        content: sanitizedContent,
-        media
-      });
+      try {
+        await jobQueue.enqueue('PROCESS_PRIVACY', {
+          submissionId: postId,
+          authorId,
+          title: sanitizedTitle,
+          content: sanitizedContent,
+          media
+        });
+      } catch (privErr: any) {
+        logger.warn(`Privacy job queue warning: ${privErr.message}`);
+      }
 
       // Emit REPORT_CREATED event
-      eventBus.emitReportEvent({
-        reportId: postId,
-        eventType: 'REPORT_CREATED',
-        actorType: 'CITIZEN',
-        actorId: user.id,
-        metadata: { title: sanitizedTitle, region: location.region, district: location.district }
-      });
+      try {
+        eventBus.emitReportEvent({
+          reportId: postId,
+          eventType: 'REPORT_CREATED',
+          actorType: 'CITIZEN',
+          actorId: authorId,
+          metadata: { title: sanitizedTitle, region: location.region, district: location.district }
+        });
+      } catch (evtErr: any) {
+        logger.warn(`Event bus warning: ${evtErr.message}`);
+      }
 
       const newPost = db.prepare('SELECT * FROM posts WHERE id = ?').get(postId) as any;
       res.status(201).json({
-        id: newPost.id,
-        title: newPost.title,
-        content: newPost.content,
-        category: newPost.category,
-        urgency: newPost.urgency,
-        location: { region: newPost.region, district: newPost.district, landmark: newPost.landmark },
-        createdAt: newPost.created_at,
-        reportLifecycleStatus: newPost.report_lifecycle_status,
-        accountabilityStatus: newPost.accountability_status
+        id: newPost?.id || postId,
+        title: newPost?.title || sanitizedTitle,
+        content: newPost?.content || sanitizedContent,
+        category: newPost?.category || category,
+        urgency: newPost?.urgency || urgency,
+        location: { region: newPost?.region || location.region, district: newPost?.district || location.district, landmark: newPost?.landmark || location.landmark },
+        createdAt: newPost?.created_at || now,
+        reportLifecycleStatus: newPost?.report_lifecycle_status || 'PUBLISHED',
+        accountabilityStatus: newPost?.accountability_status || 'NOT_ROUTED'
       });
     } catch (err: any) {
       logger.error(`Post creation failure: ${err.message}`);
-      res.status(500).json({ error: 'Failed to publish civic report' });
+      res.status(500).json({ error: `Failed to publish civic report: ${err.message}` });
     }
   });
 

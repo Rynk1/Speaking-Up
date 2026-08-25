@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Camera, X, Check, Loader2, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { Camera, X, Check, Loader2, AlertCircle, Image as ImageIcon, Mic, Film, Trash2 } from 'lucide-react';
 import { CivicPost, PostMedia } from '../types';
 import { api } from '../services/api';
 
@@ -44,6 +44,58 @@ export const AddEvidenceModal: React.FC<AddEvidenceModalProps> = ({
       console.error('Failed to add evidence:', err);
       setIsSubmitting(false);
     }
+  };
+
+  const handleAttachPhoto = () => {
+    const samplePhotos = [
+      'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1584463699026-6819b1689255?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=800&auto=format&fit=crop&q=80'
+    ];
+    const chosen = samplePhotos[Math.floor(Math.random() * samplePhotos.length)];
+    setMediaList(prev => [
+      ...prev,
+      {
+        id: `evid-img-${Date.now()}`,
+        type: 'image',
+        url: chosen,
+        caption: 'Field photo evidence',
+        uploadedAt: new Date().toISOString()
+      }
+    ]);
+  };
+
+  const handleAttachAudio = () => {
+    setMediaList(prev => [
+      ...prev,
+      {
+        id: `evid-aud-${Date.now()}`,
+        type: 'audio',
+        url: 'https://cdn.freesound.org/previews/518/518882_11501906-lq.mp3',
+        caption: 'Field Voice Note / Ambient Sound Recording',
+        duration: 32,
+        uploadedAt: new Date().toISOString()
+      }
+    ]);
+  };
+
+  const handleAttachVideo = () => {
+    setMediaList(prev => [
+      ...prev,
+      {
+        id: `evid-vid-${Date.now()}`,
+        type: 'video',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        thumbnailUrl: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=400&auto=format&fit=crop&q=80',
+        caption: 'On-scene field video clip',
+        duration: 15,
+        uploadedAt: new Date().toISOString()
+      }
+    ]);
+  };
+
+  const handleRemoveMedia = (index: number) => {
+    setMediaList(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -94,34 +146,61 @@ export const AddEvidenceModal: React.FC<AddEvidenceModalProps> = ({
               rows={3}
               value={text}
               onChange={e => setText(e.target.value)}
-              placeholder="e.g. I just passed by at 3pm. Water is still overflowing the main drain and two shops are closed..."
+              placeholder="e.g. I just passed by at 3pm. The drainage team is on site unblocking the culvert..."
               className="w-full p-2.5 bg-slate-800 text-xs text-slate-100 placeholder-slate-500 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500 resize-none"
             />
           </div>
 
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                const sampleEvidence = 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800&auto=format&fit=crop&q=80';
-                setMediaList([
-                  {
-                    id: `evid-media-${Date.now()}`,
-                    type: 'image',
-                    url: sampleEvidence,
-                    caption: 'Community follow-up photo',
-                    uploadedAt: new Date().toISOString()
-                  }
-                ]);
-              }}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 rounded-lg flex items-center gap-1.5"
-            >
-              <ImageIcon className="w-3.5 h-3.5 text-sky-400" /> Attach Follow-up Photo
-            </button>
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-300">
+              Attach Citizen Evidence (Photo, Audio Note, Video):
+            </label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleAttachPhoto}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-sky-400" /> Photo
+              </button>
+              <button
+                type="button"
+                onClick={handleAttachAudio}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Mic className="w-3.5 h-3.5 text-amber-400" /> Voice Note / Audio
+              </button>
+              <button
+                type="button"
+                onClick={handleAttachVideo}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Film className="w-3.5 h-3.5 text-rose-400" /> Video Clip
+              </button>
+            </div>
+
             {mediaList.length > 0 && (
-              <div className="mt-2 flex items-center gap-2">
-                <img src={mediaList[0].url} alt="Evidence" className="w-16 h-16 rounded-lg object-cover border border-slate-700" />
-                <span className="text-[11px] text-emerald-400">Photo attached ✓</span>
+              <div className="space-y-1.5 pt-2">
+                {mediaList.map((m, idx) => (
+                  <div
+                    key={m.id || idx}
+                    className="flex items-center justify-between p-2 bg-slate-800/80 rounded-lg border border-slate-700 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {m.type === 'image' && <ImageIcon className="w-4 h-4 text-sky-400 shrink-0" />}
+                      {m.type === 'audio' && <Mic className="w-4 h-4 text-amber-400 shrink-0" />}
+                      {m.type === 'video' && <Film className="w-4 h-4 text-rose-400 shrink-0" />}
+                      <span className="text-slate-200 font-medium truncate">{m.caption || `${m.type} evidence`}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMedia(idx)}
+                      className="text-slate-400 hover:text-red-400 p-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>

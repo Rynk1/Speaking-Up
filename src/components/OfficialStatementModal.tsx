@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { CivicPost, InstitutionResponse, ResponseComment, ResponseTimelineStep } from '../types';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { SharePreviewModal } from './SharePreviewModal';
 
 interface OfficialStatementModalProps {
@@ -44,13 +45,15 @@ interface OfficialStatementModalProps {
 export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
   post,
   response: initialResponse,
-  currentUser,
+  currentUser: propUser,
   onClose,
   onPostUpdated,
   onOpenAnotherResponse,
   onViewAsFeedPost,
   onOpenShare
 }) => {
+  const { currentUser: authUser, requireAuth } = useAuth();
+  const currentUser = authUser || propUser;
   const [response, setResponse] = useState<InstitutionResponse>(initialResponse);
   const [activeTab, setActiveTab] = useState<'statement_replies' | 'original_report_discussion' | 'agency_thread'>('statement_replies');
   const [comments, setComments] = useState<ResponseComment[]>(initialResponse.commentsList || []);
@@ -150,45 +153,76 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
     window.print();
   };
 
-  const handleVote = async (voteType: 'helpful' | 'unhelpful') => {
-    try {
-      const res = await api.voteResponseHelpful(response.id, voteType, currentUser?.id);
-      setHelpfulCount(res.helpfulCount);
-      setUnhelpfulCount(res.unhelpfulCount);
-      setHelpfulVote(res.userVote as any);
-    } catch (e) {
-      console.error('Vote failed', e);
-    }
+  const handleVote = (voteType: 'helpful' | 'unhelpful') => {
+    requireAuth(
+      async () => {
+        try {
+          const res = await api.voteResponseHelpful(response.id, voteType, currentUser?.id);
+          setHelpfulCount(res.helpfulCount);
+          setUnhelpfulCount(res.unhelpfulCount);
+          setHelpfulVote(res.userVote as any);
+        } catch (e) {
+          console.error('Vote failed', e);
+        }
+      },
+      { type: 'vote_response', responseId: response.id, voteType },
+      {
+        title: 'Sign In to Rate Communiqué',
+        description: 'Rate official government communications to ensure transparency and accountability.',
+        badge: 'Verification Required: Rate Communiqué'
+      }
+    );
   };
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCommentText.trim() || submittingComment) return;
 
-    try {
-      setSubmittingComment(true);
-      const newComment = await api.addResponseComment(response.id, newCommentText.trim(), {
-        userName: currentUser?.name || 'Concerned Citizen',
-        userHandle: currentUser?.handle || 'citizen_gh'
-      });
-      setComments(prev => [...prev, newComment]);
-      setNewCommentText('');
-    } catch (err) {
-      console.error('Error posting comment:', err);
-    } finally {
-      setSubmittingComment(false);
-    }
+    const textToSend = newCommentText.trim();
+    requireAuth(
+      async () => {
+        try {
+          setSubmittingComment(true);
+          const newComment = await api.addResponseComment(response.id, textToSend, {
+            userName: currentUser?.name || 'Concerned Citizen',
+            userHandle: currentUser?.handle || 'citizen_gh'
+          });
+          setComments(prev => [...prev, newComment]);
+          setNewCommentText('');
+        } catch (err) {
+          console.error('Error posting comment:', err);
+        } finally {
+          setSubmittingComment(false);
+        }
+      },
+      { type: 'like_response_comment', responseId: response.id, commentId: 'draft' },
+      {
+        title: 'Sign In to Reply to Communiqué',
+        description: 'Send feedback directly to the responding ministry or agency.',
+        badge: 'Verification Required: Official Feedback'
+      }
+    );
   };
 
-  const handleLikeComment = async (commentId: string) => {
-    try {
-      const res = await api.likeResponseComment(commentId);
-      setComments(prev =>
-        prev.map(c => (c.id === commentId ? { ...c, likesCount: res.likesCount, userLiked: true } : c))
-      );
-    } catch (err) {
-      console.error('Like failed', err);
-    }
+  const handleLikeComment = (commentId: string) => {
+    requireAuth(
+      async () => {
+        try {
+          const res = await api.likeResponseComment(commentId);
+          setComments(prev =>
+            prev.map(c => (c.id === commentId ? { ...c, likesCount: res.likesCount, userLiked: true } : c))
+          );
+        } catch (err) {
+          console.error('Like failed', err);
+        }
+      },
+      { type: 'like_response_comment', responseId: response.id, commentId },
+      {
+        title: 'Sign In to Like Reply',
+        description: 'Like constructive citizen feedback on this official statement.',
+        badge: 'Verification Required: Like'
+      }
+    );
   };
 
   // Response Type Color and Icon
@@ -900,7 +934,7 @@ export const OfficialStatementModal: React.FC<OfficialStatementModalProps> = ({
               </button>
             )}
             <button
-              id="statement-close-btn"
+              id="statement-footer-close-btn"
               onClick={onClose}
               className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             >

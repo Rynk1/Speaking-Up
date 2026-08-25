@@ -18,6 +18,7 @@ export interface AuthenticatedUser {
   role: UserRole;
   institutionId?: string;
   phone?: string;
+  avatar?: string;
 }
 
 export interface AuthenticatedRequest extends Request {

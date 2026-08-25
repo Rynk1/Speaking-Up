@@ -41,14 +41,28 @@ import { NationalAnalyticsView } from './components/NationalAnalyticsView';
 import { PrivacyReviewPortal } from './components/PrivacyReviewPortal';
 import { AdminDashboardView } from './components/AdminDashboardView';
 import { AuthModal } from './components/AuthModal';
+import { useAuth } from './context/AuthContext';
 
 export default function App() {
   const navigate = useNavigate();
+  const {
+    currentUser,
+    userRole,
+    setUserRole,
+    isAuthOpen,
+    authMode,
+    authPromptInfo,
+    openAuthModal,
+    closeAuthModal,
+    handleAuthSuccess,
+    logout,
+    requireAuth,
+    resumedAction,
+    clearResumedAction
+  } = useAuth();
 
-  // Role State
-  const [userRole, setUserRole] = useState<'citizen' | 'institution_rep' | 'journalist' | 'moderator' | 'admin'>('citizen');
+  // Institution State
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>('ghana-police-service');
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,8 +77,6 @@ export default function App() {
 
   // Global Modals State
   const [isSpeakUpOpen, setIsSpeakUpOpen] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [shareTarget, setShareTarget] = useState<{ post: CivicPost; response?: InstitutionResponse } | null>(null);
   const [evidencePost, setEvidencePost] = useState<CivicPost | null>(null);
   const [responsePost, setResponsePost] = useState<CivicPost | null>(null);

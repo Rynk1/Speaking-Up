@@ -23,6 +23,11 @@ interface AuthModalProps {
   onAuthSuccess: (user: any, token: string) => void;
   initialMode?: 'signin' | 'signup' | 'login' | 'register';
   isEnforced?: boolean;
+  promptInfo?: {
+    title?: string;
+    description?: string;
+    badge?: string;
+  } | null;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -30,7 +35,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onAuthSuccess,
   initialMode = 'signin',
-  isEnforced = false
+  isEnforced = false,
+  promptInfo = null
 }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>(
     initialMode === 'register' || initialMode === 'signup' ? 'signup' : 'signin'
@@ -260,15 +266,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
 
           <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-            {mode === 'signin' ? 'Sign In to Ghana Civic' : 'Join Ghana Civic Network'}
+            {promptInfo?.title || (mode === 'signin' ? 'Sign In to Ghana Civic' : 'Join Ghana Civic Network')}
           </h2>
 
           <p className="text-xs text-slate-600 dark:text-slate-400 max-w-xs mx-auto">
-            {mode === 'signin'
+            {promptInfo?.description || (mode === 'signin'
               ? 'Access your civic reports, alerts, and community confirmations.'
-              : 'Empowering every citizen with a direct megaphone to state institutions. 0 followers needed.'}
+              : 'Empowering every citizen with a direct megaphone to state institutions. 0 followers needed.')}
           </p>
         </div>
+
+        {/* Contextual Action Preservation Alert */}
+        {promptInfo && (
+          <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200 rounded-xl text-xs flex items-start gap-2.5 shadow-2xs">
+            <div className="w-5 h-5 rounded-full bg-emerald-200 dark:bg-emerald-800 flex items-center justify-center shrink-0 mt-0.5 text-emerald-800 dark:text-emerald-200 font-bold text-[10px]">
+              ✓
+            </div>
+            <div className="space-y-0.5">
+              <div className="font-bold text-[11px] uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                {promptInfo.badge || 'Civic Verification Required'}
+              </div>
+              <p className="text-emerald-700 dark:text-emerald-300 text-[11.5px] leading-relaxed">
+                Your interaction has been remembered and will resume automatically once you sign in.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Mode Switcher Tabs (Sign In / Sign Up) */}
         <div className="flex bg-slate-100 dark:bg-slate-800/90 p-1 rounded-xl mb-5 border border-slate-200 dark:border-slate-700/80">

@@ -656,65 +656,6 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         </div>
       )}
 
-      {/* Institutional Awareness, Alert & Acknowledgement Status Banner */}
-      {post.institutionTags && post.institutionTags.length > 0 && (
-        <div className="bg-slate-50 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
-            <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
-              <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>Institutional Alert & Response Status</span>
-            </div>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-              Status: <strong className="text-emerald-600 dark:text-emerald-400">{post.accountabilityStatus || 'ROUTED'}</strong>
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-            {post.institutionTags.map((tag, idx) => {
-              const matchingResp = post.officialResponses?.find(
-                r => r.institutionId === tag.institutionId || r.institutionName.toLowerCase().includes(tag.shortName.toLowerCase())
-              );
-
-              return (
-                <div
-                  key={`${tag.institutionId || 'inst'}-notice-${idx}`}
-                  className="p-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg flex items-center justify-between gap-2"
-                >
-                  <div className="min-w-0">
-                    <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
-                      @{tag.shortName || tag.acronym}
-                    </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                      {tag.institutionName}
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    {matchingResp ? (
-                      <span className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-100 dark:bg-emerald-950/90 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded flex items-center gap-1">
-                        <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" /> Statement Issued
-                      </span>
-                    ) : tag.alertStatus === 'ACKNOWLEDGED' ? (
-                      <span className="px-1.5 py-0.5 text-[9px] font-bold bg-sky-100 dark:bg-sky-950/90 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-800 rounded flex items-center gap-1">
-                        <UserCheck className="w-2.5 h-2.5 text-sky-600 dark:text-sky-400" /> Acknowledged
-                      </span>
-                    ) : tag.alertStatus === 'DELIVERED' || tag.alertStatus === 'SENT' ? (
-                      <span className="px-1.5 py-0.5 text-[9px] font-bold bg-amber-100 dark:bg-amber-950/90 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded flex items-center gap-1">
-                        <BellRing className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" /> Alert Queued
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded">
-                        Tagged
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Official State Institution Responses Section */}
       {post.officialResponses && post.officialResponses.length > 0 && (() => {
         const responses = post.officialResponses;

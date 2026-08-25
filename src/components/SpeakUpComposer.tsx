@@ -23,7 +23,15 @@ import {
   Send,
   Plus,
   FileCheck,
-  Type
+  Type,
+  Share2,
+  Check,
+  Eye,
+  ArrowRight,
+  ArrowLeft,
+  Copy,
+  ExternalLink,
+  Edit3
 } from 'lucide-react';
 import {
   CivicCategory,
@@ -63,7 +71,7 @@ const CATEGORIES: CivicCategory[] = [
   'Other Community Concern'
 ];
 
-type CreationMode = 'all' | 'text' | 'audio' | 'video' | 'document';
+type WizardStep = 1 | 2 | 3 | 4; // 1: Capture, 2: Context, 3: Publish Preview, 4: Post-Publish Flywheel
 
 export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
   isOpen,
@@ -73,27 +81,37 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
 }) => {
   const { currentUser, requireAuth, savedPostDraft, savePostDraft, clearPostDraft } = useAuth();
 
-  // Post state
+  // Wizard state
+  const [currentStep, setCurrentStep] = useState<WizardStep>(1);
+
+  // Primary Citizen Inputs
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [creationMode, setCreationMode] = useState<CreationMode>('all');
-  const [originalLanguage, setOriginalLanguage] = useState('English');
-  const [category, setCategory] = useState<CivicCategory>('Infrastructure & Roads');
-  const [urgency, setUrgency] = useState<UrgencyLevel>('NORMAL');
-  const [severity, setSeverity] = useState<SeverityLevel>('MODERATE');
+  const [mediaList, setMediaList] = useState<PostMedia[]>([]);
+
+  // Location resolution
+  const [locationSource, setLocationSource] = useState<'GPS' | 'USER_SELECTED' | 'LANDMARK_RESOLVED' | 'DISTRICT_ONLY' | 'UNKNOWN'>('UNKNOWN');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [region, setRegion] = useState<GhanaRegionName>('Greater Accra');
   const [district, setDistrict] = useState('Accra Metropolitan');
   const [landmark, setLandmark] = useState('');
-  const [locationPrivacy, setLocationPrivacy] = useState<'exact' | 'approximate' | 'hidden'>('exact');
+  const [isLocating, setIsLocating] = useState(false);
+
+  // Inferred Platform Intelligence (Auto-determined + User Editable override)
+  const [inferredCategory, setInferredCategory] = useState<CivicCategory>('Infrastructure & Roads');
+  const [inferredUrgency, setInferredUrgency] = useState<UrgencyLevel>('NORMAL');
+  const [inferredSeverity, setInferredSeverity] = useState<SeverityLevel>('MODERATE');
+  const [selectedInstitutions, setSelectedInstitutions] = useState<Institution[]>([]);
+  const [isIntelligenceOverridden, setIsIntelligenceOverridden] = useState(false);
+  const [showEditIntelligence, setShowEditIntelligence] = useState(false);
+
+  // Author Visibility
   const [authorVisibility, setAuthorVisibility] = useState<AuthorVisibility>('public');
   const [authorName, setAuthorName] = useState('Citizen Observer');
   const [authorHandle, setAuthorHandle] = useState('citizen_voice');
 
-  // Media & Documents
-  const [mediaList, setMediaList] = useState<PostMedia[]>([]);
-  const [blurFaces, setBlurFaces] = useState(false);
-
-  // Voice recording
+  // Media & Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
@@ -103,20 +121,16 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const recordIntervalRef = useRef<any>(null);
 
-  // Institution tagging
-  const [selectedInstitutions, setSelectedInstitutions] = useState<Institution[]>([]);
+  // Institution Search & Dropdown
   const [institutionSearch, setInstitutionSearch] = useState('');
   const [showInstDropdown, setShowInstDropdown] = useState(false);
 
-  // AI Assistant
-  const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<any>(null);
-  const [useRefinedText, setUseRefinedText] = useState(true);
-
-  // Submission
+  // Processing & Submission
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [isLocating, setIsLocating] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [publishedPostId, setPublishedPostId] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
@@ -129,17 +143,20 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     }
   }, [currentUser]);
 
-  // Load draft or restore form when opened
+  // Load draft or reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setSubmitError(null);
+      setCurrentStep(1);
+      setCopiedLink(false);
+      setPublishedPostId(null);
+
       if (savedPostDraft) {
         if (savedPostDraft.title) setTitle(savedPostDraft.title);
         if (savedPostDraft.content) setContent(savedPostDraft.content);
-        if (savedPostDraft.creationMode) setCreationMode(savedPostDraft.creationMode);
-        if (savedPostDraft.category) setCategory(savedPostDraft.category);
-        if (savedPostDraft.urgency) setUrgency(savedPostDraft.urgency);
-        if (savedPostDraft.severity) setSeverity(savedPostDraft.severity);
+        if (savedPostDraft.category) setInferredCategory(savedPostDraft.category);
+        if (savedPostDraft.urgency) setInferredUrgency(savedPostDraft.urgency);
+        if (savedPostDraft.severity) setInferredSeverity(savedPostDraft.severity);
         if (savedPostDraft.region) setRegion(savedPostDraft.region);
         if (savedPostDraft.district) setDistrict(savedPostDraft.district);
         if (savedPostDraft.landmark) setLandmark(savedPostDraft.landmark);
@@ -151,15 +168,42 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     }
   }, [isOpen, savedPostDraft]);
 
+  // Run automatic background intelligence when text or media is provided
+  const triggerAutoIntelligence = async (textInput: string) => {
+    if (!textInput.trim() || isIntelligenceOverridden) return;
+    setIsAnalyzing(true);
+    try {
+      const res = await api.analyzePost(textInput, { region, district });
+      if (res) {
+        if (res.category && CATEGORIES.includes(res.category as CivicCategory)) {
+          setInferredCategory(res.category as CivicCategory);
+        }
+        if (res.urgency) setInferredUrgency(res.urgency);
+        if (res.severity) setInferredSeverity(res.severity);
+        if (res.conciseTitle && !title) setTitle(res.conciseTitle);
+
+        if (res.matchedInstitutionIds && Array.isArray(res.matchedInstitutionIds)) {
+          const matched = institutionsList.filter(i => res.matchedInstitutionIds.includes(i.id));
+          if (matched.length > 0) {
+            setSelectedInstitutions(matched);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Background civic intelligence inference skipped:', err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   // Helper to persist current form state as draft
   const persistDraft = (overrides?: any) => {
     const draft = {
       title,
       content,
-      creationMode,
-      category,
-      urgency,
-      severity,
+      category: inferredCategory,
+      urgency: inferredUrgency,
+      severity: inferredSeverity,
       region,
       district,
       landmark,
@@ -187,33 +231,27 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           const audioUrl = URL.createObjectURL(audioBlob);
           setRecordedAudioUrl(audioUrl);
-
-          // Add as voice note media with automatic thumbnail setup if no user image exists
           attachVoiceNoteMedia(audioUrl, recordDuration);
 
           if (!content.trim()) {
-            const spoken = "The road culvert has collapsed near the market and cars cannot pass. Children going to school are in danger. We need Highways and Police.";
+            const spoken = "The drainage pipe has burst and water is flooding the street near the market.";
             setContent(spoken);
-            if (!title.trim()) {
-              setTitle("Collapsed culvert obstructing market road");
-            }
-            handleAnalyzeWithAI(spoken);
+            if (!title.trim()) setTitle("Water pipeline leak flooding market road");
+            triggerAutoIntelligence(spoken);
           }
         };
 
         mediaRecorder.start();
         setIsRecording(true);
         setRecordDuration(0);
-        recordIntervalRef.current = setInterval(() => {
-          setRecordDuration(d => d + 1);
-        }, 1000);
+        recordIntervalRef.current = setInterval(() => setRecordDuration(d => d + 1), 1000);
       } else {
         setIsRecording(true);
         setRecordDuration(0);
         recordIntervalRef.current = setInterval(() => setRecordDuration(d => d + 1), 1000);
       }
     } catch (err) {
-      console.warn('Microphone access not granted, using fallback audio note', err);
+      console.warn('Microphone access fallback', err);
       setIsRecording(true);
       setRecordDuration(0);
       recordIntervalRef.current = setInterval(() => setRecordDuration(d => d + 1), 1000);
@@ -227,15 +265,13 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     } else {
       const fallbackUrl = 'https://actions.google.com/sounds/v1/water/rain_heavy.ogg';
       setRecordedAudioUrl(fallbackUrl);
-      attachVoiceNoteMedia(fallbackUrl, recordDuration || 8);
+      attachVoiceNoteMedia(fallbackUrl, recordDuration || 10);
 
       if (!content.trim()) {
         const spoken = 'Heavy flooding has started entering the market stalls. We need NADMO now.';
         setContent(spoken);
-        if (!title.trim()) {
-          setTitle("Heavy flooding in market stalls");
-        }
-        handleAnalyzeWithAI(spoken);
+        if (!title.trim()) setTitle("Heavy flooding in market stalls");
+        triggerAutoIntelligence(spoken);
       }
     }
 
@@ -258,13 +294,12 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
         uploadedAt: new Date().toISOString()
       };
 
-      // If no user image exists, add fallback system-generated thumbnail for TikTok-style background
       if (!hasUserImage && !filtered.some(m => m.isSystemThumbnail)) {
         const sysThumb: PostMedia = {
           id: `sys-thumb-${Date.now()}`,
           type: 'image',
           url: getRandomSystemAudioThumbnail(),
-          caption: 'System Generated Background Cover',
+          caption: 'System Generated Cover',
           isSystemThumbnail: true,
           uploadedAt: new Date().toISOString()
         };
@@ -282,11 +317,15 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
       navigator.geolocation.getCurrentPosition(
         pos => {
           setIsLocating(false);
-          setDistrict('Accra Metropolitan / Central District');
+          setLatitude(pos.coords.latitude);
+          setLongitude(pos.coords.longitude);
+          setLocationSource('GPS');
+          setDistrict('Accra Metropolitan / Central');
           setLandmark('Detected near current GPS coordinates');
         },
         err => {
           setIsLocating(false);
+          setLocationSource('DISTRICT_ONLY');
           setDistrict('Accra Metropolitan');
         },
         { timeout: 8000 }
@@ -296,7 +335,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     }
   };
 
-  // Image / Video File upload
+  // Media File uploads
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -315,16 +354,12 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           uploadedAt: new Date().toISOString()
         };
 
-        // If user uploads an image and audio is present, remove system thumbnail so user image becomes background cover
         setMediaList(prev => {
           let updated = [...prev];
-          if (!isVideo) {
-            updated = updated.filter(m => !m.isSystemThumbnail);
-          }
+          if (!isVideo) updated = updated.filter(m => !m.isSystemThumbnail);
           return [...updated, newMedia];
         });
 
-        // Auto-fill title if empty
         if (!title.trim()) {
           setTitle(file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '));
         }
@@ -333,7 +368,6 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     });
   };
 
-  // Document File upload
   const handleDocumentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -353,78 +387,44 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           uploadedAt: new Date().toISOString()
         };
         setMediaList(prev => [...prev, newDoc]);
-        if (!title.trim()) {
-          setTitle(`Document: ${file.name}`);
-        }
+        if (!title.trim()) setTitle(`Document: ${file.name}`);
       };
       reader.readAsDataURL(file);
     });
   };
 
-  // AI Assistant Trigger
-  const handleAnalyzeWithAI = async (textToAnalyze?: string) => {
-    const targetText = textToAnalyze || content || title;
-    if (!targetText.trim()) return;
-
-    setIsAnalyzingAI(true);
-    try {
-      const res = await api.analyzePost(targetText, { region, district });
-      setAiSuggestions(res);
-
-      if (res.category && CATEGORIES.includes(res.category as CivicCategory)) {
-        setCategory(res.category as CivicCategory);
-      }
-      if (res.urgency) {
-        setUrgency(res.urgency);
-      }
-      if (res.severity) {
-        setSeverity(res.severity);
-      }
-      if (res.region && GHANA_REGIONS.includes(res.region as GhanaRegionName)) {
-        setRegion(res.region as GhanaRegionName);
-      }
-      if (res.district) {
-        setDistrict(res.district);
-      }
-      if (res.landmark) {
-        setLandmark(res.landmark);
-      }
-      if (res.conciseTitle && !title) {
-        setTitle(res.conciseTitle);
-      }
-
-      // Match institutions
-      if (res.matchedInstitutionIds && res.matchedInstitutionIds.length > 0) {
-        const matched = institutionsList.filter(i => res.matchedInstitutionIds.includes(i.id));
-        if (matched.length > 0) {
-          setSelectedInstitutions(matched);
-        }
-      }
-    } catch (err) {
-      console.warn('AI analysis skipped or failed:', err);
-    } finally {
-      setIsAnalyzingAI(false);
-    }
-  };
-
-  // Compute Evidence Pack Summary
-  const evidenceSummary = determineEvidencePack(mediaList, content);
-
-  // Submit Post
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Check minimum content requirement based on mode
-    const hasMedia = mediaList.length > 0;
-    const hasAudio = mediaList.some(m => m.type === 'audio');
-    const hasVideo = mediaList.some(m => m.type === 'video');
-
-    if (!content.trim() && !hasAudio && !hasVideo && mediaList.length === 0) {
-      setSubmitError('Please provide a report description, record audio, or upload video/photo evidence.');
+  // Step Navigation Handlers
+  const handleGoToContextStep = () => {
+    if (!content.trim() && mediaList.length === 0 && !title.trim()) {
+      setSubmitError('Please capture something, record voice, or describe what is happening.');
       return;
     }
+    setSubmitError(null);
 
-    // Always keep draft saved in case auth prompt or navigation occurs
+    // Auto infer if title is empty
+    if (!title.trim() && content.trim()) {
+      setTitle(content.trim().slice(0, 60) + (content.length > 60 ? '...' : ''));
+    }
+
+    // Trigger platform intelligence analysis
+    if (content.trim()) {
+      triggerAutoIntelligence(content.trim());
+    }
+
+    setCurrentStep(2);
+  };
+
+  const handleGoToPublishStep = () => {
+    if (!content.trim() && !title.trim() && mediaList.length === 0) {
+      setSubmitError('Please describe what is happening or attach media.');
+      return;
+    }
+    setSubmitError(null);
+    setCurrentStep(3);
+  };
+
+  // Final Publish Handler
+  const handlePublishPost = async () => {
     persistDraft();
 
     if (!currentUser) {
@@ -433,8 +433,8 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
         { type: 'create_post' },
         {
           title: 'Sign In to Publish Report',
-          description: 'Your civic report draft is saved. Sign in or create an account to alert state bodies and publish.',
-          badge: 'Verification Required: Post'
+          description: 'Your report is saved. Sign in or register to complete publication and alert authorities.',
+          badge: 'Verification Required'
         }
       );
       return;
@@ -444,32 +444,32 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     setSubmitError(null);
 
     try {
-      const finalContent = content.trim() || (hasVideo ? `[Video Evidence Post] ${title.trim()}` : hasAudio ? `[Voice Recording Report] ${title.trim()}` : title.trim());
+      const finalContent = content.trim() || title.trim() || 'Civic Observation Report';
       const finalTitle = title.trim() || finalContent.slice(0, 65) + (finalContent.length > 65 ? '...' : '');
 
       const safeRegion = region || 'Greater Accra';
       const safeDistrict = district || 'Accra Metropolitan';
 
-      const newPostPayload: any = {
+      const payload: any = {
         title: finalTitle,
         content: finalContent,
-        originalLanguage,
-        translatedText: aiSuggestions?.refinedText && useRefinedText ? aiSuggestions.refinedText : undefined,
+        originalLanguage: 'English',
         authorName: authorVisibility === 'anonymous' ? 'Anonymous Citizen' : (currentUser?.name || authorName),
         authorHandle: authorVisibility === 'anonymous' ? 'citizen_confidential' : (currentUser?.handle?.replace(/^@/, '') || authorHandle),
         authorVisibility,
         media: mediaList,
-        category: category || 'Infrastructure & Roads',
-        urgency: urgency || 'NORMAL',
-        severity: severity || 'MODERATE',
+        category: inferredCategory,
+        urgency: inferredUrgency,
+        severity: inferredSeverity,
+        locationSource,
         location: {
           region: safeRegion,
           district: safeDistrict,
           landmark: landmark.trim() || undefined,
-          latitude: 5.6037,
-          longitude: -0.187,
-          accuracy: locationPrivacy,
-          visibility: locationPrivacy
+          latitude: latitude !== null ? latitude : undefined,
+          longitude: longitude !== null ? longitude : undefined,
+          accuracy: 'exact',
+          visibility: 'exact'
         },
         institutionTags: selectedInstitutions.map(inst => ({
           institutionId: inst.id,
@@ -477,21 +477,34 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           shortName: inst.shortName,
           acronym: inst.acronym,
           alertRequested: true
-        })),
-        suggestedInstitutions: aiSuggestions?.matchedInstitutionIds || [],
-        hashtags: aiSuggestions?.hashtags || [`#${safeRegion.replace(/\s+/g, '')}`, '#GhanaCivic', '#SpeakUp']
+        }))
       };
 
-      await api.createPost(newPostPayload);
+      const res = await api.createPost(payload);
       clearPostDraft();
       setIsSubmitting(false);
+
+      if (res && res.id) {
+        setPublishedPostId(res.id);
+      } else {
+        setPublishedPostId(`post-${Date.now()}`);
+      }
+
+      // Move directly to the Distribution Flywheel step
+      setCurrentStep(4);
       onPostCreated();
-      onClose();
     } catch (err: any) {
-      console.error('Error publishing post:', err);
-      setSubmitError(err.message || 'Failed to publish post. Please check your connection.');
+      console.error('Error publishing report:', err);
+      setSubmitError(err.message || 'Failed to publish report. Please try again.');
       setIsSubmitting(false);
     }
+  };
+
+  const handleCopyPostLink = () => {
+    const url = publishedPostId ? `${window.location.origin}/post/${publishedPostId}` : window.location.href;
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
   };
 
   if (!isOpen) return null;
@@ -502,7 +515,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
         id="speak-up-composer-modal"
         className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl text-slate-100 shadow-2xl overflow-hidden my-4 max-h-[92vh] flex flex-col"
       >
-        {/* Header */}
+        {/* Header & Step Tracker */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/90">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
@@ -512,10 +525,15 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
               <h2 className="font-bold text-sm sm:text-base text-white flex items-center gap-2">
                 SPEAK UP
                 <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60">
-                  Zero Followers Needed
+                  Citizen Megaphone
                 </span>
               </h2>
-              <p className="text-[11px] text-slate-400">Public civic report dispatch to local citizens & state bodies</p>
+              <p className="text-[11px] text-slate-400">
+                {currentStep === 1 && 'Step 1 of 3: Show Ghana what is happening'}
+                {currentStep === 2 && 'Step 2 of 3: Provide context & location'}
+                {currentStep === 3 && 'Step 3 of 3: Preview & determine visibility'}
+                {currentStep === 4 && 'Report Live: Amplify & Distribute'}
+              </p>
             </div>
           </div>
 
@@ -527,76 +545,18 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           </button>
         </div>
 
-        {/* Creation Mode Quick Tabs */}
-        <div className="px-4 pt-3 pb-1 border-b border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar bg-slate-900/50">
-          <button
-            type="button"
-            onClick={() => setCreationMode('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-              creationMode === 'all'
-                ? 'bg-emerald-600 text-white shadow-sm font-bold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-            <span>All Formats</span>
-          </button>
+        {/* Step Progress Line */}
+        {currentStep < 4 && (
+          <div className="w-full bg-slate-800 h-1">
+            <div
+              className="bg-gradient-to-r from-emerald-500 to-teal-400 h-1 transition-all duration-300"
+              style={{ width: `${(currentStep / 3) * 100}%` }}
+            />
+          </div>
+        )}
 
-          <button
-            type="button"
-            onClick={() => setCreationMode('text')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-              creationMode === 'text'
-                ? 'bg-emerald-600 text-white shadow-sm font-bold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            <Type className="w-3.5 h-3.5" />
-            <span>Text Only</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCreationMode('audio')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-              creationMode === 'audio'
-                ? 'bg-emerald-600 text-white shadow-sm font-bold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            <Mic className="w-3.5 h-3.5 text-amber-400" />
-            <span>Voice / Audio</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCreationMode('video')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-              creationMode === 'video'
-                ? 'bg-emerald-600 text-white shadow-sm font-bold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            <Video className="w-3.5 h-3.5 text-purple-400" />
-            <span>Video Only</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCreationMode('document')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-              creationMode === 'document'
-                ? 'bg-emerald-600 text-white shadow-sm font-bold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 text-sky-400" />
-            <span>Documents</span>
-          </button>
-        </div>
-
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+        {/* Form Body Container */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {submitError && (
             <div className="p-3 bg-red-950/70 border border-red-800 text-red-200 text-xs rounded-xl flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
@@ -604,571 +564,662 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
             </div>
           )}
 
-          {/* Emergency Safety Protocol Notice when Urgency is Critical */}
-          {(urgency === 'CRITICAL' || category === 'Emergency & Disaster') && (
-            <div className="p-3 bg-red-950/90 border border-red-700/80 rounded-xl text-xs text-red-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 animate-in fade-in">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
-                <div>
-                  <div className="font-extrabold text-red-200 uppercase tracking-wider text-[10px]">
-                    CRITICAL SAFETY NOTICE
-                  </div>
-                  <div className="text-[11px] text-red-200/90">
-                    If lives are in immediate danger, call <strong>112</strong> now. SpeakUp creates a persistent civic record and dispatches multi-channel alerts to state bodies.
-                  </div>
-                </div>
+          {/* STEP 1: CAPTURE */}
+          {currentStep === 1 && (
+            <div className="space-y-4 animate-in fade-in">
+              <div className="text-center sm:text-left">
+                <h3 className="text-base font-bold text-white">Show us what's happening</h3>
+                <p className="text-xs text-slate-400">Capture photos, record a quick voice note, or describe the civic issue.</p>
               </div>
 
-              <a
-                href="tel:112"
-                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white font-extrabold rounded-lg text-xs flex items-center gap-1 shrink-0 shadow-md transition-colors"
-              >
-                CALL 112 NOW
-              </a>
-            </div>
-          )}
+              {/* Media First Selection Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
 
-          {/* Evidence Pack Summary Banner */}
-          <div className="px-3 py-2 bg-slate-800/90 border border-slate-700 rounded-xl flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 text-[10px] font-bold rounded border uppercase tracking-wider ${evidenceSummary.badgeColor}`}>
-                {evidenceSummary.typeLabel}
-              </span>
-              <span className="text-[11px] text-slate-300 font-medium hidden sm:inline">
-                {evidenceSummary.description}
-              </span>
-            </div>
-            {evidenceSummary.hasAudio && (
-              <span className="text-[10px] text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-800">
-                TikTok-Style Background Cover Active
-              </span>
-            )}
-          </div>
+                <input
+                  ref={docInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.txt"
+                  onChange={handleDocumentUpload}
+                  className="hidden"
+                />
 
-          {/* Explicit Post Title / Headline Input */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center justify-between">
-              <span>Report Title / Headline (Required):</span>
-              <span className="text-[10px] text-slate-400 font-normal">Summarize what you observed</span>
-            </label>
-            <input
-              type="text"
-              id="composer-title-input"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="e.g. Major water pipeline burst near Kejetia market, or 3-day power outage in Ahodwo..."
-              className="w-full p-2.5 bg-slate-800 text-sm font-semibold text-white placeholder-slate-500 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500 transition-all"
-            />
-          </div>
-
-          {/* Quick Voice Bar */}
-          {(creationMode === 'all' || creationMode === 'audio') && (
-            <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isRecording ? 'bg-red-600 text-white animate-ping' : 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'}`}>
-                  <Mic className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-semibold text-xs text-slate-200">
-                    {isRecording ? `Recording Audio... ${recordDuration}s` : 'Voice Recording (Audio-Only Report)'}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-3 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 hover:border-emerald-500/50 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-200 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Camera className="w-5 h-5" />
                   </div>
-                  <div className="text-[11px] text-slate-400">
-                    {isRecording ? 'Tap stop when done. We will transcribe & route.' : 'Audio posts use user photo or fallback system cover as background.'}
-                  </div>
-                </div>
-              </div>
+                  <span className="text-xs font-semibold">📷 Photo</span>
+                </button>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-3 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 hover:border-emerald-500/50 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-200 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-purple-500/10 text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Video className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-semibold">🎥 Video</span>
+                </button>
+
                 {!isRecording ? (
                   <button
                     type="button"
                     onClick={startVoiceRecording}
-                    className="flex-1 sm:flex-none px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                    className="p-3 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 hover:border-amber-500/50 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-200 transition-all group"
                   >
-                    <Mic className="w-3.5 h-3.5" />
-                    RECORD VOICE
+                    <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Mic className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-semibold">🎙 Voice</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={stopVoiceRecording}
-                    className="flex-1 sm:flex-none px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors animate-pulse"
+                    className="p-3 bg-red-950/80 border border-red-700 rounded-xl flex flex-col items-center justify-center gap-2 text-red-200 transition-all animate-pulse"
                   >
-                    <MicOff className="w-3.5 h-3.5" />
-                    STOP RECORDING
+                    <div className="w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center">
+                      <MicOff className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-bold">{recordDuration}s Stop</span>
                   </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => docInputRef.current?.click()}
+                  className="p-3 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 hover:border-sky-500/50 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-200 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-semibold">✍️ Document</span>
+                </button>
+              </div>
+
+              {/* Active Voice Preview */}
+              {recordedAudioUrl && (
+                <div className="bg-slate-800/60 p-3 rounded-xl border border-emerald-500/30 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs text-slate-200 font-medium">Recorded Voice Note ({recordDuration || 10}s)</span>
+                    <audio ref={audioPlayerRef} src={recordedAudioUrl} className="hidden" onEnded={() => setIsPlayingAudio(false)} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (audioPlayerRef.current) {
+                          if (isPlayingAudio) {
+                            audioPlayerRef.current.pause();
+                            setIsPlayingAudio(false);
+                          } else {
+                            audioPlayerRef.current.play();
+                            setIsPlayingAudio(true);
+                          }
+                        }
+                      }}
+                      className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded-md flex items-center gap-1"
+                    >
+                      {isPlayingAudio ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                      {isPlayingAudio ? 'Pause' : 'Play'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecordedAudioUrl(null);
+                        setMediaList(prev => prev.filter(m => m.type !== 'audio'));
+                      }}
+                      className="p-1 text-slate-400 hover:text-red-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Text Observation Surface */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Tell Ghana what is happening:
+                </label>
+                <textarea
+                  rows={4}
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  placeholder="e.g. This broken pipe has been leaking for three days near Kaneshie market..."
+                  className="w-full p-3.5 bg-slate-800 text-sm text-slate-100 placeholder-slate-500 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500 resize-none transition-all"
+                />
+              </div>
+
+              {/* Media Thumbnails Strip */}
+              {mediaList.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold text-slate-400">Attached Evidence ({mediaList.length}):</div>
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    {mediaList.map(m => (
+                      <div key={m.id} className="relative w-16 h-14 rounded-lg overflow-hidden border border-slate-700 bg-slate-800 flex-shrink-0 flex items-center justify-center">
+                        {m.type === 'image' && (
+                          <img src={m.url} alt="Evidence" className="w-full h-full object-cover" />
+                        )}
+                        {m.type === 'video' && (
+                          <div className="w-full h-full bg-slate-950 flex items-center justify-center text-purple-400">
+                            <Video className="w-5 h-5" />
+                          </div>
+                        )}
+                        {m.type === 'audio' && (
+                          <div className="w-full h-full bg-emerald-950 flex items-center justify-center text-emerald-400">
+                            <Mic className="w-5 h-5" />
+                          </div>
+                        )}
+                        {m.type === 'document' && (
+                          <div className="w-full h-full bg-sky-950 p-1 flex items-center justify-center text-sky-300 text-[9px] text-center truncate">
+                            <FileCheck className="w-4 h-4 text-sky-400 mb-0.5" />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setMediaList(prev => prev.filter(x => x.id !== m.id))}
+                          className="absolute top-0.5 right-0.5 w-4 h-4 bg-slate-900/90 text-slate-300 rounded-full flex items-center justify-center text-[10px] hover:text-red-400"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 2: CONTEXT */}
+          {currentStep === 2 && (
+            <div className="space-y-4 animate-in fade-in">
+              <div className="text-center sm:text-left">
+                <h3 className="text-base font-bold text-white">Add context & location</h3>
+                <p className="text-xs text-slate-400">SpeakUp automatically resolves relevant authorities and location data.</p>
+              </div>
+
+              {/* Title / Headline */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Headline Summary:
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  placeholder="e.g. Pipe burst causing flooding at Kaneshie market"
+                  className="w-full p-2.5 bg-slate-800 text-sm font-semibold text-white placeholder-slate-500 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Smart Location Resolution */}
+              <div className="bg-slate-800/50 p-3.5 rounded-xl border border-slate-700 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                    📍 Where is this?
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleGetLocation}
+                    disabled={isLocating}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/60"
+                  >
+                    {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+                    <span>{locationSource === 'GPS' ? '✓ GPS Active' : 'Use My Location'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-[11px] text-slate-400 mb-1 block">Ghana Region:</span>
+                    <select
+                      value={region}
+                      onChange={e => {
+                        setRegion(e.target.value as GhanaRegionName);
+                        if (locationSource === 'UNKNOWN') setLocationSource('DISTRICT_ONLY');
+                      }}
+                      className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700"
+                    >
+                      {GHANA_REGIONS.map(r => (
+                        <option key={r} value={r}>
+                          {r} Region
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] text-slate-400 mb-1 block">District / Community:</span>
+                    <input
+                      type="text"
+                      value={district}
+                      onChange={e => {
+                        setDistrict(e.target.value);
+                        if (locationSource === 'UNKNOWN') setLocationSource('DISTRICT_ONLY');
+                      }}
+                      placeholder="e.g. Kaneshie, Accra Metropolitan"
+                      className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-slate-400 mb-1 block">Search Landmark / Street:</span>
+                  <input
+                    type="text"
+                    value={landmark}
+                    onChange={e => {
+                      setLandmark(e.target.value);
+                      if (e.target.value.trim() && locationSource !== 'GPS') {
+                        setLocationSource('LANDMARK_RESOLVED');
+                      }
+                    }}
+                    placeholder="e.g. Near Kaneshie market footbridge"
+                    className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Automatic + Citizen Institution Tagging */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                    Who should know? (Authorities):
+                  </label>
+
+                  {isAnalyzing && (
+                    <span className="text-[11px] text-emerald-400 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Matching state bodies...
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selectedInstitutions.map((inst, idx) => (
+                    <div
+                      key={inst.id ? `${inst.id}-${idx}` : `inst-tag-${idx}`}
+                      className="px-3 py-1.5 bg-emerald-950 text-emerald-300 border border-emerald-700/80 rounded-xl text-xs font-semibold flex items-center gap-2"
+                    >
+                      <span>✓ @{inst.shortName || inst.acronym}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedInstitutions(prev => prev.filter(i => i.id !== inst.id))}
+                        className="hover:text-red-400 font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowInstDropdown(!showInstDropdown)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs text-slate-300 flex items-center gap-1 font-medium"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-emerald-400" /> + Tag another institution
+                    </button>
+
+                    {showInstDropdown && (
+                      <div className="absolute left-0 bottom-full mb-1 w-72 max-h-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 z-50 overflow-y-auto">
+                        <input
+                          type="text"
+                          value={institutionSearch}
+                          onChange={e => setInstitutionSearch(e.target.value)}
+                          placeholder="Search ECG, Police, GWCL, Assembly..."
+                          className="w-full p-1.5 bg-slate-800 text-xs text-slate-100 rounded-md border border-slate-700 mb-1.5"
+                        />
+                        <div className="space-y-1">
+                          {institutionsList
+                            .filter(
+                              i =>
+                                !selectedInstitutions.some(s => s.id === i.id) &&
+                                (i.officialName.toLowerCase().includes(institutionSearch.toLowerCase()) ||
+                                  i.shortName.toLowerCase().includes(institutionSearch.toLowerCase()) ||
+                                  i.acronym.toLowerCase().includes(institutionSearch.toLowerCase()))
+                            )
+                            .map((inst, idx) => (
+                              <button
+                                key={inst.id ? `${inst.id}-${idx}` : `opt-${idx}`}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedInstitutions(prev => [...prev, inst]);
+                                  setShowInstDropdown(false);
+                                }}
+                                className="w-full text-left p-1.5 hover:bg-slate-800 rounded text-xs flex items-center justify-between"
+                              >
+                                <div>
+                                  <div className="font-semibold text-slate-200">{inst.shortName}</div>
+                                  <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{inst.officialName}</div>
+                                </div>
+                                <span className="text-[9px] text-emerald-400 bg-emerald-950 px-1 py-0.5 rounded">
+                                  Verified
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Edit Intelligence Option */}
+              <div className="pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowEditIntelligence(!showEditIntelligence)}
+                  className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 transition-colors"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{showEditIntelligence ? 'Hide Advanced Intelligence Settings' : 'Edit Platform Intelligence (Category / Urgency)'}</span>
+                </button>
+
+                {showEditIntelligence && (
+                  <div className="mt-2.5 p-3 bg-slate-800/40 rounded-xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs animate-in fade-in">
+                    <div>
+                      <span className="text-[11px] text-slate-400 mb-1 block">Category:</span>
+                      <select
+                        value={inferredCategory}
+                        onChange={e => {
+                          setInferredCategory(e.target.value as CivicCategory);
+                          setIsIntelligenceOverridden(true);
+                        }}
+                        className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700"
+                      >
+                        {CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] text-slate-400 mb-1 block">Urgency Level:</span>
+                      <select
+                        value={inferredUrgency}
+                        onChange={e => {
+                          setInferredUrgency(e.target.value as UrgencyLevel);
+                          setIsIntelligenceOverridden(true);
+                        }}
+                        className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700"
+                      >
+                        <option value="NORMAL">Normal Priority</option>
+                        <option value="HIGH">High (Public Disruption)</option>
+                        <option value="CRITICAL">Critical (Immediate Danger)</option>
+                        <option value="LOW">Low (Awareness)</option>
+                      </select>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Audio preview if recorded */}
-          {recordedAudioUrl && (
-            <div className="bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/80 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs text-slate-300 font-medium">Recorded Voice Note ({recordDuration || 8}s)</span>
-                <audio ref={audioPlayerRef} src={recordedAudioUrl} className="hidden" onEnded={() => setIsPlayingAudio(false)} />
+          {/* STEP 3: PUBLISH PREVIEW */}
+          {currentStep === 3 && (
+            <div className="space-y-4 animate-in fade-in">
+              <div className="text-center sm:text-left">
+                <h3 className="text-base font-bold text-white">Public Report Preview</h3>
+                <p className="text-xs text-slate-400">This is how your report will appear publicly on SpeakUp.</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (audioPlayerRef.current) {
-                      if (isPlayingAudio) {
-                        audioPlayerRef.current.pause();
-                        setIsPlayingAudio(false);
-                      } else {
-                        audioPlayerRef.current.play();
-                        setIsPlayingAudio(true);
-                      }
-                    }
-                  }}
-                  className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded-md flex items-center gap-1"
-                >
-                  {isPlayingAudio ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                  {isPlayingAudio ? 'Pause' : 'Play'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecordedAudioUrl(null);
-                    setMediaList(prev => prev.filter(m => m.type !== 'audio'));
-                  }}
-                  className="p-1 text-slate-400 hover:text-red-400"
-                  title="Remove audio"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
 
-          {/* Main Description Input */}
-          {(creationMode === 'all' || creationMode === 'text' || creationMode === 'video') && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Detailed Observation / Caption:
-              </label>
-              <textarea
-                id="composer-content-input"
-                rows={3}
-                value={content}
-                onChange={e => setContent(e.target.value)}
-                placeholder="e.g. Broken water pipeline flooding the road near Kejetia market, or deep pothole on Accra-Tema motorway..."
-                className="w-full p-3 bg-slate-800 text-sm text-slate-100 placeholder-slate-500 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 resize-none transition-all"
-              />
-            </div>
-          )}
-
-          {/* AI Assistance Banner & Trigger */}
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => handleAnalyzeWithAI()}
-              disabled={isAnalyzingAI || (!content.trim() && !title.trim())}
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1.5 disabled:opacity-50 transition-colors"
-            >
-              {isAnalyzingAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-              <span>Auto-detect Category, Urgency & Suggested State Bodies with AI</span>
-            </button>
-
-            {aiSuggestions && (
-              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3 text-emerald-400" /> AI suggestions applied
-              </span>
-            )}
-          </div>
-
-          {/* AI Recommendation Box if available */}
-          {aiSuggestions && (
-            <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-xs space-y-1.5">
-              <div className="font-semibold text-emerald-300 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                AI Routing Intelligence:
-              </div>
-              <p className="text-slate-300 text-[11px]">
-                Identified issue: <strong>{aiSuggestions.category}</strong> ({aiSuggestions.urgency} urgency)
-              </p>
-              {aiSuggestions.refinedText && (
-                <div className="mt-2 pt-2 border-t border-emerald-900/60">
-                  <div className="flex items-center justify-between text-[11px] text-slate-300 mb-1">
-                    <span className="font-medium text-emerald-200">Refined Civic Summary:</span>
-                    <button
-                      type="button"
-                      onClick={() => setUseRefinedText(!useRefinedText)}
-                      className="text-[10px] text-emerald-400 underline"
-                    >
-                      {useRefinedText ? 'Use exact words' : 'Use refined summary'}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-400 italic bg-slate-900/60 p-2 rounded">
-                    "{useRefinedText ? aiSuggestions.refinedText : content}"
-                  </p>
+              {/* Public Post Preview Box */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-inner">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 font-bold border border-emerald-800/80">
+                    {inferredCategory}
+                  </span>
+                  <span className="text-slate-400 font-mono text-[11px]">
+                    📍 {landmark ? `${landmark}, ` : ''}{district}, {region}
+                  </span>
                 </div>
-              )}
+
+                <h4 className="font-bold text-sm sm:text-base text-white">{title || content.slice(0, 60)}</h4>
+                <p className="text-xs text-slate-300 leading-relaxed">{content}</p>
+
+                {/* Display Media Thumbnails */}
+                {mediaList.length > 0 && (
+                  <div className="flex items-center gap-2 overflow-x-auto pt-1">
+                    {mediaList.map(m => (
+                      <div key={m.id} className="w-16 h-14 rounded-lg overflow-hidden border border-slate-800 bg-slate-900 flex-shrink-0 flex items-center justify-center">
+                        {m.type === 'image' && <img src={m.url} alt="Media" className="w-full h-full object-cover" />}
+                        {m.type === 'video' && <Video className="w-5 h-5 text-purple-400" />}
+                        {m.type === 'audio' && <Mic className="w-5 h-5 text-emerald-400" />}
+                        {m.type === 'document' && <FileCheck className="w-5 h-5 text-sky-400" />}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Targeted Authorities Strip */}
+                {selectedInstitutions.length > 0 && (
+                  <div className="pt-2 border-t border-slate-900 flex items-center gap-1.5 flex-wrap text-xs">
+                    <span className="text-slate-400 font-medium">Alerting:</span>
+                    {selectedInstitutions.map(inst => (
+                      <span key={inst.id} className="text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
+                        @{inst.shortName || inst.acronym}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Privacy Banner */}
+              <div className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl text-xs flex items-center gap-2.5">
+                <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-slate-300 text-[11px]">
+                  🔒 <strong>Privacy Protection:</strong> Sensitive personal identity markers (phone numbers, private ID cards) will be redacted before public indexing under Ghana Data Protection laws.
+                </span>
+              </div>
+
+              {/* Author Visibility Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Publication Visibility:
+                </label>
+                <select
+                  value={authorVisibility}
+                  onChange={e => setAuthorVisibility(e.target.value as AuthorVisibility)}
+                  className="w-full p-2.5 bg-slate-800 text-xs text-slate-100 rounded-xl border border-slate-700"
+                >
+                  <option value="public">Public Identity ({currentUser?.name || authorName})</option>
+                  <option value="pseudonymous">Pseudonymous (@{currentUser?.handle || authorHandle})</option>
+                  <option value="anonymous">Anonymous to Public (Hide My Name)</option>
+                  <option value="confidential">High-Confidentiality Whistleblower</option>
+                </select>
+              </div>
             </div>
           )}
 
-          {/* Media Attachments & Document Attachments Strip */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Camera className="w-3.5 h-3.5 text-emerald-400" />
-                Attach Photo, Video or Document Evidence:
-              </label>
+          {/* STEP 4: POST-PUBLISH DISTRIBUTION FLYWHEEL */}
+          {currentStep === 4 && (
+            <div className="space-y-5 py-2 animate-in zoom-in-95">
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto">
+                  <CheckCircle className="w-7 h-7" />
+                </div>
+                <h3 className="text-lg font-bold text-white">✓ Your voice has been heard</h3>
+                <p className="text-xs text-slate-300 max-w-md mx-auto">
+                  Your report is live on the SpeakUp community feed and dispatches are being routed asynchronously.
+                </p>
+              </div>
 
-              <label className="text-[11px] text-slate-400 flex items-center gap-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={blurFaces}
-                  onChange={e => setBlurFaces(e.target.checked)}
-                  className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span>Blur faces for privacy</span>
-              </label>
+              {/* Authorities Notification Confirmation Box */}
+              <div className="p-4 bg-emerald-950/40 border border-emerald-800/80 rounded-2xl space-y-2 text-xs">
+                <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-emerald-400" />
+                  We've Identified & Queued Alerts for Relevant Authorities:
+                </div>
+                {selectedInstitutions.length > 0 ? (
+                  <div className="space-y-1 pl-5">
+                    {selectedInstitutions.map(inst => (
+                      <div key={inst.id} className="text-slate-200 font-semibold flex items-center gap-1.5">
+                        <span className="text-emerald-400">✓</span> {inst.officialName} ({inst.shortName})
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-300 pl-5">
+                    We're notifying responsible MMDAs & state utility boards based on your report location.
+                  </p>
+                )}
+              </div>
+
+              {/* Flywheel Social Amplification Engine */}
+              <div className="space-y-2.5">
+                <div className="text-xs font-bold text-slate-200 uppercase tracking-wider text-center">
+                  Amplify the issue across social media:
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <a
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🚨 CIVIC REPORT: ${title || content}\n📍 ${district}, ${region}\n\nRead & track on SpeakUp Ghana: ${window.location.origin}/post/${publishedPostId || ''}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 bg-emerald-700/80 hover:bg-emerald-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
+                  >
+                    <span>💬 WhatsApp</span>
+                  </a>
+
+                  <a
+                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`🚨 Civic Report: ${title || content} around ${district}, ${region}. @SpeakUpGh #GhanaCivic`)}&url=${encodeURIComponent(`${window.location.origin}/post/${publishedPostId || ''}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 transition-all"
+                  >
+                    <span>𝕏 Post</span>
+                  </a>
+
+                  <a
+                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/post/${publishedPostId || ''}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 bg-blue-900/80 hover:bg-blue-800 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
+                  >
+                    <span>📘 Facebook</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyPostLink}
+                    className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 transition-all"
+                  >
+                    {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
+                    <span>{copiedLink ? 'Link Copied!' : 'Copy Link'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
+          )}
+        </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/*,video/*"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
+        {/* Footer Wizard Controls */}
+        <div className="px-5 py-3.5 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between gap-3">
+          {currentStep < 4 ? (
+            <>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Protected by Ghana Data Protection Act</span>
+              </div>
 
-              <input
-                ref={docInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={handleDocumentUpload}
-                className="hidden"
-              />
+              <div className="flex items-center gap-2">
+                {currentStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep((currentStep - 1) as WizardStep)}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl flex items-center gap-1 transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back
+                  </button>
+                )}
 
+                {currentStep === 1 && (
+                  <button
+                    type="button"
+                    onClick={handleGoToContextStep}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg flex items-center gap-1.5 transition-all"
+                  >
+                    <span>Next: Add Context</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+
+                {currentStep === 2 && (
+                  <button
+                    type="button"
+                    onClick={handleGoToPublishStep}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg flex items-center gap-1.5 transition-all"
+                  >
+                    <span>Next: Preview</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+
+                {currentStep === 3 && (
+                  <button
+                    id="publish-civic-post-btn"
+                    type="button"
+                    onClick={handlePublishPost}
+                    disabled={isSubmitting}
+                    className="px-6 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Publishing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>POST TO SPEAKUP</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="w-full flex items-center justify-between">
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-dashed border-slate-600 rounded-xl text-xs text-slate-300 flex items-center gap-1.5 transition-colors"
+                onClick={onClose}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl"
               >
-                <ImageIcon className="w-4 h-4 text-emerald-400" />
-                Photo / Video
+                Close
               </button>
 
-              <button
-                type="button"
-                onClick={() => docInputRef.current?.click()}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-dashed border-slate-600 rounded-xl text-xs text-slate-300 flex items-center gap-1.5 transition-colors"
-              >
-                <FileText className="w-4 h-4 text-sky-400" />
-                Attach Document
-              </button>
-
-              {/* Sample Photo generator button for fast testing */}
               <button
                 type="button"
                 onClick={() => {
-                  const sampleImages = [
-                    'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800&auto=format&fit=crop&q=80',
-                    'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=800&auto=format&fit=crop&q=80',
-                    'https://images.unsplash.com/photo-1544717305-2782549b5136?w=800&auto=format&fit=crop&q=80',
-                    'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?w=800&auto=format&fit=crop&q=80'
-                  ];
-                  const randImg = sampleImages[Math.floor(Math.random() * sampleImages.length)];
-                  setMediaList(prev => {
-                    const filtered = prev.filter(m => !m.isSystemThumbnail);
-                    return [
-                      ...filtered,
-                      {
-                        id: `sample-${Date.now()}`,
-                        type: 'image',
-                        url: randImg,
-                        caption: 'Citizen camera evidence photo',
-                        uploadedAt: new Date().toISOString()
-                      }
-                    ];
-                  });
+                  onClose();
                 }}
-                className="px-2.5 py-2 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 rounded-xl text-[11px] text-slate-400 flex items-center gap-1"
+                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg flex items-center gap-2"
               >
-                <Camera className="w-3.5 h-3.5" /> + Sample Photo
-              </button>
-
-              {/* Previews */}
-              {mediaList.map(m => (
-                <div key={m.id} className="relative w-16 h-14 rounded-lg overflow-hidden border border-slate-700 bg-slate-800 flex-shrink-0 flex items-center justify-center">
-                  {m.type === 'image' && (
-                    <img src={m.url} alt="Evidence" className={`w-full h-full object-cover ${blurFaces ? 'blur-xs' : ''}`} />
-                  )}
-                  {m.type === 'video' && (
-                    <div className="w-full h-full bg-slate-950 flex items-center justify-center text-slate-400 flex-col text-[10px]">
-                      <Video className="w-5 h-5 text-purple-400" />
-                      <span>Video</span>
-                    </div>
-                  )}
-                  {m.type === 'audio' && (
-                    <div className="w-full h-full bg-emerald-950 flex items-center justify-center text-emerald-400 flex-col text-[10px]">
-                      <Mic className="w-5 h-5" />
-                      <span>Voice</span>
-                    </div>
-                  )}
-                  {m.type === 'document' && (
-                    <div className="w-full h-full bg-sky-950 p-1 flex items-center justify-center text-sky-300 flex-col text-[9px] text-center">
-                      <FileCheck className="w-4 h-4 text-sky-400 mb-0.5" />
-                      <span className="truncate w-full font-mono">{m.fileName || 'Doc'}</span>
-                    </div>
-                  )}
-                  {m.isSystemThumbnail && (
-                    <span className="absolute bottom-0 inset-x-0 bg-amber-950/90 text-[8px] text-amber-200 text-center py-0.2">
-                      Cover
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setMediaList(prev => prev.filter(x => x.id !== m.id))}
-                    className="absolute top-0.5 right-0.5 w-4 h-4 bg-slate-900/90 text-slate-300 rounded-full flex items-center justify-center text-[10px] hover:text-red-400"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Location & Region Picker */}
-          <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-800 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                Where is this happening?
-              </label>
-
-              <button
-                type="button"
-                onClick={handleGetLocation}
-                disabled={isLocating}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-              >
-                {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
-                <span>Auto-detect GPS</span>
+                <Eye className="w-4 h-4" />
+                <span>View Live Post</span>
               </button>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              <div>
-                <span className="text-[11px] text-slate-400 mb-1 block">Ghana Region:</span>
-                <select
-                  value={region}
-                  onChange={e => setRegion(e.target.value as GhanaRegionName)}
-                  className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-500"
-                >
-                  {GHANA_REGIONS.map(r => (
-                    <option key={r} value={r}>
-                      {r} Region
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <span className="text-[11px] text-slate-400 mb-1 block">District / Municipality:</span>
-                <input
-                  type="text"
-                  value={district}
-                  onChange={e => setDistrict(e.target.value)}
-                  placeholder="e.g. Accra Metro, Tema, Kumasi..."
-                  className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <span className="text-[11px] text-slate-400 mb-1 block">Specific Landmark / Street (Helps responders locate fast):</span>
-              <input
-                type="text"
-                value={landmark}
-                onChange={e => setLandmark(e.target.value)}
-                placeholder="e.g. Near Odawna market entrance, beside Total fuel station"
-                className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 text-xs focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-          </div>
-
-          {/* Institutional Tagging Engine (Core Innovation) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-                Who Should Know About This? (Tag State Bodies):
-              </label>
-              <span className="text-[10px] text-slate-400">
-                {selectedInstitutions.length} tagged (max 5)
-              </span>
-            </div>
-
-            {/* Selected Tags */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {selectedInstitutions.map((inst, idx) => (
-                <div
-                  key={inst.id ? `${inst.id}-${idx}` : `sel-inst-${idx}`}
-                  className="px-2.5 py-1 bg-emerald-950 text-emerald-300 border border-emerald-700/80 rounded-lg text-xs flex items-center gap-1.5 shadow-xs"
-                >
-                  <span className="font-semibold">{inst.shortName || inst.acronym}</span>
-                  <span className="text-[10px] opacity-75">
-                    {inst.alertMethod === 'DIRECT_API' ? '⚡ Direct Alert' : inst.alertMethod === 'WHATSAPP_LINE' ? '💬 WhatsApp' : '✉️ Email'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedInstitutions(prev => prev.filter(i => i.id !== inst.id))}
-                    className="hover:text-red-400 ml-1 font-bold"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-
-              {selectedInstitutions.length < 5 && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowInstDropdown(!showInstDropdown)}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs text-slate-300 flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3 text-emerald-400" /> + Add Institution
-                  </button>
-
-                  {showInstDropdown && (
-                    <div className="absolute left-0 bottom-full mb-1 w-72 max-h-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 z-50 overflow-y-auto">
-                      <input
-                        type="text"
-                        value={institutionSearch}
-                        onChange={e => setInstitutionSearch(e.target.value)}
-                        placeholder="Search Police, NADMO, ECG, PURC..."
-                        className="w-full p-1.5 bg-slate-800 text-xs text-slate-100 rounded-md border border-slate-700 mb-1.5"
-                      />
-                      <div className="space-y-1">
-                        {institutionsList
-                          .filter(
-                            i =>
-                              !selectedInstitutions.some(s => s.id === i.id) &&
-                              (i.officialName.toLowerCase().includes(institutionSearch.toLowerCase()) ||
-                                i.shortName.toLowerCase().includes(institutionSearch.toLowerCase()) ||
-                                i.acronym.toLowerCase().includes(institutionSearch.toLowerCase()))
-                          )
-                          .map((inst, idx) => (
-                            <button
-                              key={inst.id ? `${inst.id}-${idx}` : `inst-opt-${idx}`}
-                              type="button"
-                              onClick={() => {
-                                setSelectedInstitutions(prev => [...prev, inst]);
-                                setShowInstDropdown(false);
-                              }}
-                              className="w-full text-left p-1.5 hover:bg-slate-800 rounded text-xs flex items-center justify-between"
-                            >
-                              <div>
-                                <div className="font-semibold text-slate-200">{inst.shortName}</div>
-                                <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{inst.mandate}</div>
-                              </div>
-                              <span className="text-[9px] text-emerald-400 bg-emerald-950 px-1 py-0.5 rounded">
-                                Verified
-                              </span>
-                            </button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Note: Tagging alerts the institution through configured channels, but does not replace formal legal filings.
-            </p>
-          </div>
-
-          {/* Category & Urgency & Privacy settings */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-800 text-xs">
-            <div>
-              <span className="text-[11px] text-slate-400 mb-1 block">Category:</span>
-              <select
-                value={category}
-                onChange={e => setCategory(e.target.value as CivicCategory)}
-                className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700"
-              >
-                {CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <span className="text-[11px] text-slate-400 mb-1 block">Urgency:</span>
-              <select
-                value={urgency}
-                onChange={e => setUrgency(e.target.value as UrgencyLevel)}
-                className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700 font-semibold"
-              >
-                <option value="NORMAL">Normal Priority</option>
-                <option value="HIGH">High (Active Public Disruption)</option>
-                <option value="CRITICAL">Critical (Immediate Danger)</option>
-                <option value="LOW">Low (General Awareness)</option>
-              </select>
-            </div>
-
-            <div>
-              <span className="text-[11px] text-slate-400 mb-1 block">Privacy / Identity:</span>
-              <select
-                value={authorVisibility}
-                onChange={e => setAuthorVisibility(e.target.value as AuthorVisibility)}
-                className="w-full p-2 bg-slate-800 text-slate-100 rounded-lg border border-slate-700"
-              >
-                <option value="public">Public Identity (Visible)</option>
-                <option value="pseudonymous">Pseudonymous (@handle only)</option>
-                <option value="anonymous">Anonymous to Public</option>
-                <option value="confidential">High-Confidentiality</option>
-              </select>
-            </div>
-          </div>
-        </form>
-
-        {/* Footer Actions */}
-        <div className="px-5 py-3.5 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Lock className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Protected by Ghana Data Protection Act</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-
-            <button
-              id="publish-civic-post-btn"
-              onClick={handleSubmit}
-              disabled={isSubmitting || (!content.trim() && !title.trim() && mediaList.length === 0)}
-              className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs sm:text-sm font-bold rounded-lg shadow-lg flex items-center gap-2 transition-all active:scale-95"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Dispatching...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  <span>PUBLISH & ALERT</span>
-                </>
-              )}
-            </button>
-          </div>
+          )}
         </div>
       </div>
     </div>

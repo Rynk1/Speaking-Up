@@ -620,7 +620,7 @@ export function createApp() {
   });
 
   // MEDIA ROUTES
-  app.post('/api/media/upload', upload.single('file'), async (req: AuthenticatedRequest, res) => {
+  app.post('/api/media/upload', upload.single('file') as any, async (req: AuthenticatedRequest, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const processResult = await processMediaFile(req.file.filename);
@@ -710,6 +710,8 @@ export function createApp() {
         const tagsRows = db.prepare('SELECT * FROM post_institution_tags WHERE post_id = ?').all(row.id) as any[];
         const mediaRows = db.prepare('SELECT * FROM media WHERE post_id = ?').all(row.id) as any[];
         const responsesRows = db.prepare('SELECT * FROM institution_responses WHERE post_id = ? ORDER BY created_at DESC').all(row.id) as any[];
+        const evidenceRows = db.prepare('SELECT * FROM community_evidence WHERE post_id = ? ORDER BY created_at DESC').all(row.id) as any[];
+        const commentsRows = db.prepare('SELECT * FROM comments WHERE post_id = ? ORDER BY created_at DESC').all(row.id) as any[];
 
         let hashtags: string[] = [];
         try {
@@ -771,45 +773,105 @@ export function createApp() {
           })),
           credibilitySignals: {
             confirmationsCount: row.confirmations_count || 0,
-            evidenceCount: 0,
+            evidenceCount: evidenceRows.length,
             hasMedia: mediaRows.length > 0,
             hasLocation: Boolean(row.region && row.district),
-            institutionalAwarenessScore: responsesRows.length > 0 ? 90 : 50
+            institutionalAwarenessScore: responsesRows.length > 0 ? 90 : (tagsRows.some(t => t.alert_status === 'ACKNOWLEDGED') ? 85 : (tagsRows.length > 0 ? 70 : 40))
           },
           engagement: {
             views: row.views_count || 1,
             reposts: row.reposts_count || 0,
             shares: row.shares_count || 0,
             confirmations: row.confirmations_count || 0,
-            comments: row.comments_count || 0,
+            comments: row.comments_count || commentsRows.length || 0,
             followersCount: 0
           },
-          officialResponses: responsesRows.map(r => ({
-            id: r.id,
-            postId: r.post_id || row.id,
-            institutionId: r.institution_id,
-            institutionName: r.institution_name,
-            institutionLogo: r.institution_logo,
-            responseType: r.response_type,
-            message: r.message,
-            statementTitle: r.statement_title,
-            fullStatement: r.full_statement,
-            referenceNumber: r.reference_number,
-            resolutionStatus: r.resolution_status || 'IN_PROGRESS',
-            helpfulCount: r.helpful_count || 0,
-            unhelpfulCount: r.unhelpful_count || 0,
-            official: Boolean(r.official),
-            verified: Boolean(r.verified),
-            responderName: r.responder_name,
-            responderTitle: r.responder_title,
-            createdAt: r.created_at
+          officialResponses: responsesRows.map(r => {
+            let timeline = [];
+            let docs = [];
+            let hots = [];
+            try {
+              if (r.action_timeline_json) timeline = JSON.parse(r.action_timeline_json);
+            } catch {}
+            try {
+              if (r.documents_json) docs = JSON.parse(r.documents_json);
+            } catch {}
+            try {
+              if (r.hotlines_json) hots = JSON.parse(r.hotlines_json);
+            } catch {}
+
+            const rComments = db.prepare('SELECT * FROM response_comments WHERE response_id = ? ORDER BY created_at DESC').all(r.id) as any[];
+
+            return {
+              id: r.id,
+              postId: r.post_id || row.id,
+              institutionId: r.institution_id,
+              institutionName: r.institution_name,
+              institutionLogo: r.institution_logo,
+              responseType: r.response_type,
+              message: r.message,
+              statementTitle: r.statement_title,
+              fullStatement: r.full_statement,
+              referenceNumber: r.reference_number,
+              resolutionStatus: r.resolution_status || 'IN_PROGRESS',
+              helpfulCount: r.helpful_count || 0,
+              unhelpfulCount: r.unhelpful_count || 0,
+              official: Boolean(r.official),
+              verified: Boolean(r.verified),
+              responderName: r.responder_name,
+              responderTitle: r.responder_title,
+              actionTimeline: timeline,
+              documents: docs,
+              hotlines: hots,
+              commentsList: rComments.map(rc => ({
+                id: rc.id,
+                responseId: rc.response_id,
+                postId: rc.post_id,
+                userId: rc.user_id,
+                userName: rc.user_name,
+                userHandle: rc.user_handle,
+                content: rc.content,
+                likesCount: rc.likes_count || 0,
+                createdAt: rc.created_at
+              })),
+              commentsCount: rComments.length,
+              createdAt: r.created_at
+            };
+          }),
+          communityEvidence: evidenceRows.map(e => {
+            let mediaArr = [];
+            try {
+              if (e.media_json) mediaArr = JSON.parse(e.media_json);
+            } catch {}
+            return {
+              id: e.id,
+              postId: e.post_id,
+              userId: e.user_id,
+              userName: e.user_name,
+              userHandle: e.user_handle,
+              userAvatar: e.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(e.user_handle || e.user_name)}`,
+              isVerified: e.is_verified !== undefined ? Boolean(e.is_verified) : true,
+              text: e.text,
+              media: mediaArr,
+              statusUpdate: e.status_update,
+              createdAt: e.created_at
+            };
+          }),
+          commentsList: commentsRows.map(c => ({
+            id: c.id,
+            postId: c.post_id,
+            parentCommentId: c.parent_comment_id,
+            userId: c.user_id,
+            userName: c.user_name,
+            userHandle: c.user_handle,
+            content: c.content,
+            likesCount: c.likes_count || 0,
+            createdAt: c.created_at
           })),
-          communityEvidence: [],
-          commentsList: [],
           confirmationsCount: row.confirmations_count,
           repostsCount: row.reposts_count,
           sharesCount: row.shares_count,
-          commentsCount: row.comments_count,
+          commentsCount: row.comments_count || commentsRows.length || 0,
           createdAt: row.created_at,
           updatedAt: row.updated_at || row.created_at,
           reportLifecycleStatus: row.report_lifecycle_status || 'PUBLISHED',
@@ -1632,8 +1694,8 @@ export function createApp() {
         await jobQueue.enqueue('PROCESS_PRIVACY', {
           submissionId: postId,
           authorId,
-          title: sanitizedTitle,
-          content: sanitizedContent,
+          title: finalTitle,
+          content: finalContent,
           media
         });
       } catch (privErr: any) {
@@ -1647,7 +1709,7 @@ export function createApp() {
           eventType: 'REPORT_CREATED',
           actorType: 'CITIZEN',
           actorId: authorId,
-          metadata: { title: sanitizedTitle, region: location.region, district: location.district }
+          metadata: { title: finalTitle, region: safeRegion, district: safeDistrict }
         });
       } catch (evtErr: any) {
         logger.warn(`Event bus warning: ${evtErr.message}`);
@@ -1656,11 +1718,11 @@ export function createApp() {
       const newPost = db.prepare('SELECT * FROM posts WHERE id = ?').get(postId) as any;
       res.status(201).json({
         id: newPost?.id || postId,
-        title: newPost?.title || sanitizedTitle,
-        content: newPost?.content || sanitizedContent,
-        category: newPost?.category || category,
-        urgency: newPost?.urgency || urgency,
-        location: { region: newPost?.region || location.region, district: newPost?.district || location.district, landmark: newPost?.landmark || location.landmark },
+        title: newPost?.title || finalTitle,
+        content: newPost?.content || finalContent,
+        category: newPost?.category || inferredCategory,
+        urgency: newPost?.urgency || urgency || 'NORMAL',
+        location: { region: newPost?.region || safeRegion, district: newPost?.district || safeDistrict, landmark: newPost?.landmark || safeLandmark },
         createdAt: newPost?.created_at || now,
         reportLifecycleStatus: newPost?.report_lifecycle_status || 'PUBLISHED',
         accountabilityStatus: newPost?.accountability_status || 'NOT_ROUTED'
@@ -1919,6 +1981,143 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Response update error: ${err.message}`);
       res.status(500).json({ error: 'Failed to update official response' });
+    }
+  });
+
+  // ADD DOCUMENT TO OFFICIAL RESPONSE
+  app.post('/api/responses/:id/documents', requireRole(['INSTITUTION_REP', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const respId = req.params.id;
+      const { title, url, fileType, size } = req.body;
+      if (!title || !url) return res.status(400).json({ error: 'Title and URL required' });
+
+      const existing = db.prepare('SELECT * FROM institution_responses WHERE id = ?').get(respId) as any;
+      if (!existing) return res.status(404).json({ error: 'Response not found' });
+
+      let docs = [];
+      try {
+        if (existing.documents_json) docs = JSON.parse(existing.documents_json);
+      } catch {}
+      docs.push({ title: sanitizePlainText(title), url: sanitizePlainText(url), fileType: fileType || 'pdf', size: size || '1.2 MB' });
+
+      db.prepare('UPDATE institution_responses SET documents_json = ? WHERE id = ?').run(JSON.stringify(docs), respId);
+      res.json({ success: true, documents: docs });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to add document' });
+    }
+  });
+
+  // DELETE DOCUMENT FROM OFFICIAL RESPONSE
+  app.delete('/api/responses/:id/documents/:index', requireRole(['INSTITUTION_REP', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const respId = req.params.id;
+      const docIndex = parseInt(req.params.index, 10);
+      const existing = db.prepare('SELECT * FROM institution_responses WHERE id = ?').get(respId) as any;
+      if (!existing) return res.status(404).json({ error: 'Response not found' });
+
+      let docs = [];
+      try {
+        if (existing.documents_json) docs = JSON.parse(existing.documents_json);
+      } catch {}
+      docs.splice(docIndex, 1);
+
+      db.prepare('UPDATE institution_responses SET documents_json = ? WHERE id = ?').run(JSON.stringify(docs), respId);
+      res.json({ success: true, documents: docs });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to remove document' });
+    }
+  });
+
+  // ADD HOTLINE / CONTACT TO OFFICIAL RESPONSE
+  app.post('/api/responses/:id/hotlines', requireRole(['INSTITUTION_REP', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const respId = req.params.id;
+      const { hotline } = req.body;
+      if (!hotline) return res.status(400).json({ error: 'Hotline / contact string required' });
+
+      const existing = db.prepare('SELECT * FROM institution_responses WHERE id = ?').get(respId) as any;
+      if (!existing) return res.status(404).json({ error: 'Response not found' });
+
+      let hots = [];
+      try {
+        if (existing.hotlines_json) hots = JSON.parse(existing.hotlines_json);
+      } catch {}
+      hots.push(sanitizePlainText(hotline));
+
+      db.prepare('UPDATE institution_responses SET hotlines_json = ? WHERE id = ?').run(JSON.stringify(hots), respId);
+      res.json({ success: true, hotlines: hots });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to add hotline' });
+    }
+  });
+
+  // DELETE HOTLINE FROM OFFICIAL RESPONSE
+  app.delete('/api/responses/:id/hotlines/:index', requireRole(['INSTITUTION_REP', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const respId = req.params.id;
+      const hotIndex = parseInt(req.params.index, 10);
+      const existing = db.prepare('SELECT * FROM institution_responses WHERE id = ?').get(respId) as any;
+      if (!existing) return res.status(404).json({ error: 'Response not found' });
+
+      let hots = [];
+      try {
+        if (existing.hotlines_json) hots = JSON.parse(existing.hotlines_json);
+      } catch {}
+      hots.splice(hotIndex, 1);
+
+      db.prepare('UPDATE institution_responses SET hotlines_json = ? WHERE id = ?').run(JSON.stringify(hots), respId);
+      res.json({ success: true, hotlines: hots });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to remove hotline' });
+    }
+  });
+
+  // ADD TIMELINE MILESTONE TO OFFICIAL RESPONSE
+  app.post('/api/responses/:id/timeline', requireRole(['INSTITUTION_REP', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const respId = req.params.id;
+      const { step, status, timestamp, description } = req.body;
+      if (!step) return res.status(400).json({ error: 'Step title required' });
+
+      const existing = db.prepare('SELECT * FROM institution_responses WHERE id = ?').get(respId) as any;
+      if (!existing) return res.status(404).json({ error: 'Response not found' });
+
+      let timeline = [];
+      try {
+        if (existing.action_timeline_json) timeline = JSON.parse(existing.action_timeline_json);
+      } catch {}
+      timeline.push({
+        step: sanitizePlainText(step),
+        status: status || 'in_progress',
+        timestamp: timestamp || new Date().toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        description: description ? sanitizeText(description) : undefined
+      });
+
+      db.prepare('UPDATE institution_responses SET action_timeline_json = ? WHERE id = ?').run(JSON.stringify(timeline), respId);
+      res.json({ success: true, actionTimeline: timeline });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to add timeline milestone' });
+    }
+  });
+
+  // DELETE TIMELINE STEP
+  app.delete('/api/responses/:id/timeline/:index', requireRole(['INSTITUTION_REP', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const respId = req.params.id;
+      const stepIndex = parseInt(req.params.index, 10);
+      const existing = db.prepare('SELECT * FROM institution_responses WHERE id = ?').get(respId) as any;
+      if (!existing) return res.status(404).json({ error: 'Response not found' });
+
+      let timeline = [];
+      try {
+        if (existing.action_timeline_json) timeline = JSON.parse(existing.action_timeline_json);
+      } catch {}
+      timeline.splice(stepIndex, 1);
+
+      db.prepare('UPDATE institution_responses SET action_timeline_json = ? WHERE id = ?').run(JSON.stringify(timeline), respId);
+      res.json({ success: true, actionTimeline: timeline });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to remove timeline milestone' });
     }
   });
 

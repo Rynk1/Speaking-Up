@@ -20,6 +20,7 @@ import {
   Radio,
   ExternalLink,
   ChevronDown,
+  ChevronUp,
   ArrowRight,
   Layers,
   MapPin,
@@ -27,7 +28,12 @@ import {
   UserCheck,
   HelpCircle,
   FolderCheck,
-  GitPullRequest
+  GitPullRequest,
+  Plus,
+  Trash2,
+  Phone,
+  Download,
+  FileCheck
 } from 'lucide-react';
 import { Institution, CivicPost, InstitutionResponse } from '../types';
 import { api } from '../services/api';
@@ -248,6 +254,82 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                 "{post.content}"
               </p>
 
+              {/* Official Response & Communiqué Section if Responded */}
+              {hasResponded && resp && (
+                <div className="bg-slate-900/90 border border-amber-500/30 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                        Official State Communiqué
+                      </span>
+                      {resp.referenceNumber && (
+                        <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono border border-slate-700">
+                          {resp.referenceNumber}
+                        </span>
+                      )}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                        resp.resolutionStatus === 'RESOLVED'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          : resp.resolutionStatus === 'UNDER_REVIEW'
+                          ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                          : 'bg-amber-950 text-amber-300 border border-amber-800'
+                      }`}>
+                        {resp.resolutionStatus || 'IN_PROGRESS'}
+                      </span>
+                    </div>
+
+                    <span className="text-[10px] text-slate-400">
+                      {resp.responderName} ({resp.responderTitle || 'Spokesperson'})
+                    </span>
+                  </div>
+
+                  {resp.statementTitle && (
+                    <h4 className="text-xs font-bold text-white">{resp.statementTitle}</h4>
+                  )}
+
+                  <p className="text-xs text-slate-200 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80 leading-relaxed">
+                    "{resp.message || resp.fullStatement}"
+                  </p>
+
+                  {/* Summary Badges Bar for Communiqué Assets */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap pt-1 text-[11px]">
+                    <div className="flex items-center gap-2 flex-wrap text-slate-400">
+                      {Array.isArray(resp.actionTimeline) && resp.actionTimeline.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-emerald-400 font-medium">
+                          <Clock className="w-3 h-3 text-emerald-400" />
+                          {resp.actionTimeline.length} Milestones
+                        </span>
+                      )}
+                      {resp.hotlines && resp.hotlines.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-amber-400 font-medium">
+                          <Phone className="w-3 h-3 text-amber-400" />
+                          {resp.hotlines.length} Hotlines
+                        </span>
+                      )}
+                      {resp.documents && resp.documents.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-blue-400 font-medium">
+                          <FileText className="w-3 h-3 text-blue-400" />
+                          {resp.documents.length} Directives/PDFs
+                        </span>
+                      )}
+                    </div>
+
+                    {onViewOfficialResponse && (
+                      <button
+                        type="button"
+                        onClick={() => onViewOfficialResponse(post, resp)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30 transition-colors cursor-pointer text-xs"
+                      >
+                        <span>View Full Communiqué</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Status Transition & Actions Toolbar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-slate-800 gap-2 text-xs">
                 <div className="flex items-center gap-2">
@@ -297,7 +379,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                     className="px-3.5 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-extrabold text-[11px] rounded-lg shadow-md active:scale-95 transition-transform flex items-center gap-1 cursor-pointer"
                   >
                     <Building2 className="w-3.5 h-3.5" />
-                    <span>{hasResponded ? 'Edit Statement' : 'Respond Officially'}</span>
+                    <span>{hasResponded ? 'Edit Communiqué & Action Plan' : 'Respond Officially'}</span>
                   </button>
                 </div>
               </div>

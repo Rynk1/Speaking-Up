@@ -89,29 +89,19 @@ export default function App() {
   const loadAllData = useCallback(async () => {
     try {
       setLoadingPosts(true);
-      const [fetchedPosts, fetchedInsts, fetchedClusters, fetchedAnalytics, fetchedNotifs, user] =
+      const [fetchedPosts, fetchedInsts, fetchedClusters, fetchedAnalytics, fetchedNotifs] =
         await Promise.all([
           api.getPosts(),
           api.getInstitutions(),
           api.getClusters(),
           api.getAnalytics(),
-          api.getNotifications(),
-          api.getCurrentUser().catch(() => null)
+          api.getNotifications()
         ]);
       setPosts(fetchedPosts);
       setInstitutions(fetchedInsts);
       setClusters(fetchedClusters);
       setAnalytics(fetchedAnalytics);
       setNotifications(fetchedNotifs);
-      if (user) {
-        setCurrentUser(user);
-        if (user.role) {
-          const roleLower = user.role.toLowerCase();
-          if (['citizen', 'institution_rep', 'journalist', 'moderator', 'admin'].includes(roleLower)) {
-            setUserRole(roleLower as any);
-          }
-        }
-      }
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -152,6 +142,35 @@ export default function App() {
     navigate('/', { state: { focusedResponseId: response.id, tab: 'official_responded' } });
   }, [navigate]);
 
+  // Automatically process or resume actions after authentication
+  useEffect(() => {
+    if (resumedAction && currentUser) {
+      if (resumedAction.type === 'create_post') {
+        setIsSpeakUpOpen(true);
+      } else if (resumedAction.type === 'add_evidence') {
+        const found = posts.find(p => p.id === resumedAction.postId);
+        if (found) setEvidencePost(found);
+      } else if (resumedAction.type === 'seen_too') {
+        api.toggleConfirmation(resumedAction.postId)
+          .then(() => refreshPosts())
+          .catch(console.error);
+      } else if (resumedAction.type === 'amplify') {
+        api.toggleRepost(resumedAction.postId)
+          .then(() => refreshPosts())
+          .catch(console.error);
+      } else if (resumedAction.type === 'bookmark') {
+        api.toggleBookmark(resumedAction.postId)
+          .then(() => refreshPosts())
+          .catch(console.error);
+      } else if (resumedAction.type === 'follow_issue') {
+        api.toggleFollowIssue(resumedAction.postId)
+          .then(() => refreshPosts())
+          .catch(console.error);
+      }
+      clearResumedAction();
+    }
+  }, [resumedAction, currentUser, posts, clearResumedAction]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950 pb-20 lg:pb-8">
       {/* Emergency Disclaimer Banner */}
@@ -159,14 +178,7 @@ export default function App() {
 
       {/* Main Header & Navbar */}
       <Navbar
-        onOpenSpeakUp={() => {
-          if (!currentUser) {
-            setAuthMode('signin');
-            setIsAuthOpen(true);
-          } else {
-            setIsSpeakUpOpen(true);
-          }
-        }}
+        onOpenSpeakUp={() => setIsSpeakUpOpen(true)}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         userRole={userRole}
@@ -176,15 +188,8 @@ export default function App() {
         notifications={notifications}
         onMarkNotificationRead={handleMarkNotificationRead}
         currentUser={currentUser}
-        onOpenAuth={(mode) => {
-          setAuthMode(mode || 'signin');
-          setIsAuthOpen(true);
-        }}
-        onLogout={() => {
-          api.logout();
-          setCurrentUser(null);
-          setUserRole('citizen');
-        }}
+        onOpenAuth={(mode) => openAuthModal(mode || 'signin')}
+        onLogout={logout}
       />
 
       {/* Main Multi-Page Route Outlet */}
@@ -345,14 +350,7 @@ export default function App() {
                   setSelectedInstitutionId(instId);
                   navigate(`/institutions/${instId}`);
                 }}
-                onOpenSpeakUp={() => {
-                  if (!currentUser) {
-                    setAuthMode('signin');
-                    setIsAuthOpen(true);
-                  } else {
-                    setIsSpeakUpOpen(true);
-                  }
-                }}
+                onOpenSpeakUp={() => setIsSpeakUpOpen(true)}
                 onRefresh={refreshPosts}
               />
             }
@@ -424,15 +422,10 @@ export default function App() {
       <AuthModal
         isOpen={isAuthOpen}
         initialMode={authMode}
-        onClose={() => setIsAuthOpen(false)}
-        onAuthSuccess={(user) => {
-          setCurrentUser(user);
-          if (user.role) {
-            const roleLower = user.role.toLowerCase();
-            if (['citizen', 'institution_rep', 'journalist', 'moderator', 'admin'].includes(roleLower)) {
-              setUserRole(roleLower as any);
-            }
-          }
+        promptInfo={authPromptInfo}
+        onClose={closeAuthModal}
+        onAuthSuccess={(user, token) => {
+          handleAuthSuccess(user, token);
           if (user.institutionId) setSelectedInstitutionId(user.institutionId);
         }}
       />

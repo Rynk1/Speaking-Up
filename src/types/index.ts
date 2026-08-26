@@ -123,7 +123,7 @@ export interface InstitutionResponse {
   statementTitle?: string;
   fullStatement?: string;
   referenceNumber?: string;
-  actionTimeline?: ResponseTimelineStep[] | string;
+  actionTimeline?: ResponseTimelineStep[];
   resolutionStatus?: 'IN_PROGRESS' | 'RESOLVED' | 'UNDER_REVIEW' | 'MONITORING' | 'REFERRED';
   status?: string;
   documents?: ResponseDocument[];

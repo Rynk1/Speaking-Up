@@ -35,7 +35,15 @@ import {
   FileText,
   FileCheck,
   Download,
-  Mic
+  Mic,
+  Phone,
+  Radio,
+  Copy,
+  Check,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  LifeBuoy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CivicPost, InstitutionResponse, CommunityEvidence } from '../types';
@@ -591,70 +599,185 @@ export const CivicPostCard: React.FC<CivicPostCardProps> = ({
         </div>
       )}
 
-      {/* Tagged State Institutions Bar */}
-      {post.institutionTags.length > 0 && (
-        <div className="bg-slate-50 dark:bg-slate-950/60 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              Institutions Alerted:
+      {/* Institution Alert, Issue Status & Responsive Actions Bar */}
+      <div className="bg-slate-50/90 dark:bg-slate-900/60 p-3 sm:p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 space-y-2.5 transition-all shadow-xs">
+        {/* Top Header: Accountability Status & Awareness Score */}
+        <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              Institutions Alerted & Status
             </span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400">
-              Awareness Score: <strong className="text-emerald-600 dark:text-emerald-400">{post.credibilitySignals.institutionalAwarenessScore}%</strong>
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                post.accountabilityStatus === 'RESOLVED' || post.accountabilityStatus === 'CLOSED'
+                  ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                  : post.accountabilityStatus === 'RESPONDED' || (post.officialResponses && post.officialResponses.length > 0)
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/60'
+                  : post.accountabilityStatus === 'UNDER_REVIEW'
+                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700/60'
+                  : 'bg-sky-50 dark:bg-sky-950/50 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-700/60'
+              }`}
+            >
+              {post.accountabilityStatus === 'RESOLVED' || post.accountabilityStatus === 'CLOSED'
+                ? '✓ Verified Resolved'
+                : post.accountabilityStatus === 'RESPONDED' || (post.officialResponses && post.officialResponses.length > 0)
+                ? '⚡ Official Action Issued'
+                : post.accountabilityStatus === 'UNDER_REVIEW'
+                ? '🔍 Under Institutional Review'
+                : '✉️ Alert Dispatched'}
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+            <span>Awareness Score:</span>
+            <div className="flex items-center gap-1.5">
+              <div className="w-16 h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(15, post.credibilitySignals?.institutionalAwarenessScore || 65))}%` }}
+                />
+              </div>
+              <strong className="text-emerald-700 dark:text-emerald-400 font-bold">
+                {post.credibilitySignals?.institutionalAwarenessScore || 65}%
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Issue Lifecycle Progress Stepper */}
+        <div className="relative pt-1 pb-0.5">
+          <div className="grid grid-cols-4 gap-1 text-[10px] text-center font-medium">
+            {/* Step 1: Logged */}
+            <div className="flex flex-col items-center gap-1">
+              <div className="w-full h-1 bg-emerald-500 rounded-full" />
+              <span className="text-emerald-700 dark:text-emerald-400 font-semibold truncate max-w-full">1. Logged</span>
+            </div>
+            {/* Step 2: Dispatched */}
+            <div className="flex flex-col items-center gap-1">
+              <div className="w-full h-1 bg-emerald-500 rounded-full" />
+              <span className="text-emerald-700 dark:text-emerald-400 font-semibold truncate max-w-full">2. Dispatched</span>
+            </div>
+            {/* Step 3: Reviewed/Responded */}
+            <div className="flex flex-col items-center gap-1">
+              <div
+                className={`w-full h-1 rounded-full ${
+                  post.officialResponses && post.officialResponses.length > 0
+                    ? 'bg-emerald-500'
+                    : 'bg-slate-300 dark:bg-slate-700'
+                }`}
+              />
+              <span
+                className={`truncate max-w-full ${
+                  post.officialResponses && post.officialResponses.length > 0
+                    ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}
+              >
+                3. Response
+              </span>
+            </div>
+            {/* Step 4: Resolved */}
+            <div className="flex flex-col items-center gap-1">
+              <div
+                className={`w-full h-1 rounded-full ${
+                  post.accountabilityStatus === 'RESOLVED' || post.accountabilityStatus === 'CLOSED'
+                    ? 'bg-emerald-500'
+                    : 'bg-slate-300 dark:bg-slate-700'
+                }`}
+              />
+              <span
+                className={`truncate max-w-full ${
+                  post.accountabilityStatus === 'RESOLVED' || post.accountabilityStatus === 'CLOSED'
+                    ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}
+              >
+                4. Resolved
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tagged Institution Badges */}
+        {post.institutionTags && post.institutionTags.length > 0 ? (
+          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
             {post.institutionTags.map((tag, idx) => {
               const matchingRespIdx = post.officialResponses?.findIndex(
-                r => r.institutionId === tag.institutionId || r.institutionName.toLowerCase().includes(tag.shortName.toLowerCase())
+                r => r.institutionId === tag.institutionId || r.institutionName.toLowerCase().includes((tag.shortName || '').toLowerCase())
               );
               const matchingResp = matchingRespIdx !== undefined && matchingRespIdx !== -1 && post.officialResponses
                 ? post.officialResponses[matchingRespIdx]
                 : undefined;
+
               return (
-                <button
-                  type="button"
+                <div
                   key={`${tag.institutionId || 'inst'}-${idx}`}
-                  onClick={() => {
-                    if (matchingRespIdx !== undefined && matchingRespIdx !== -1) {
-                      setActiveResponseIndex(matchingRespIdx);
-                    }
-                  }}
-                  className={`px-2.5 py-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg text-xs flex items-center gap-1.5 transition-all text-left ${
-                    matchingResp
-                      ? 'hover:border-emerald-500 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer ring-1 ring-emerald-500/30'
-                      : ''
-                  }`}
-                  title={matchingResp ? 'Click to show this institution’s official statement in the response carousel' : undefined}
+                  className="inline-flex items-center gap-1 bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg p-1 text-xs shadow-xs"
                 >
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">@{tag.shortName || tag.acronym}</span>
-                  <span
-                    className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                      tag.alertStatus === 'ACKNOWLEDGED'
-                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60'
-                        : tag.alertStatus === 'DELIVERED'
-                        ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-800/60'
-                        : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800/60'
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (matchingRespIdx !== undefined && matchingRespIdx !== -1) {
+                        setActiveResponseIndex(matchingRespIdx);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-left font-medium text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors"
                   >
-                    {tag.alertStatus === 'ACKNOWLEDGED'
-                      ? '✓ Acknowledged'
-                      : tag.alertStatus === 'DELIVERED'
-                      ? '⚡ Dispatched'
-                      : '✉️ Tagged'}
-                  </span>
-                  {matchingResp && (
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
-                      • Statement 📄
+                    <span className="font-bold">@{tag.shortName || tag.acronym}</span>
+                    <span
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                        tag.alertStatus === 'ACKNOWLEDGED' || matchingResp
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60'
+                          : tag.alertStatus === 'DELIVERED'
+                          ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-800/60'
+                          : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800/60'
+                      }`}
+                    >
+                      {tag.alertStatus === 'ACKNOWLEDGED' || matchingResp
+                        ? '✓ Acknowledged'
+                        : tag.alertStatus === 'DELIVERED'
+                        ? '⚡ Dispatched'
+                        : '✉️ Tagged'}
                     </span>
-                  )}
-                </button>
+                    {matchingResp && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        • Statement 📄
+                      </span>
+                    )}
+                  </button>
+                </div>
               );
             })}
+
+            {/* Institution rep rapid respond button if logged in as rep */}
+            {userRole === 'institution_rep' && onOpenInstitutionResponse && (
+              <button
+                type="button"
+                onClick={() => onOpenInstitutionResponse(post)}
+                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <Building2 className="w-3 h-3" />
+                <span>Issue Statement</span>
+              </button>
+            )}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 py-1">
+            <span>No specific authority tagged yet. Civic dispatch queue active.</span>
+            {userRole === 'institution_rep' && onOpenInstitutionResponse && (
+              <button
+                type="button"
+                onClick={() => onOpenInstitutionResponse(post)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <Building2 className="w-3 h-3" />
+                <span>Issue Statement</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Official State Institution Responses Section */}
       {post.officialResponses && post.officialResponses.length > 0 && (() => {

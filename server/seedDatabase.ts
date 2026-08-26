@@ -152,8 +152,8 @@ export async function seedDatabaseIfEmpty() {
         });
       }
     }
-    const insertResponseOrIgnore = db.prepare(`
-      INSERT OR IGNORE INTO institution_responses (
+    const insertResponseOrReplace = db.prepare(`
+      INSERT OR REPLACE INTO institution_responses (
         id, post_id, institution_id, institution_name, institution_logo, response_type, message,
         statement_title, full_statement, reference_number, action_timeline_json, resolution_status,
         documents_json, hotlines_json, helpful_count, unhelpful_count,
@@ -168,23 +168,49 @@ export async function seedDatabaseIfEmpty() {
       )
     `);
 
+    const insertTagOrIgnore = db.prepare(`
+      INSERT OR IGNORE INTO post_institution_tags (
+        id, post_id, institution_id, institution_name, short_name, acronym, alert_requested, alert_status, alert_method_used, delivery_timestamp, created_at
+      ) VALUES (@id, @post_id, @institution_id, @institution_name, @short_name, @acronym, @alert_requested, @alert_status, @alert_method_used, @delivery_timestamp, @created_at)
+    `);
+
     const updatePostUrgency = db.prepare(`
-      UPDATE posts SET urgency = @urgency, severity = @severity WHERE id = @id
+      UPDATE posts SET urgency = @urgency, severity = @severity, accountability_status = @accountability_status WHERE id = @id
     `);
 
     for (const p of INITIAL_POSTS) {
       updatePostUrgency.run({
         id: p.id,
         urgency: p.urgency,
-        severity: p.severity
+        severity: p.severity,
+        accountability_status: p.accountabilityStatus || (p.officialResponses && p.officialResponses.length > 0 ? 'RESPONDED' : 'QUEUED')
       });
 
       const postExists = db.prepare('SELECT id FROM posts WHERE id = ?').get(p.id);
       if (postExists) {
+        for (const tag of p.institutionTags || []) {
+          const existingTag = db.prepare('SELECT id FROM post_institution_tags WHERE post_id = ? AND institution_id = ?').get(p.id, tag.institutionId);
+          if (!existingTag) {
+            insertTagOrIgnore.run({
+              id: `tag-${p.id}-${tag.institutionId}`,
+              post_id: p.id,
+              institution_id: tag.institutionId,
+              institution_name: tag.institutionName,
+              short_name: tag.shortName || null,
+              acronym: tag.acronym || null,
+              alert_requested: tag.alertRequested ? 1 : 0,
+              alert_status: tag.alertStatus || 'SENT',
+              alert_method_used: tag.alertMethodUsed || 'Direct Dispatch',
+              delivery_timestamp: tag.deliveryTimestamp || now,
+              created_at: now
+            });
+          }
+        }
+
         for (const r of p.officialResponses || []) {
           const instExists = db.prepare('SELECT id FROM institutions WHERE id = ?').get(r.institutionId);
           if (instExists) {
-            insertResponseOrIgnore.run({
+            insertResponseOrReplace.run({
               id: r.id,
               post_id: p.id,
               institution_id: r.institutionId,

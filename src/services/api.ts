@@ -326,6 +326,63 @@ export const api = {
     return res.json();
   },
 
+  async addResponseDocument(responseId: string, doc: { title: string; url: string; fileType?: string; size?: string }): Promise<{ success: boolean; documents: any[] }> {
+    const res = await fetch(`/api/responses/${responseId}/documents`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(doc)
+    });
+    if (!res.ok) throw new Error('Failed to add document');
+    return res.json();
+  },
+
+  async removeResponseDocument(responseId: string, index: number): Promise<{ success: boolean; documents: any[] }> {
+    const res = await fetch(`/api/responses/${responseId}/documents/${index}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to remove document');
+    return res.json();
+  },
+
+  async addResponseHotline(responseId: string, hotline: string): Promise<{ success: boolean; hotlines: string[] }> {
+    const res = await fetch(`/api/responses/${responseId}/hotlines`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ hotline })
+    });
+    if (!res.ok) throw new Error('Failed to add hotline');
+    return res.json();
+  },
+
+  async removeResponseHotline(responseId: string, index: number): Promise<{ success: boolean; hotlines: string[] }> {
+    const res = await fetch(`/api/responses/${responseId}/hotlines/${index}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to remove hotline');
+    return res.json();
+  },
+
+  async addResponseTimelineStep(responseId: string, step: { step: string; status?: string; timestamp?: string; description?: string }): Promise<{ success: boolean; actionTimeline: any[] }> {
+    const res = await fetch(`/api/responses/${responseId}/timeline`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(step)
+    });
+    if (!res.ok) throw new Error('Failed to add timeline milestone');
+    return res.json();
+  },
+
+  async removeResponseTimelineStep(responseId: string, index: number): Promise<{ success: boolean; actionTimeline: any[] }> {
+    const res = await fetch(`/api/responses/${responseId}/timeline/${index}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to remove timeline milestone');
+    return res.json();
+  },
+
   async updatePostStatus(postId: string, status: string): Promise<{ success: boolean; status: string }> {
     const res = await fetch(`/api/posts/${postId}/status`, {
       method: 'PUT',

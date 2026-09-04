@@ -85,25 +85,35 @@ export default function App() {
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
   const [selectedStatement, setSelectedStatement] = useState<{ post: CivicPost; response: InstitutionResponse } | null>(null);
 
-  // Fetch all initial data
+  // Fetch all initial data with defensive handling
   const loadAllData = useCallback(async () => {
     try {
       setLoadingPosts(true);
-      const [fetchedPosts, fetchedInsts, fetchedClusters, fetchedAnalytics, fetchedNotifs] =
-        await Promise.all([
-          api.getPosts(),
-          api.getInstitutions(),
-          api.getClusters(),
-          api.getAnalytics(),
-          api.getNotifications()
-        ]);
-      setPosts(fetchedPosts);
-      setInstitutions(fetchedInsts);
-      setClusters(fetchedClusters);
-      setAnalytics(fetchedAnalytics);
-      setNotifications(fetchedNotifs);
+      const [postsRes, instsRes, clustersRes, analyticsRes, notifsRes] = await Promise.allSettled([
+        api.getPosts(),
+        api.getInstitutions(),
+        api.getClusters(),
+        api.getAnalytics(),
+        api.getNotifications()
+      ]);
+
+      if (postsRes.status === 'fulfilled' && Array.isArray(postsRes.value)) {
+        setPosts(postsRes.value);
+      }
+      if (instsRes.status === 'fulfilled' && Array.isArray(instsRes.value)) {
+        setInstitutions(instsRes.value);
+      }
+      if (clustersRes.status === 'fulfilled' && Array.isArray(clustersRes.value)) {
+        setClusters(clustersRes.value);
+      }
+      if (analyticsRes.status === 'fulfilled' && analyticsRes.value) {
+        setAnalytics(analyticsRes.value);
+      }
+      if (notifsRes.status === 'fulfilled' && Array.isArray(notifsRes.value)) {
+        setNotifications(notifsRes.value);
+      }
     } catch (err) {
-      console.error('Error loading data:', err);
+      console.warn('Notice: Background synchronization error in loadAllData:', err);
     } finally {
       setLoadingPosts(false);
     }
@@ -117,13 +127,17 @@ export default function App() {
   const refreshPosts = async () => {
     try {
       const updated = await api.getPosts();
-      setPosts(updated);
-      const updatedAnalytics = await api.getAnalytics();
-      setAnalytics(updatedAnalytics);
-      const updatedClusters = await api.getClusters();
-      setClusters(updatedClusters);
+      if (Array.isArray(updated) && updated.length > 0) {
+        setPosts(updated);
+      }
+      const [analyticsRes, clustersRes] = await Promise.allSettled([
+        api.getAnalytics(),
+        api.getClusters()
+      ]);
+      if (analyticsRes.status === 'fulfilled') setAnalytics(analyticsRes.value);
+      if (clustersRes.status === 'fulfilled') setClusters(clustersRes.value);
     } catch (err) {
-      console.error('Error refreshing posts:', err);
+      console.warn('Notice: Refresh posts completed with fallback:', err);
     }
   };
 
@@ -432,10 +446,17 @@ export default function App() {
 
       <SpeakUpComposer
         isOpen={isSpeakUpOpen}
-        onClose={() => setIsSpeakUpOpen(false)}
+        onClose={() => {
+          setIsSpeakUpOpen(false);
+          refreshPosts();
+        }}
         onPostCreated={() => {
           refreshPosts();
-          navigate('/');
+        }}
+        onViewPost={(postId) => {
+          setIsSpeakUpOpen(false);
+          refreshPosts();
+          navigate(`/post/${postId}`);
         }}
         institutionsList={institutions}
       />

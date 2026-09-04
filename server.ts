@@ -2,11 +2,12 @@ import express, { Request } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import { config } from './server/config';
+import { config } from './server/config/index';
 import { initDatabase, db } from './server/database/db';
 import { seedDatabaseIfEmpty } from './server/seedDatabase';
-import { initStorageZones } from './server/storage';
+import { initStorageZones } from './server/storage/index';
 import { initializeJobWorkers } from './server/jobs/workers';
+import { OutboxService } from './server/infrastructure/events/OutboxService';
 import { createApp } from './server/app';
 import { logger } from './server/shared/logger';
 
@@ -94,8 +95,9 @@ async function bootstrap() {
   // 2. Initialize P³RE Media Storage Zones
   initStorageZones();
 
-  // 3. Initialize Background Job Processing Workers
+  // 3. Initialize Background Job Processing Workers & Transactional Outbox
   initializeJobWorkers();
+  OutboxService.startOutboxWorker();
 
   // 4. Create Express Application with API & Health Endpoints
   const app = createApp();

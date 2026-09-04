@@ -94,27 +94,34 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
 
   // Filter posts for Feed view
   const filteredPosts = posts.filter(post => {
+    if (!post) return false;
+    const postTitle = post.title || '';
+    const postContent = post.content || '';
+    const postRegion = post.location?.region || '';
+    const postDistrict = post.location?.district || '';
+    const postLandmark = post.location?.landmark || '';
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchTitle = post.title.toLowerCase().includes(q);
-      const matchContent = post.content.toLowerCase().includes(q);
+      const matchTitle = postTitle.toLowerCase().includes(q);
+      const matchContent = postContent.toLowerCase().includes(q);
       const matchLocation =
-        post.location.district.toLowerCase().includes(q) ||
-        post.location.region.toLowerCase().includes(q) ||
-        (post.location.landmark && post.location.landmark.toLowerCase().includes(q));
-      const matchTags = post.institutionTags.some(
+        postDistrict.toLowerCase().includes(q) ||
+        postRegion.toLowerCase().includes(q) ||
+        postLandmark.toLowerCase().includes(q);
+      const matchTags = Array.isArray(post.institutionTags) && post.institutionTags.some(
         t => t.shortName?.toLowerCase().includes(q) || t.acronym?.toLowerCase().includes(q)
       );
-      const matchHashtags = post.hashtags?.some(h => h.toLowerCase().includes(q));
+      const matchHashtags = Array.isArray(post.hashtags) && post.hashtags.some(h => h.toLowerCase().includes(q));
       if (!matchTitle && !matchContent && !matchLocation && !matchTags && !matchHashtags) return false;
     }
 
-    if (feedTab === 'official_responded' && (!post.officialResponses || post.officialResponses.length === 0)) {
+    if (feedTab === 'official_responded' && (!Array.isArray(post.officialResponses) || post.officialResponses.length === 0)) {
       return false;
     }
 
     if (filterCategory !== 'ALL' && post.category !== filterCategory) return false;
-    if (filterRegion !== 'ALL' && post.location.region !== filterRegion) return false;
+    if (filterRegion !== 'ALL' && postRegion !== filterRegion) return false;
     if (filterUrgency !== 'ALL' && post.urgency !== filterUrgency) return false;
 
     return true;
@@ -123,27 +130,33 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
   const officialResponseFeedItems = useMemo(() => {
     const items: { post: CivicPost; response: InstitutionResponse }[] = [];
     posts.forEach(post => {
-      if (post.officialResponses && post.officialResponses.length > 0) {
+      if (post && Array.isArray(post.officialResponses) && post.officialResponses.length > 0) {
+        const postTitle = post.title || '';
+        const postContent = post.content || '';
+        const postRegion = post.location?.region || '';
+        const postDistrict = post.location?.district || '';
+        const postLandmark = post.location?.landmark || '';
+
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
-          const matchTitle = post.title.toLowerCase().includes(q);
-          const matchContent = post.content.toLowerCase().includes(q);
+          const matchTitle = postTitle.toLowerCase().includes(q);
+          const matchContent = postContent.toLowerCase().includes(q);
           const matchLocation =
-            post.location.district.toLowerCase().includes(q) ||
-            post.location.region.toLowerCase().includes(q) ||
-            (post.location.landmark && post.location.landmark.toLowerCase().includes(q));
+            postDistrict.toLowerCase().includes(q) ||
+            postRegion.toLowerCase().includes(q) ||
+            postLandmark.toLowerCase().includes(q);
           const matchResp = post.officialResponses.some(
             r =>
               r.statementTitle?.toLowerCase().includes(q) ||
-              r.message.toLowerCase().includes(q) ||
-              r.institutionName.toLowerCase().includes(q) ||
+              r.message?.toLowerCase().includes(q) ||
+              r.institutionName?.toLowerCase().includes(q) ||
               r.responderName?.toLowerCase().includes(q)
           );
           if (!matchTitle && !matchContent && !matchLocation && !matchResp) return;
         }
 
         if (filterCategory !== 'ALL' && post.category !== filterCategory) return;
-        if (filterRegion !== 'ALL' && post.location.region !== filterRegion) return;
+        if (filterRegion !== 'ALL' && postRegion !== filterRegion) return;
         if (filterUrgency !== 'ALL' && post.urgency !== filterUrgency) return;
 
         post.officialResponses.forEach(response => {

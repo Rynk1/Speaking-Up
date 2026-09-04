@@ -621,15 +621,33 @@ export const INITIAL_POSTS: CivicPost[] = [
         userName: 'Abena Serwaa',
         userHandle: 'abena_s',
         userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-        text: 'I just crossed the overhead bridge. Water level is still rising towards the VIP bus station as of 4:00 AM. Avoid the ground terminal.',
+        isVerified: true,
+        title: 'VIP Ground Terminal Water Level Surge & Walkway Congestion',
+        text: 'I just crossed the overhead bridge. Water level is still rising towards the VIP bus station as of 4:00 AM. Avoid the ground terminal — flood depth is past knee height and vehicles are stalling.',
         statusUpdate: 'worsened',
+        likesCount: 48,
+        location: { landmark: 'VIP Bus Terminal & Railway Crossing', district: 'Klottey-Korle', region: 'Greater Accra' },
         media: [
           {
             id: 'media-evid-flood-1',
             type: 'image',
-            url: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800&auto=format&fit=crop&q=80',
-            caption: 'Water encroaching VIP terminal grounds at 4:15 AM',
+            url: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=1080&auto=format&fit=crop&q=80',
+            caption: 'Water encroaching VIP terminal passenger lounge and parking grounds at 4:15 AM',
             uploadedAt: '2026-08-20T03:45:00Z'
+          },
+          {
+            id: 'media-evid-flood-1b',
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1515694346937-94d85e41e6f0?w=1080&auto=format&fit=crop&q=80',
+            caption: 'Pedestrians stranded on overhead pedestrian walkway overlooking flooded loop',
+            uploadedAt: '2026-08-20T03:50:00Z'
+          },
+          {
+            id: 'media-evid-flood-1c',
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=1080&auto=format&fit=crop&q=80',
+            caption: 'Fuel station safety perimeter cordoned off by attendants near Circle fountain',
+            uploadedAt: '2026-08-20T03:55:00Z'
           }
         ],
         createdAt: '2026-08-20T03:45:00Z'
@@ -641,15 +659,19 @@ export const INITIAL_POSTS: CivicPost[] = [
         userName: 'Selorm Kpodo',
         userHandle: 'selorm_tech',
         userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
-        text: 'NADMO rescue boat and AMA water pumps have arrived on site and started suctioning near the pedestrian walkway.',
+        isVerified: true,
+        title: 'Emergency High-Capacity Dewatering Pumps & Rescue Boat Deployed',
+        text: 'NADMO rescue boat and AMA water pumps have arrived on site and started suctioning near the pedestrian walkway. Water level around the railway line is slowly stabilizing.',
         statusUpdate: 'improving',
+        likesCount: 62,
+        location: { landmark: 'Odawna Railway Line & Main Canal Intake', district: 'Klottey-Korle', region: 'Greater Accra' },
         media: [
           {
             id: 'media-evid-flood-video',
             type: 'video',
             url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-            thumbnailUrl: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=400&auto=format&fit=crop&q=80',
-            caption: 'Video footage of emergency water pumps operating near overhead bridge',
+            thumbnailUrl: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=600&auto=format&fit=crop&q=80',
+            caption: 'Video footage of emergency dewatering pumps operating near Odaw canal',
             duration: 18,
             uploadedAt: '2026-08-20T04:20:00Z'
           },
@@ -657,12 +679,95 @@ export const INITIAL_POSTS: CivicPost[] = [
             id: 'media-evid-flood-audio',
             type: 'audio',
             url: 'https://cdn.freesound.org/previews/518/518882_11501906-lq.mp3',
-            caption: 'Field Voice Note: Resident warning commuters against walking in knee-deep current',
+            caption: 'Field Voice Note: Resident warning commuters against walking in submerged open drains',
             duration: 26,
             uploadedAt: '2026-08-20T04:25:00Z'
+          },
+          {
+            id: 'media-evid-flood-2b',
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1584463699026-6819b1689255?w=1080&auto=format&fit=crop&q=80',
+            caption: 'NADMO crew preparing suction hoses to discharge runoff into the Odaw basin',
+            uploadedAt: '2026-08-20T04:30:00Z'
           }
         ],
         createdAt: '2026-08-20T04:20:00Z'
+      },
+      {
+        id: 'evid-3',
+        postId: 'post-circle-flood-1',
+        userId: 'user-kofi-mensah',
+        userName: 'Kofi Mensah',
+        userHandle: 'kofi_m_accra',
+        userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+        isVerified: true,
+        title: 'MTTD Traffic Diversion Active Towards Liberation Road',
+        text: 'MTTD officers are actively diverting traffic away from the lower Circle overpass loops. All trotro drivers heading to Kaneshie or Achimota are being directed through Ring Road Central.',
+        statusUpdate: 'improving',
+        likesCount: 31,
+        location: { landmark: 'Ring Road Central Overpass Approach', district: 'Osu Klottey', region: 'Greater Accra' },
+        media: [
+          {
+            id: 'media-evid-flood-3a',
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=1080&auto=format&fit=crop&q=80',
+            caption: 'Police cruiser setting up reflective diversion barriers on the interchange approach',
+            uploadedAt: '2026-08-20T04:45:00Z'
+          },
+          {
+            id: 'media-evid-flood-3b',
+            type: 'audio',
+            url: 'https://cdn.freesound.org/previews/518/518882_11501906-lq.mp3',
+            caption: 'Traffic announcement from MTTD field commander on duty',
+            duration: 15,
+            uploadedAt: '2026-08-20T04:50:00Z'
+          }
+        ],
+        createdAt: '2026-08-20T04:45:00Z'
+      }
+    ],
+    commentsList: [
+      {
+        id: 'comm-cf-1',
+        postId: 'post-circle-flood-1',
+        evidenceId: 'evid-1',
+        evidenceAuthorName: 'Abena Serwaa',
+        evidenceTextPreview: 'I just crossed the overhead bridge. Water level is still rising towards the VIP...',
+        userId: 'user-yaw-boateng',
+        userName: 'Kwame Boateng',
+        userHandle: 'kwame_motorway',
+        userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
+        isVerified: true,
+        content: 'Thank you for this live visual update! @abena_s was considering walking through but will use the high bridge instead.',
+        likesCount: 9,
+        createdAt: '2026-08-20T04:00:00Z'
+      },
+      {
+        id: 'comm-cf-2',
+        postId: 'post-circle-flood-1',
+        evidenceId: 'evid-2',
+        evidenceAuthorName: 'Selorm Kpodo',
+        evidenceTextPreview: 'NADMO rescue boat and AMA water pumps have arrived on site and started suctioning...',
+        userId: 'user-dr-owusu',
+        userName: 'Dr. Emmanuel Owusu',
+        userHandle: 'drowusu_kumasi',
+        userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
+        isVerified: true,
+        content: 'Crucial that the pumps keep running before the heavy morning downpour hits. Well done NADMO.',
+        likesCount: 14,
+        createdAt: '2026-08-20T04:35:00Z'
+      },
+      {
+        id: 'comm-cf-3',
+        postId: 'post-circle-flood-1',
+        userId: 'user-selorm-it',
+        userName: 'Selorm Kpodo',
+        userHandle: 'selorm_tech',
+        userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
+        isVerified: true,
+        content: 'Calling on @NADMO and @AMA to ensure sanitation teams follow immediately after water recedes to clear solid waste.',
+        likesCount: 18,
+        createdAt: '2026-08-20T05:00:00Z'
       }
     ],
     createdAt: '2026-08-20T01:30:00Z',

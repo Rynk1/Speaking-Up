@@ -150,9 +150,15 @@ export interface CommunityEvidence {
   userHandle: string;
   userAvatar?: string;
   isVerified?: boolean;
+  title?: string;
   text: string;
   media?: PostMedia[];
   statusUpdate: 'still_ongoing' | 'worsened' | 'improving' | 'resolved';
+  likesCount?: number;
+  userLiked?: boolean;
+  commentsCount?: number;
+  commentsList?: PostComment[];
+  location?: { landmark?: string; district?: string; region?: string };
   createdAt: string;
 }
 
@@ -171,6 +177,9 @@ export interface PostComment {
   id: string;
   postId: string;
   parentCommentId?: string;
+  evidenceId?: string;
+  evidenceAuthorName?: string;
+  evidenceTextPreview?: string;
   userId: string;
   userName: string;
   userHandle: string;
@@ -585,4 +594,138 @@ export interface NationalAnalytics {
     resolvedCount: number;
     responseRate: number;
   }[];
+}
+
+// Institutional Monolith Domain Types
+export interface CivicSituation {
+  id: string;
+  title: string;
+  summary: string;
+  category: string;
+  region: string;
+  district: string;
+  locationSummary?: string;
+  severity: string;
+  urgency: string;
+  status: 'REPORTED' | 'VERIFYING' | 'ACTIVE_MONITORING' | 'OFFICIAL_RESPONSE_ISSUED' | 'INTERVENTION_IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  priorityScore: number;
+  priorityBand: 'LOW' | 'MODERATE' | 'ELEVATED' | 'HIGH' | 'CRITICAL';
+  priorityFactors?: Record<string, any>;
+  firstReportedAt: string;
+  latestActivityAt: string;
+  reportCount: number;
+  confirmationCount: number;
+  evidenceCount: number;
+  amplificationCount: number;
+  primaryInstitutionId?: string;
+  createdAt: string;
+  updatedAt: string;
+  reports?: any[];
+  events?: any[];
+  announcements?: any[];
+  officialResponses?: any[];
+}
+
+export type InboxItemType = 'REPORT' | 'MENTION' | 'FOLLOW_UP' | 'EVIDENCE' | 'RESPONSE' | 'ANNOUNCEMENT' | 'ESCALATION';
+export type InboxActionState =
+  | 'NEW'
+  | 'SEEN'
+  | 'ACKNOWLEDGED'
+  | 'UNDER_REVIEW'
+  | 'RESPONSE_PREPARED'
+  | 'PUBLIC_RESPONSE'
+  | 'ACTION_REPORTED'
+  | 'RESOLVED'
+  | 'CITIZEN_FOLLOW_UP';
+
+export interface InstitutionalInboxItem {
+  id: string;
+  institutionId: string;
+  itemType: InboxItemType;
+  itemPriority: 'ROUTINE' | 'ELEVATED' | 'URGENT' | 'EMERGENCY';
+  priorityScore: number;
+  postId?: string;
+  situationId?: string;
+  evidenceId?: string;
+  responseId?: string;
+  announcementId?: string;
+  title: string;
+  summary: string;
+  region?: string;
+  district?: string;
+  signalSummary?: Record<string, any>;
+  assignedDeskId?: string;
+  assignedDeskName?: string;
+  assignedOfficerId?: string;
+  assignedOfficerName?: string;
+  actionState: InboxActionState;
+  isRead: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AnnouncementType =
+  | 'PRESS_RELEASE'
+  | 'PUBLIC_ADVISORY'
+  | 'SERVICE_DISRUPTION'
+  | 'SCHEDULED_MAINTENANCE'
+  | 'POLICY_UPDATE'
+  | 'FACT_CHECK_CLARIFICATION'
+  | 'SITUATION_BRIEF'
+  | 'EMERGENCY_ALERT';
+
+export interface InstitutionalAnnouncement {
+  id: string;
+  institutionId: string;
+  institutionName?: string;
+  institutionLogo?: string;
+  authorId: string;
+  authorName: string;
+  authorTitle: string;
+  title: string;
+  body: string;
+  summary?: string;
+  announcementType: AnnouncementType;
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'PUBLISHED' | 'EXPIRED' | 'RETRACTED';
+  geographicScope: 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'CORRIDOR';
+  region?: string;
+  district?: string;
+  topic?: string;
+  category?: string;
+  media?: { type: string; url: string; caption?: string }[];
+  officialLinks?: { label: string; url: string }[];
+  relatedSituationIds?: string[];
+  viewCount: number;
+  shareCount: number;
+  publishedAt?: string;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InstitutionalDesk {
+  id: string;
+  institutionId: string;
+  name: string;
+  code: string;
+  level: 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST';
+  region?: string;
+  district?: string;
+  specialization?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  leadOfficerName?: string;
+}
+
+export interface InstitutionTeamMember {
+  id: string;
+  institutionId: string;
+  name: string;
+  email: string;
+  role: 'ADMIN' | 'COMMUNICATIONS_OFFICER' | 'DUTY_INSPECTOR' | 'ANALYST' | 'VIEWER';
+  title?: string;
+  deskId?: string;
+  deskName?: string;
+  status: 'ACTIVE' | 'INVITED' | 'SUSPENDED';
 }

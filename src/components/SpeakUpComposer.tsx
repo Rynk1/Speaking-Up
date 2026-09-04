@@ -51,6 +51,7 @@ interface SpeakUpComposerProps {
   isOpen: boolean;
   onClose: () => void;
   onPostCreated: () => void;
+  onViewPost?: (postId: string) => void;
   institutionsList: Institution[];
 }
 
@@ -77,6 +78,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
   isOpen,
   onClose,
   onPostCreated,
+  onViewPost,
   institutionsList
 }) => {
   const { currentUser, requireAuth, savedPostDraft, savePostDraft, clearPostDraft } = useAuth();
@@ -134,6 +136,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+  const prevIsOpenRef = useRef(false);
 
   // Sync author details when currentUser changes
   useEffect(() => {
@@ -143,13 +146,14 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     }
   }, [currentUser]);
 
-  // Load draft or reset form when modal opens
+  // Load draft or reset form ONLY when modal opens from closed state
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       setSubmitError(null);
       setCurrentStep(1);
       setCopiedLink(false);
       setPublishedPostId(null);
+      setIsSubmitting(false);
 
       if (savedPostDraft) {
         if (savedPostDraft.title) setTitle(savedPostDraft.title);
@@ -166,6 +170,7 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
         }
       }
     }
+    prevIsOpenRef.current = isOpen;
   }, [isOpen, savedPostDraft]);
 
   // Run automatic background intelligence when text or media is provided
@@ -1199,21 +1204,25 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
               </div>
             </>
           ) : (
-            <div className="w-full flex items-center justify-between">
+            <div className="w-full flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl"
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer"
               >
-                Close
+                Back to Feed
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  onClose();
+                  if (onViewPost && publishedPostId) {
+                    onViewPost(publishedPostId);
+                  } else {
+                    onClose();
+                  }
                 }}
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg flex items-center gap-2"
+                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg flex items-center gap-2 cursor-pointer transition-all active:scale-95"
               >
                 <Eye className="w-4 h-4" />
                 <span>View Live Post</span>

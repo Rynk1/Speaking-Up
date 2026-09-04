@@ -12,7 +12,12 @@ import {
   SocialSharePackage,
   CreatorPack,
   CreatorProfile,
-  ShareAnalyticsSummary
+  ShareAnalyticsSummary,
+  CivicSituation,
+  InstitutionalInboxItem,
+  InstitutionalAnnouncement,
+  InstitutionalDesk,
+  InstitutionTeamMember
 } from '../types';
 
 const TOKEN_KEY = 'speakup_jwt_token';
@@ -185,7 +190,7 @@ export const api = {
     urgency?: string;
     clusterId?: string;
     institutionId?: string;
-  }): Promise<CivicPost[]> {
+  }, retries = 2): Promise<CivicPost[]> {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, val]) => {
@@ -194,11 +199,24 @@ export const api = {
         }
       });
     }
-    const res = await fetch(`/api/posts?${query.toString()}`, {
-      headers: getAuthHeaders()
-    });
-    if (!res.ok) throw new Error('Failed to fetch posts');
-    return res.json();
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(`/api/posts?${query.toString()}`, {
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        }
+      } catch (e) {
+        if (attempt === retries) {
+          console.warn('Network error fetching posts, returning cached or empty array:', e);
+          return [];
+        }
+        await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+    return [];
   },
 
   async getPostById(id: string): Promise<CivicPost> {
@@ -250,6 +268,33 @@ export const api = {
     return res.json();
   },
 
+  async toggleEvidenceLike(evidenceId: string): Promise<{ success: boolean; evidenceId: string; userLiked: boolean; likesCount: number }> {
+    const res = await fetch(`/api/evidence/${evidenceId}/like`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to toggle evidence like');
+    return res.json();
+  },
+
+  async shareEvidence(evidenceId: string, platform: string = 'direct'): Promise<{ success: boolean; evidenceId: string; shareId: string }> {
+    const res = await fetch(`/api/evidence/${evidenceId}/share`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ platform })
+    });
+    if (!res.ok) throw new Error('Failed to share evidence');
+    return res.json();
+  },
+
+  async getEvidenceById(evidenceId: string): Promise<CommunityEvidence & { postContext?: any }> {
+    const res = await fetch(`/api/evidence/${evidenceId}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch evidence pack');
+    return res.json();
+  },
+
   async toggleRepost(postId: string): Promise<{ reposted: boolean; repostsCount: number; followersCount?: number }> {
     const res = await fetch(`/api/posts/${postId}/repost`, {
       method: 'POST',
@@ -277,7 +322,7 @@ export const api = {
     return res.json();
   },
 
-  async addComment(postId: string, commentData: { content: string; parentCommentId?: string; userName?: string; userHandle?: string; tags?: string[] }): Promise<PostComment> {
+  async addComment(postId: string, commentData: { content: string; parentCommentId?: string; evidenceId?: string; userName?: string; userHandle?: string; tags?: string[] }): Promise<PostComment> {
     const res = await fetch(`/api/posts/${postId}/comments`, {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -303,6 +348,19 @@ export const api = {
       body: JSON.stringify({ institutionId })
     });
     if (!res.ok) throw new Error('Failed to dispatch alert');
+    return res.json();
+  },
+
+  async acknowledgePost(postId: string, institutionId?: string): Promise<{ success: boolean; status: string; time: string }> {
+    const res = await fetch(`/api/posts/${postId}/acknowledge`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ institutionId })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to acknowledge civic report');
+    }
     return res.json();
   },
 
@@ -430,6 +488,131 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch institution');
+    return res.json();
+  },
+
+  async getInstitutionInbox(institutionId: string, params?: {
+    itemType?: string;
+    actionState?: string;
+    priority?: string;
+    search?: string;
+    limit?: number;
+    cursor?: string;
+  }): Promise<{ items: InstitutionalInboxItem[]; totalCount: number; nextCursor: string | null }> {
+    const query = new URLSearchParams();
+    if (params?.itemType) query.append('itemType', params.itemType);
+    if (params?.actionState) query.append('actionState', params.actionState);
+    if (params?.priority) query.append('priority', params.priority);
+    if (params?.search) query.append('search', params.search);
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.cursor) query.append('cursor', params.cursor);
+
+    const res = await fetch(`/api/institutions/${institutionId}/inbox?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch institutional inbox');
+    return res.json();
+  },
+
+  async transitionInboxItem(institutionId: string, itemId: string, targetState: string, notes?: string): Promise<{ success: boolean; item: InstitutionalInboxItem }> {
+    const res = await fetch(`/api/institutions/${institutionId}/inbox/${itemId}/transition`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ targetState, notes })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to transition inbox item');
+    }
+    return res.json();
+  },
+
+  async getInstitutionDesks(institutionId: string, params?: { category?: string; region?: string; district?: string }): Promise<InstitutionalDesk[]> {
+    const query = new URLSearchParams();
+    if (params?.category) query.append('category', params.category);
+    if (params?.region) query.append('region', params.region);
+    if (params?.district) query.append('district', params.district);
+
+    const res = await fetch(`/api/institutions/${institutionId}/desks?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch institution desks');
+    return res.json();
+  },
+
+  async getInstitutionTeam(institutionId: string): Promise<InstitutionTeamMember[]> {
+    const res = await fetch(`/api/institutions/${institutionId}/team`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch institution team');
+    return res.json();
+  },
+
+  async getInstitutionAnnouncements(institutionId: string, params?: { status?: string; limit?: number; cursor?: string }): Promise<{ items: InstitutionalAnnouncement[]; nextCursor: string | null }> {
+    const query = new URLSearchParams();
+    if (params?.status) query.append('status', params.status);
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.cursor) query.append('cursor', params.cursor);
+
+    const res = await fetch(`/api/institutions/${institutionId}/announcements?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch institution announcements');
+    return res.json();
+  },
+
+  async createInstitutionAnnouncement(institutionId: string, data: any): Promise<InstitutionalAnnouncement> {
+    const res = await fetch(`/api/institutions/${institutionId}/announcements`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create announcement');
+    }
+    return res.json();
+  },
+
+  async getCivicSituations(params?: { region?: string; district?: string; category?: string; status?: string; priorityBand?: string; limit?: number; cursor?: string }): Promise<{ items: CivicSituation[]; nextCursor: string | null }> {
+    const query = new URLSearchParams();
+    if (params?.region) query.append('region', params.region);
+    if (params?.district) query.append('district', params.district);
+    if (params?.category) query.append('category', params.category);
+    if (params?.status) query.append('status', params.status);
+    if (params?.priorityBand) query.append('priorityBand', params.priorityBand);
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.cursor) query.append('cursor', params.cursor);
+
+    const res = await fetch(`/api/situations?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch civic situations');
+    return res.json();
+  },
+
+  async getCivicSituationById(id: string): Promise<CivicSituation> {
+    const res = await fetch(`/api/situations/${id}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch civic situation');
+    return res.json();
+  },
+
+  async getPublicAnnouncements(params?: { institutionId?: string; region?: string; district?: string; announcementType?: string; status?: string; limit?: number; cursor?: string }): Promise<{ items: InstitutionalAnnouncement[]; nextCursor: string | null }> {
+    const query = new URLSearchParams();
+    if (params?.institutionId) query.append('institutionId', params.institutionId);
+    if (params?.region) query.append('region', params.region);
+    if (params?.district) query.append('district', params.district);
+    if (params?.announcementType) query.append('announcementType', params.announcementType);
+    if (params?.status) query.append('status', params.status);
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.cursor) query.append('cursor', params.cursor);
+
+    const res = await fetch(`/api/announcements?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch public announcements');
     return res.json();
   },
 

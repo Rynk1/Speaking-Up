@@ -6,6 +6,119 @@ import {
   INITIAL_CLUSTERS,
   INITIAL_NOTIFICATIONS
 } from './seedData';
+import { CivicSituationService } from './modules/civic-situations/CivicSituationService';
+import { InstitutionalInboxService } from './modules/institutional-inbox/InstitutionalInboxService';
+import { InstitutionalAnnouncementService } from './modules/announcements/InstitutionalAnnouncementService';
+
+export function syncSituationsAndInstitutionalInbox() {
+  const now = new Date().toISOString();
+
+  // 1. Sync Civic Situations from Posts if empty
+  const situationCount = (db.prepare('SELECT COUNT(*) as count FROM civic_situations').get() as any)?.count || 0;
+  if (situationCount === 0) {
+    const allPosts = db.prepare('SELECT id FROM posts ORDER BY created_at ASC').all() as { id: string }[];
+    for (const post of allPosts) {
+      try {
+        CivicSituationService.matchOrCreateSituation(post.id);
+      } catch (err) {
+        console.error('Error auto-linking situation for post:', post.id, err);
+      }
+    }
+  }
+
+  // 2. Sync Institutional Inbox Items if empty
+  const inboxCount = (db.prepare('SELECT COUNT(*) as count FROM institutional_inbox_items').get() as any)?.count || 0;
+  if (inboxCount === 0) {
+    const taggedRows = db.prepare(`
+      SELECT pit.institution_id, p.*
+      FROM post_institution_tags pit
+      JOIN posts p ON p.id = pit.post_id
+    `).all() as any[];
+
+    for (const row of taggedRows) {
+      try {
+        InstitutionalInboxService.createInboxItem({
+          institutionId: row.institution_id,
+          itemType: 'REPORT',
+          itemPriority: row.urgency === 'CRITICAL' ? 'EMERGENCY' : row.urgency === 'HIGH' ? 'URGENT' : 'ELEVATED',
+          priorityScore: row.urgency === 'CRITICAL' ? 95 : 75,
+          postId: row.id,
+          title: row.title,
+          summary: (row.content || '').slice(0, 240),
+          region: row.region,
+          district: row.district
+        });
+      } catch (e) {
+        console.error('Error creating initial inbox item:', e);
+      }
+    }
+  }
+
+  // 4. Sync Initial Official Announcements if empty
+  const announcementCount = (db.prepare('SELECT COUNT(*) as count FROM institutional_announcements').get() as any)?.count || 0;
+  if (announcementCount === 0) {
+    try {
+      InstitutionalAnnouncementService.createAnnouncement({
+        institutionId: 'ghana-police-service',
+        authorId: 'user-current',
+        authorName: 'ACP Kwesi Mensah',
+        authorTitle: 'Director of Public Affairs, GPS',
+        title: 'National Public Safety Advisory: Flooding Preparedness & Emergency Response Protocol',
+        summary: 'Official GPS safety directive advising drivers and residents in low-lying corridors during seasonal downpours, with 24/7 rapid response hotline details.',
+        body: 'The Ghana Police Service (GPS) in coordination with NADMO issues this advisory to all commuters along the Mallam-Kasoa, Circle-Odaw, and Tema Motorway corridors. Motorists are urged to exercise extreme caution, avoid traversing flooded bridges or unlit diversions, and report blocked drains or distressed vehicles immediately to our dedicated police emergency numbers 191 / 18555.',
+        announcementType: 'PUBLIC_ADVISORY',
+        geographicScope: 'NATIONAL',
+        region: 'Greater Accra',
+        district: 'Accra Metropolitan',
+        topic: 'Public Safety & Emergency Preparedness',
+        category: 'Safety & Emergency Services',
+        officialLinks: [
+          { label: 'GPS Emergency Safety Portal', url: 'https://police.gov.gh/safety-advisory' }
+        ]
+      });
+
+      InstitutionalAnnouncementService.createAnnouncement({
+        institutionId: 'ghana-highways-authority',
+        authorId: 'user-current',
+        authorName: 'Ing. Christian Nti',
+        authorTitle: 'Chief Executive, Ghana Highway Authority',
+        title: 'Notice of Scheduled Remedial Bridge Deck Resurfacing along Pokuase Corridor',
+        summary: 'GHA maintenance crew scheduled for structural inspection and asphalt remediation on the Pokuase Interchange approach lanes.',
+        body: 'The Ghana Highway Authority hereby informs the motoring public that remedial structural resurfacing and drainage re-channeling will commence on the Pokuase-Amasaman approach lanes starting this weekend. Traffic management personnel will be stationed at the bypass intersections. Commuters are advised to heed directional signage.',
+        announcementType: 'SCHEDULED_MAINTENANCE',
+        geographicScope: 'REGIONAL',
+        region: 'Greater Accra',
+        district: 'Ga West Municipal',
+        topic: 'Road Infrastructure Maintenance',
+        category: 'Infrastructure & Roads',
+        officialLinks: [
+          { label: 'GHA Maintenance Schedule', url: 'https://highways.gov.gh/notices/pokuase' }
+        ]
+      });
+
+      InstitutionalAnnouncementService.createAnnouncement({
+        institutionId: 'ecg-power-ghana',
+        authorId: 'user-current',
+        authorName: 'Ing. Kwaku Obeng',
+        authorTitle: 'Ashanti Metro Operations Director',
+        title: 'High-Voltage Substation Reinforcement & Transformer Upgrades in Kumasi Central',
+        summary: 'ECG planned system maintenance to replace obsolete feeder cables and stabilize voltage supply across Kumasi Central and Bantama.',
+        body: 'The Electricity Company of Ghana (ECG) wishes to notify customers in Kumasi Central, Bantama, and Adum of scheduled substation maintenance aimed at reinforcing grid reliability and preventing intermittent outages. Work will be conducted in planned 4-hour phases with temporary mobile generator support provided for key healthcare centers.',
+        announcementType: 'SERVICE_DISRUPTION',
+        geographicScope: 'REGIONAL',
+        region: 'Ashanti',
+        district: 'Kumasi Metropolitan',
+        topic: 'Grid Stabilization & Substation Upgrades',
+        category: 'Utilities: Electricity & Water',
+        officialLinks: [
+          { label: 'ECG Power Reliability Outage Schedule', url: 'https://ecg.com.gh/outages/ashanti' }
+        ]
+      });
+    } catch (e) {
+      console.error('Error seeding announcements:', e);
+    }
+  }
+}
 
 export async function seedDatabaseIfEmpty() {
   const instCount = (db.prepare('SELECT COUNT(*) as count FROM institutions').get() as any).count;
@@ -241,9 +354,9 @@ export async function seedDatabaseIfEmpty() {
         for (const ev of p.communityEvidence || []) {
           const insertEvidenceOrReplace = db.prepare(`
             INSERT OR REPLACE INTO community_evidence (
-              id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, text, status_update, media_json, created_at
+              id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, title, text, status_update, likes_count, location_json, media_json, created_at
             ) VALUES (
-              @id, @post_id, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @text, @status_update, @media_json, @created_at
+              @id, @post_id, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @title, @text, @status_update, @likes_count, @location_json, @media_json, @created_at
             )
           `);
           insertEvidenceOrReplace.run({
@@ -254,14 +367,18 @@ export async function seedDatabaseIfEmpty() {
             user_handle: ev.userHandle || ev.userName.toLowerCase().replace(/\s+/g, '_'),
             user_avatar: ev.userAvatar || null,
             is_verified: ev.isVerified !== false ? 1 : 0,
+            title: ev.title || null,
             text: ev.text,
             status_update: ev.statusUpdate || 'still_ongoing',
+            likes_count: ev.likesCount || 0,
+            location_json: ev.location ? JSON.stringify(ev.location) : null,
             media_json: ev.media ? JSON.stringify(ev.media) : '[]',
             created_at: ev.createdAt || now
           });
         }
       }
     }
+    syncSituationsAndInstitutionalInbox();
     return;
   }
 
@@ -587,11 +704,38 @@ export async function seedDatabaseIfEmpty() {
       }
     }
 
+    const insertComment = db.prepare(`
+      INSERT OR REPLACE INTO comments (
+        id, post_id, parent_comment_id, evidence_id, evidence_author_name, evidence_text_preview, user_id, user_name, user_handle, user_avatar, is_verified, content, likes_count, created_at
+      ) VALUES (
+        @id, @post_id, @parent_comment_id, @evidence_id, @evidence_author_name, @evidence_text_preview, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @content, @likes_count, @created_at
+      )
+    `);
+
+    for (const c of p.commentsList || []) {
+      insertComment.run({
+        id: c.id,
+        post_id: p.id,
+        parent_comment_id: c.parentCommentId || null,
+        evidence_id: c.evidenceId || null,
+        evidence_author_name: c.evidenceAuthorName || null,
+        evidence_text_preview: c.evidenceTextPreview || null,
+        user_id: c.userId,
+        user_name: c.userName,
+        user_handle: c.userHandle,
+        user_avatar: c.userAvatar || null,
+        is_verified: c.isVerified ? 1 : 0,
+        content: c.content,
+        likes_count: c.likesCount || 0,
+        created_at: c.createdAt || now
+      });
+    }
+
     const insertEvidence = db.prepare(`
       INSERT OR REPLACE INTO community_evidence (
-        id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, text, status_update, media_json, created_at
+        id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, title, text, status_update, likes_count, location_json, media_json, created_at
       ) VALUES (
-        @id, @post_id, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @text, @status_update, @media_json, @created_at
+        @id, @post_id, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @title, @text, @status_update, @likes_count, @location_json, @media_json, @created_at
       )
     `);
 
@@ -604,8 +748,11 @@ export async function seedDatabaseIfEmpty() {
         user_handle: ev.userHandle || ev.userName.toLowerCase().replace(/\s+/g, '_'),
         user_avatar: ev.userAvatar || null,
         is_verified: ev.isVerified !== false ? 1 : 0,
+        title: ev.title || null,
         text: ev.text,
         status_update: ev.statusUpdate || 'still_ongoing',
+        likes_count: ev.likesCount || 0,
+        location_json: ev.location ? JSON.stringify(ev.location) : null,
         media_json: ev.media ? JSON.stringify(ev.media) : '[]',
         created_at: ev.createdAt || now
       });
@@ -658,5 +805,6 @@ export async function seedDatabaseIfEmpty() {
     });
   }
 
+  syncSituationsAndInstitutionalInbox();
   console.log('Database successfully seeded with persistent initial data!');
 }

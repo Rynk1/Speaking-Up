@@ -434,7 +434,7 @@ export function initDatabase() {
       views_count INTEGER NOT NULL DEFAULT 1,
       reposts_count INTEGER NOT NULL DEFAULT 0,
       shares_count INTEGER NOT NULL DEFAULT 0,
-      confirmations_count INTEGER NOT NULL DEFAULT 1,
+      confirmations_count INTEGER NOT NULL DEFAULT 0,
       comments_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -581,8 +581,11 @@ export function initDatabase() {
       user_handle TEXT NOT NULL,
       user_avatar TEXT,
       is_verified INTEGER DEFAULT 1,
+      title TEXT,
       text TEXT NOT NULL,
       status_update TEXT DEFAULT 'still_ongoing',
+      likes_count INTEGER DEFAULT 0,
+      location_json TEXT,
       media_json TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
@@ -598,6 +601,37 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE community_evidence ADD COLUMN is_verified INTEGER DEFAULT 1;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE community_evidence ADD COLUMN title TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE community_evidence ADD COLUMN likes_count INTEGER DEFAULT 0;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE community_evidence ADD COLUMN location_json TEXT;`);
+  } catch {}
+
+  // Create Evidence Likes table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS evidence_likes (
+      user_id TEXT NOT NULL,
+      evidence_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, evidence_id)
+    );
+  `);
+
+  // Create Evidence Shares table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS evidence_shares (
+      id TEXT PRIMARY KEY,
+      evidence_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      user_id TEXT,
+      platform TEXT,
+      created_at TEXT NOT NULL
+    );
+  `);
 
   // Create Comments table
   db.exec(`
@@ -605,6 +639,9 @@ export function initDatabase() {
       id TEXT PRIMARY KEY,
       post_id TEXT NOT NULL,
       parent_comment_id TEXT,
+      evidence_id TEXT,
+      evidence_author_name TEXT,
+      evidence_text_preview TEXT,
       user_id TEXT NOT NULL,
       user_name TEXT NOT NULL,
       user_handle TEXT NOT NULL,
@@ -616,6 +653,16 @@ export function initDatabase() {
       FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
     );
   `);
+
+  try {
+    db.exec(`ALTER TABLE comments ADD COLUMN evidence_id TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE comments ADD COLUMN evidence_author_name TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE comments ADD COLUMN evidence_text_preview TEXT;`);
+  } catch {}
 
   // Create Comment Likes table
   db.exec(`
@@ -702,6 +749,19 @@ export function initDatabase() {
   for (const col of attemptCols) {
     try {
       db.exec(`ALTER TABLE alert_attempts ADD COLUMN ${col.name} ${col.type}`);
+    } catch (e) {
+      // Column exists
+    }
+  }
+
+  // Safe ALTER migrations for institution_responses
+  const respCols = [
+    { name: 'situation_id', type: 'TEXT' },
+    { name: 'published_at', type: 'TEXT' }
+  ];
+  for (const col of respCols) {
+    try {
+      db.exec(`ALTER TABLE institution_responses ADD COLUMN ${col.name} ${col.type}`);
     } catch (e) {
       // Column exists
     }
@@ -1023,6 +1083,228 @@ export function initDatabase() {
     }
   }
 
+  // --- CIVIC INTELLIGENCE & INSTITUTIONAL ARCHITECTURE (MODULAR MONOLITH SCHEMA) ---
+
+  // 1. Durable Outbox Events Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS outbox_events (
+      id TEXT PRIMARY KEY,
+      event_id TEXT UNIQUE NOT NULL,
+      event_type TEXT NOT NULL,
+      aggregate_type TEXT NOT NULL,
+      aggregate_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING', -- PENDING, PUBLISHED, FAILED
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      processed_at TEXT
+    );
+  `);
+
+  // 2. Civic Situations Table (Higher-level Aggregation)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS civic_situations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      category TEXT NOT NULL,
+      region TEXT NOT NULL,
+      district TEXT NOT NULL,
+      location_summary TEXT,
+      severity TEXT NOT NULL DEFAULT 'MODERATE', -- EMERGENCY, SEVERE, MODERATE, INFORMATIONAL
+      urgency TEXT NOT NULL DEFAULT 'NORMAL', -- CRITICAL, HIGH, NORMAL, LOW
+      status TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE, UNDER_REVIEW, ACTION_IN_PROGRESS, RESOLVED, CITIZEN_CONFIRMED, CLOSED
+      priority_score REAL NOT NULL DEFAULT 0.0,
+      priority_band TEXT NOT NULL DEFAULT 'MODERATE', -- LOW, MODERATE, HIGH, CRITICAL
+      priority_factors_json TEXT DEFAULT '{}',
+      priority_version TEXT NOT NULL DEFAULT 'v2.0',
+      first_reported_at TEXT NOT NULL,
+      latest_activity_at TEXT NOT NULL,
+      report_count INTEGER NOT NULL DEFAULT 1,
+      confirmation_count INTEGER NOT NULL DEFAULT 0,
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      amplification_count INTEGER NOT NULL DEFAULT 0,
+      primary_institution_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (primary_institution_id) REFERENCES institutions(id) ON DELETE SET NULL
+    );
+  `);
+
+  // 3. Situation Reports Linkage (Attribution Preservation)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS situation_reports (
+      situation_id TEXT NOT NULL,
+      report_id TEXT NOT NULL,
+      match_confidence REAL NOT NULL DEFAULT 1.0,
+      match_reason TEXT,
+      attached_at TEXT NOT NULL,
+      PRIMARY KEY (situation_id, report_id),
+      FOREIGN KEY (situation_id) REFERENCES civic_situations(id) ON DELETE CASCADE,
+      FOREIGN KEY (report_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 4. Situation Institutional Desks & Routing Mapping
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS situation_institutions (
+      situation_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'PRIMARY', -- PRIMARY, REGIONAL, DISTRICT, SPECIALIST, SUPPORTING
+      jurisdiction_level TEXT NOT NULL DEFAULT 'NATIONAL', -- NATIONAL, REGIONAL, DISTRICT, SPECIALIST
+      routing_reason TEXT,
+      assigned_at TEXT NOT NULL,
+      PRIMARY KEY (situation_id, institution_id),
+      FOREIGN KEY (situation_id) REFERENCES civic_situations(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 5. Auditable Situation Events Timeline
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS situation_events (
+      id TEXT PRIMARY KEY,
+      situation_id TEXT NOT NULL,
+      event_type TEXT NOT NULL, -- SITUATION_CREATED, REPORT_LINKED, INSTITUTION_ROUTED, ACKNOWLEDGED, UNDER_REVIEW, OFFICIAL_RESPONSE, ACTION_REPORTED, CITIZEN_FOLLOWUP, OUTCOME_CONFIRMED, RESOLVED
+      actor_type TEXT NOT NULL, -- CITIZEN, INSTITUTION, SYSTEM, MODERATOR
+      actor_id TEXT,
+      actor_name TEXT,
+      institution_id TEXT,
+      description TEXT NOT NULL,
+      metadata_json TEXT DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (situation_id) REFERENCES civic_situations(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 6. Institutional Awareness Inbox Items
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institutional_inbox_items (
+      id TEXT PRIMARY KEY,
+      institution_id TEXT NOT NULL,
+      item_type TEXT NOT NULL, -- REPORT, MENTION, FOLLOW_UP, EVIDENCE, RESPONSE, ANNOUNCEMENT, ESCALATION
+      item_priority TEXT NOT NULL DEFAULT 'NORMAL', -- ROUTINE, ELEVATED, URGENT, EMERGENCY
+      priority_score REAL NOT NULL DEFAULT 0.0,
+      post_id TEXT,
+      situation_id TEXT,
+      evidence_id TEXT,
+      response_id TEXT,
+      announcement_id TEXT,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      region TEXT,
+      district TEXT,
+      signal_summary_json TEXT DEFAULT '{}',
+      action_state TEXT NOT NULL DEFAULT 'NEW', -- NEW, SEEN, ACKNOWLEDGED, UNDER_REVIEW, RESPONSE_PREPARED, PUBLIC_RESPONSE, ACTION_REPORTED, RESOLVED, CITIZEN_FOLLOW_UP
+      is_read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL,
+      FOREIGN KEY (situation_id) REFERENCES civic_situations(id) ON DELETE SET NULL
+    );
+  `);
+
+  // 7. Institutional Announcements Domain
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institutional_announcements (
+      id TEXT PRIMARY KEY,
+      institution_id TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      author_name TEXT NOT NULL,
+      author_title TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      summary TEXT,
+      announcement_type TEXT NOT NULL DEFAULT 'PUBLIC_NOTICE', -- PUBLIC_NOTICE, ADVISORY, SERVICE_DISRUPTION, ROAD_CLOSURE, EMERGENCY_DIRECTIVE, REPAIR_COMPLETION
+      status TEXT NOT NULL DEFAULT 'PUBLISHED', -- DRAFT, REVIEW, PUBLISHED, UPDATED, EXPIRED, ARCHIVED
+      geographic_scope TEXT NOT NULL DEFAULT 'NATIONAL', -- NATIONAL, REGIONAL, DISTRICT
+      region TEXT,
+      district TEXT,
+      topic TEXT,
+      category TEXT,
+      media_json TEXT DEFAULT '[]',
+      official_links_json TEXT DEFAULT '[]',
+      related_situation_ids_json TEXT DEFAULT '[]',
+      view_count INTEGER NOT NULL DEFAULT 0,
+      share_count INTEGER NOT NULL DEFAULT 0,
+      published_at TEXT NOT NULL,
+      expires_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 8. Announcement to Situation Linkage
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS announcement_situations (
+      announcement_id TEXT NOT NULL,
+      situation_id TEXT NOT NULL,
+      linked_at TEXT NOT NULL,
+      PRIMARY KEY (announcement_id, situation_id),
+      FOREIGN KEY (announcement_id) REFERENCES institutional_announcements(id) ON DELETE CASCADE,
+      FOREIGN KEY (situation_id) REFERENCES civic_situations(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Safe ALTER migrations for institutional hierarchy and desks
+  const extraInstCols = [
+    { name: 'desk_level', type: "TEXT NOT NULL DEFAULT 'NATIONAL_DESK'" },
+    { name: 'parent_institution_id', type: 'TEXT' },
+    { name: 'national_level', type: "TEXT DEFAULT 'NATIONAL'" },
+    { name: 'regional_level', type: 'TEXT' },
+    { name: 'district_level', type: 'TEXT' },
+    { name: 'jurisdictions_json', type: "TEXT DEFAULT '[]'" },
+    { name: 'specialist_domains_json', type: "TEXT DEFAULT '[]'" },
+    { name: 'notification_policy_json', type: "TEXT DEFAULT '{\"routine\":[\"IN_APP\",\"EMAIL\"],\"high\":[\"IN_APP\",\"PUSH\",\"EMAIL\"],\"urgent\":[\"IN_APP\",\"PUSH\",\"SMS\"]}'" }
+  ];
+  for (const col of extraInstCols) {
+    try {
+      db.exec(`ALTER TABLE institutions ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
+  // Safe ALTER migrations for audit_logs
+  const auditCols = [
+    { name: 'actor_type', type: "TEXT DEFAULT 'SYSTEM'" },
+    { name: 'target_type', type: 'TEXT' },
+    { name: 'target_id', type: 'TEXT' },
+    { name: 'before_state_json', type: 'TEXT' },
+    { name: 'after_state_json', type: 'TEXT' },
+    { name: 'reason', type: 'TEXT' }
+  ];
+  for (const col of auditCols) {
+    try {
+      db.exec(`ALTER TABLE audit_logs ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
+  // Safe ALTER migrations for posts
+  const situationPostCols = [
+    { name: 'situation_id', type: 'TEXT' },
+    { name: 'priority_score', type: 'REAL DEFAULT 0.0' },
+    { name: 'priority_band', type: "TEXT DEFAULT 'MODERATE'" }
+  ];
+  for (const col of situationPostCols) {
+    try {
+      db.exec(`ALTER TABLE posts ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
+  // Safe ALTER migrations for institution_responses
+  const responseCols = [
+    { name: 'situation_id', type: 'TEXT' },
+    { name: 'published_at', type: 'TEXT' },
+    { name: 'evidence_json', type: "TEXT DEFAULT '[]'" }
+  ];
+  for (const col of responseCols) {
+    try {
+      db.exec(`ALTER TABLE institution_responses ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
   // Indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_posts_region ON posts(region);
@@ -1048,6 +1330,19 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_moderation_events_post ON moderation_events(post_id);
     CREATE INDEX IF NOT EXISTS idx_inst_assignments_inst ON institution_assignments(institution_id);
     CREATE INDEX IF NOT EXISTS idx_clarification_requests_post ON clarification_requests(post_id);
+
+    -- New Architecture Indexes
+    CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox_events(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_situations_region ON civic_situations(region, district);
+    CREATE INDEX IF NOT EXISTS idx_situations_status ON civic_situations(status, priority_score);
+    CREATE INDEX IF NOT EXISTS idx_situation_reports_rep ON situation_reports(report_id);
+    CREATE INDEX IF NOT EXISTS idx_situation_events_sit ON situation_events(situation_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_inbox_inst_action ON institutional_inbox_items(institution_id, action_state, created_at);
+    CREATE INDEX IF NOT EXISTS idx_inbox_post ON institutional_inbox_items(post_id);
+    CREATE INDEX IF NOT EXISTS idx_inbox_situation ON institutional_inbox_items(situation_id);
+    CREATE INDEX IF NOT EXISTS idx_announcements_inst ON institutional_announcements(institution_id, status);
+    CREATE INDEX IF NOT EXISTS idx_announcements_published ON institutional_announcements(published_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_logs(target_type, target_id);
   `);
 
   console.log('Database tables and indexes verified successfully.');

@@ -36,6 +36,16 @@ import { CivicSignalService } from './services/CivicSignalService';
 import { FeedCandidateService } from './feed/FeedCandidateService';
 import { SearchService } from './search/SearchService';
 import { TraceService } from './observability/TraceService';
+import { OutboxService } from './infrastructure/events/OutboxService';
+import { AuditService } from './modules/audit/AuditService';
+import { CivicSignalEngine } from './modules/civic-signal/CivicSignalEngine';
+import { CivicSituationService } from './modules/civic-situations/CivicSituationService';
+import { InstitutionRegistryService } from './modules/institutions/InstitutionRegistryService';
+import { InstitutionalInboxService } from './modules/institutional-inbox/InstitutionalInboxService';
+import { OfficialResponseService } from './modules/institutional-response/OfficialResponseService';
+import { InstitutionalAnnouncementService } from './modules/announcements/InstitutionalAnnouncementService';
+import { AlertStateMachine } from './modules/alerting/AlertStateMachine';
+import { PrivacyProjectionService } from './modules/privacy/PrivacyProjectionService';
 
 export function createApp() {
   const app = express();
@@ -843,6 +853,11 @@ export function createApp() {
             try {
               if (e.media_json) mediaArr = JSON.parse(e.media_json);
             } catch {}
+            let loc = undefined;
+            try {
+              if (e.location_json) loc = JSON.parse(e.location_json);
+            } catch {}
+            const evComments = commentsRows.filter(c => c.evidence_id === e.id);
             return {
               id: e.id,
               postId: e.post_id,
@@ -851,9 +866,27 @@ export function createApp() {
               userHandle: e.user_handle,
               userAvatar: e.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(e.user_handle || e.user_name)}`,
               isVerified: e.is_verified !== undefined ? Boolean(e.is_verified) : true,
+              title: e.title || undefined,
               text: e.text,
               media: mediaArr,
-              statusUpdate: e.status_update,
+              statusUpdate: e.status_update || 'still_ongoing',
+              likesCount: e.likes_count || 0,
+              location: loc,
+              commentsCount: evComments.length,
+              commentsList: evComments.map(c => ({
+                id: c.id,
+                postId: c.post_id,
+                parentCommentId: c.parent_comment_id,
+                evidenceId: c.evidence_id,
+                evidenceAuthorName: c.evidence_author_name,
+                evidenceTextPreview: c.evidence_text_preview,
+                userId: c.user_id,
+                userName: c.user_name,
+                userHandle: c.user_handle,
+                content: c.content,
+                likesCount: c.likes_count || 0,
+                createdAt: c.created_at
+              })),
               createdAt: e.created_at
             };
           }),
@@ -861,6 +894,9 @@ export function createApp() {
             id: c.id,
             postId: c.post_id,
             parentCommentId: c.parent_comment_id,
+            evidenceId: c.evidence_id,
+            evidenceAuthorName: c.evidence_author_name,
+            evidenceTextPreview: c.evidence_text_preview,
             userId: c.user_id,
             userName: c.user_name,
             userHandle: c.user_handle,
@@ -1029,6 +1065,11 @@ export function createApp() {
           try {
             if (e.media_json) mediaArr = JSON.parse(e.media_json);
           } catch {}
+          let loc = undefined;
+          try {
+            if (e.location_json) loc = JSON.parse(e.location_json);
+          } catch {}
+          const evComments = commentsRows.filter(c => c.evidence_id === e.id);
           return {
             id: e.id,
             postId: e.post_id,
@@ -1037,9 +1078,27 @@ export function createApp() {
             userHandle: e.user_handle,
             userAvatar: e.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(e.user_handle || e.user_name)}`,
             isVerified: e.is_verified !== undefined ? Boolean(e.is_verified) : true,
+            title: e.title || undefined,
             text: e.text,
             media: mediaArr,
-            statusUpdate: e.status_update,
+            statusUpdate: e.status_update || 'still_ongoing',
+            likesCount: e.likes_count || 0,
+            location: loc,
+            commentsCount: evComments.length,
+            commentsList: evComments.map(c => ({
+              id: c.id,
+              postId: c.post_id,
+              parentCommentId: c.parent_comment_id,
+              evidenceId: c.evidence_id,
+              evidenceAuthorName: c.evidence_author_name,
+              evidenceTextPreview: c.evidence_text_preview,
+              userId: c.user_id,
+              userName: c.user_name,
+              userHandle: c.user_handle,
+              content: c.content,
+              likesCount: c.likes_count || 0,
+              createdAt: c.created_at
+            })),
             createdAt: e.created_at
           };
         }),
@@ -1047,6 +1106,9 @@ export function createApp() {
           id: c.id,
           postId: c.post_id,
           parentCommentId: c.parent_comment_id,
+          evidenceId: c.evidence_id,
+          evidenceAuthorName: c.evidence_author_name,
+          evidenceTextPreview: c.evidence_text_preview,
           userId: c.user_id,
           userName: c.user_name,
           userHandle: c.user_handle,
@@ -1134,17 +1196,18 @@ export function createApp() {
   app.post('/api/posts/:id/evidence', (req: AuthenticatedRequest, res) => {
     try {
       const postId = req.params.id;
-      const { text, statusUpdate, userName, userHandle, media } = req.body;
+      const { title, text, statusUpdate, userName, userHandle, media, location } = req.body;
       const id = `ev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
       const now = new Date().toISOString();
       const user = req.user || { id: 'anon', name: userName || 'Citizen Witness', handle: userHandle || '@citizen', avatar: undefined };
       const mediaJson = media && Array.isArray(media) && media.length > 0 ? JSON.stringify(media) : null;
+      const locationJson = location ? JSON.stringify(location) : null;
       const userAvatar = (user as any).avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.handle || user.name)}`;
 
       db.prepare(`
-        INSERT INTO community_evidence (id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, text, status_update, media_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
-      `).run(id, postId, user.id, user.name, user.handle, userAvatar, sanitizeText(text || ''), statusUpdate || 'still_ongoing', mediaJson, now);
+        INSERT INTO community_evidence (id, post_id, user_id, user_name, user_handle, user_avatar, is_verified, title, text, status_update, likes_count, location_json, media_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, ?, ?, ?)
+      `).run(id, postId, user.id, user.name, user.handle, userAvatar, title ? sanitizePlainText(title) : null, sanitizeText(text || ''), statusUpdate || 'still_ongoing', locationJson, mediaJson, now);
 
       res.status(201).json({
         id,
@@ -1154,9 +1217,14 @@ export function createApp() {
         userHandle: user.handle,
         userAvatar,
         isVerified: true,
+        title: title || undefined,
         text: sanitizeText(text || ''),
         statusUpdate: statusUpdate || 'still_ongoing',
         media: media || [],
+        likesCount: 0,
+        commentsCount: 0,
+        commentsList: [],
+        location: location || undefined,
         createdAt: now
       });
     } catch (err: any) {
@@ -1164,20 +1232,170 @@ export function createApp() {
     }
   });
 
+  // EVIDENCE PACK LIKES & INTERACTIONS
+  app.post('/api/evidence/:id/like', (req: AuthenticatedRequest, res) => {
+    try {
+      const evidenceId = req.params.id;
+      const userId = req.user?.id || `guest-${req.ip || '127.0.0.1'}`;
+      const existing = db.prepare('SELECT * FROM evidence_likes WHERE user_id = ? AND evidence_id = ?').get(userId, evidenceId);
+      let userLiked = false;
+
+      if (existing) {
+        db.prepare('DELETE FROM evidence_likes WHERE user_id = ? AND evidence_id = ?').run(userId, evidenceId);
+        db.prepare('UPDATE community_evidence SET likes_count = MAX(0, likes_count - 1) WHERE id = ?').run(evidenceId);
+        userLiked = false;
+      } else {
+        db.prepare('INSERT OR IGNORE INTO evidence_likes (user_id, evidence_id, created_at) VALUES (?, ?, ?)').run(userId, evidenceId, new Date().toISOString());
+        db.prepare('UPDATE community_evidence SET likes_count = likes_count + 1 WHERE id = ?').run(evidenceId);
+        userLiked = true;
+      }
+
+      const ev = db.prepare('SELECT id, post_id, likes_count FROM community_evidence WHERE id = ?').get(evidenceId) as any;
+      if (ev) {
+        eventBus.emitReportEvent({
+          reportId: ev.post_id,
+          eventType: 'evidence.liked',
+          actorType: 'CITIZEN',
+          actorId: userId,
+          metadata: { evidenceId, userLiked, likesCount: ev.likes_count }
+        });
+      }
+
+      res.json({ success: true, evidenceId, userLiked, likesCount: ev?.likes_count || 0 });
+    } catch (err: any) {
+      logger.error(`Evidence like error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to toggle evidence like' });
+    }
+  });
+
+  // EVIDENCE PACK SHARE
+  app.post('/api/evidence/:id/share', (req: AuthenticatedRequest, res) => {
+    try {
+      const evidenceId = req.params.id;
+      const { platform } = req.body;
+      const ev = db.prepare('SELECT id, post_id FROM community_evidence WHERE id = ?').get(evidenceId) as any;
+      if (!ev) return res.status(404).json({ error: 'Evidence not found' });
+
+      const shareId = `ev-share-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      db.prepare('INSERT INTO evidence_shares (id, evidence_id, post_id, user_id, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+        shareId,
+        evidenceId,
+        ev.post_id,
+        req.user?.id || 'anon',
+        platform || 'direct',
+        new Date().toISOString()
+      );
+
+      // Increment parent post share count as well
+      db.prepare('UPDATE posts SET shares_count = shares_count + 1 WHERE id = ?').run(ev.post_id);
+
+      res.json({ success: true, evidenceId, shareId });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to record evidence share' });
+    }
+  });
+
+  // GET SINGLE EVIDENCE PACK BY ID
+  app.get('/api/evidence/:id', (req, res) => {
+    try {
+      const evidenceId = req.params.id;
+      const e = db.prepare('SELECT * FROM community_evidence WHERE id = ?').get(evidenceId) as any;
+      if (!e) return res.status(404).json({ error: 'Evidence pack not found' });
+
+      const commentsRows = db.prepare('SELECT * FROM comments WHERE evidence_id = ? ORDER BY created_at ASC').all(evidenceId) as any[];
+      let mediaArr = [];
+      try {
+        if (e.media_json) mediaArr = JSON.parse(e.media_json);
+      } catch {}
+      let loc = undefined;
+      try {
+        if (e.location_json) loc = JSON.parse(e.location_json);
+      } catch {}
+
+      const postRow = db.prepare('SELECT id, title, category, urgency, severity, region, district, landmark FROM posts WHERE id = ?').get(e.post_id) as any;
+
+      res.json({
+        id: e.id,
+        postId: e.post_id,
+        userId: e.user_id,
+        userName: e.user_name,
+        userHandle: e.user_handle,
+        userAvatar: e.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(e.user_handle || e.user_name)}`,
+        isVerified: e.is_verified !== undefined ? Boolean(e.is_verified) : true,
+        title: e.title || undefined,
+        text: e.text,
+        statusUpdate: e.status_update || 'still_ongoing',
+        likesCount: e.likes_count || 0,
+        media: mediaArr,
+        location: loc,
+        commentsCount: commentsRows.length,
+        commentsList: commentsRows.map(c => ({
+          id: c.id,
+          postId: c.post_id,
+          parentCommentId: c.parent_comment_id,
+          evidenceId: c.evidence_id,
+          evidenceAuthorName: c.evidence_author_name,
+          evidenceTextPreview: c.evidence_text_preview,
+          userId: c.user_id,
+          userName: c.user_name,
+          userHandle: c.user_handle,
+          content: c.content,
+          likesCount: c.likes_count || 0,
+          createdAt: c.created_at
+        })),
+        postContext: postRow ? {
+          id: postRow.id,
+          title: postRow.title,
+          category: postRow.category,
+          urgency: postRow.urgency,
+          severity: postRow.severity,
+          location: `${postRow.landmark ? postRow.landmark + ', ' : ''}${postRow.district || ''}, ${postRow.region || ''}`
+        } : undefined,
+        createdAt: e.created_at
+      });
+    } catch (err: any) {
+      logger.error(`Get single evidence error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to retrieve evidence pack' });
+    }
+  });
+
   app.post('/api/posts/:id/comments', commentLimiter, (req: AuthenticatedRequest, res) => {
     try {
       const postId = req.params.id;
-      const { content, parentCommentId, userName, userHandle } = req.body;
+      const { content, parentCommentId, evidenceId, userName, userHandle } = req.body;
       if (!content) return res.status(400).json({ error: 'Comment content is required' });
 
       const id = `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
       const now = new Date().toISOString();
       const user = req.user || { id: 'anon', name: userName || 'Citizen Contributor', handle: userHandle || '@citizen' };
 
+      let evidenceAuthorName: string | null = null;
+      let evidenceTextPreview: string | null = null;
+
+      if (evidenceId) {
+        const evRow = db.prepare('SELECT user_name, text FROM community_evidence WHERE id = ?').get(evidenceId) as any;
+        if (evRow) {
+          evidenceAuthorName = evRow.user_name;
+          evidenceTextPreview = (evRow.text || '').substring(0, 80);
+        }
+      }
+
       db.prepare(`
-        INSERT INTO comments (id, post_id, parent_comment_id, user_id, user_name, user_handle, content, likes_count, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
-      `).run(id, postId, parentCommentId || null, user.id, user.name, user.handle, sanitizeText(content), now);
+        INSERT INTO comments (id, post_id, parent_comment_id, evidence_id, evidence_author_name, evidence_text_preview, user_id, user_name, user_handle, content, likes_count, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+      `).run(
+        id,
+        postId,
+        parentCommentId || null,
+        evidenceId || null,
+        evidenceAuthorName,
+        evidenceTextPreview,
+        user.id,
+        user.name,
+        user.handle,
+        sanitizeText(content),
+        now
+      );
 
       db.prepare('UPDATE posts SET comments_count = comments_count + 1 WHERE id = ?').run(postId);
 
@@ -1191,13 +1409,16 @@ export function createApp() {
         eventType: 'comment.created',
         actorType: 'CITIZEN',
         actorId: user.id,
-        metadata: { commentId: id, parentCommentId: parentCommentId || null }
+        metadata: { commentId: id, parentCommentId: parentCommentId || null, evidenceId: evidenceId || null }
       });
 
       res.status(201).json({
         id,
         postId,
         parentCommentId: parentCommentId || null,
+        evidenceId: evidenceId || null,
+        evidenceAuthorName: evidenceAuthorName || undefined,
+        evidenceTextPreview: evidenceTextPreview || undefined,
         userId: user.id,
         userName: user.name,
         userHandle: user.handle,
@@ -1397,7 +1618,7 @@ export function createApp() {
             urgency: postRow.urgency,
             location: { region: postRow.region, district: postRow.district, landmark: postRow.landmark },
             engagement: {
-              confirmations: postRow.confirmations_count || 1,
+              confirmations: postRow.confirmations_count || 0,
               comments: postRow.comments_count || 0
             },
             media: mediaRows.map(m => ({ url: m.url })),
@@ -1611,8 +1832,9 @@ export function createApp() {
         INSERT INTO posts (
           id, title, content, original_language, author_id, author_name, author_handle, author_avatar,
           author_visibility, category, subcategory, urgency, severity, region, district, landmark,
-          latitude, longitude, location_source, hashtags_json, report_lifecycle_status, accountability_status, created_at, updated_at
-        ) VALUES (?, ?, ?, 'English', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'PUBLISHED', 'NOT_ROUTED', ?, ?)
+          latitude, longitude, location_source, hashtags_json, report_lifecycle_status, accountability_status,
+          views_count, reposts_count, shares_count, confirmations_count, comments_count, created_at, updated_at
+        ) VALUES (?, ?, ?, 'English', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'PUBLISHED', 'NOT_ROUTED', 1, 0, 0, 0, 0, ?, ?)
       `).run(
         postId,
         finalTitle,
@@ -1702,6 +1924,58 @@ export function createApp() {
         logger.warn(`Privacy job queue warning: ${privErr.message}`);
       }
 
+      // Civic Signal & Priority Engine Calculation
+      let calculatedPriority: any = null;
+      try {
+        calculatedPriority = CivicSignalEngine.calculatePriority(postId);
+      } catch (sigErr: any) {
+        logger.warn(`Signal engine calculation warning: ${sigErr.message}`);
+      }
+
+      // Civic Situation Domain: Match or establish situation
+      let matchedSituationId: string | null = null;
+      try {
+        matchedSituationId = CivicSituationService.matchOrCreateSituation(postId);
+      } catch (sitErr: any) {
+        logger.warn(`Situation service match warning: ${sitErr.message}`);
+      }
+
+      // Awareness Inbox: Populate inbox for all tagged institutions
+      if (Array.isArray(institutionTags)) {
+        for (const tag of institutionTags) {
+          const instId = tag.institutionId || tag.id;
+          try {
+            InstitutionalInboxService.createInboxItem({
+              institutionId: instId,
+              itemType: 'REPORT',
+              itemPriority: (urgency === 'CRITICAL' || severity === 'EMERGENCY') ? 'EMERGENCY' :
+                            (urgency === 'HIGH' || severity === 'SEVERE') ? 'URGENT' : 'ELEVATED',
+              priorityScore: calculatedPriority?.priorityScore || 45.0,
+              postId,
+              situationId: matchedSituationId || undefined,
+              title: finalTitle,
+              summary: finalContent.slice(0, 250),
+              region: safeRegion,
+              district: safeDistrict,
+              signalSummary: calculatedPriority?.components || {}
+            });
+          } catch (inbErr: any) {
+            logger.warn(`Institutional inbox population warning: ${inbErr.message}`);
+          }
+        }
+      }
+
+      // Outbox event queuing
+      OutboxService.enqueueEvent('post.created', 'POST', postId, {
+        postId,
+        title: finalTitle,
+        category: inferredCategory,
+        region: safeRegion,
+        district: safeDistrict,
+        situationId: matchedSituationId,
+        priorityScore: calculatedPriority?.priorityScore || 45.0
+      });
+
       // Emit REPORT_CREATED event
       try {
         eventBus.emitReportEvent({
@@ -1709,7 +1983,7 @@ export function createApp() {
           eventType: 'REPORT_CREATED',
           actorType: 'CITIZEN',
           actorId: authorId,
-          metadata: { title: finalTitle, region: safeRegion, district: safeDistrict }
+          metadata: { title: finalTitle, region: safeRegion, district: safeDistrict, situationId: matchedSituationId }
         });
       } catch (evtErr: any) {
         logger.warn(`Event bus warning: ${evtErr.message}`);
@@ -1722,6 +1996,9 @@ export function createApp() {
         content: newPost?.content || finalContent,
         category: newPost?.category || inferredCategory,
         urgency: newPost?.urgency || urgency || 'NORMAL',
+        situationId: matchedSituationId,
+        priorityScore: calculatedPriority?.priorityScore || 45.0,
+        priorityBand: calculatedPriority?.priorityBand || 'MODERATE',
         location: { region: newPost?.region || safeRegion, district: newPost?.district || safeDistrict, landmark: newPost?.landmark || safeLandmark },
         createdAt: newPost?.created_at || now,
         reportLifecycleStatus: newPost?.report_lifecycle_status || 'PUBLISHED',
@@ -1760,6 +2037,12 @@ export function createApp() {
         SET awareness_status = 'ACKNOWLEDGED', acknowledged_by_user_id = ?, acknowledged_at = ?
         WHERE post_id = ? AND institution_id = ?
       `).run(user.id, now, postId, instId);
+
+      db.prepare(`
+        UPDATE post_institution_tags
+        SET alert_status = 'ACKNOWLEDGED'
+        WHERE post_id = ? AND (institution_id = ? OR ? = '')
+      `).run(postId, instId, instId);
 
       db.prepare("UPDATE posts SET accountability_status = 'ACKNOWLEDGED' WHERE id = ?").run(postId);
 
@@ -1870,7 +2153,7 @@ export function createApp() {
     try {
       const postId = req.params.id;
       const user = req.user!;
-      const { institutionId, responseType, message, statementTitle, fullStatement, referenceNumber, resolutionStatus, responderName, responderTitle, actionTimeline, documents, hotlines } = req.body;
+      const { institutionId, responseType, message, statementTitle, fullStatement, referenceNumber, resolutionStatus, responderName, responderTitle, actionTimeline, documents, hotlines, situationId } = req.body;
 
       if (!message || !institutionId) {
         return res.status(400).json({ error: 'Message and institution ID are required' });
@@ -1879,45 +2162,38 @@ export function createApp() {
       const instRow = db.prepare('SELECT * FROM institutions WHERE id = ?').get(institutionId) as any;
       if (!instRow) return res.status(404).json({ error: 'Institution not found' });
 
-      const respId = `resp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const now = new Date().toISOString();
+      // Determine response type
+      let mappedType: any = responseType || 'ACKNOWLEDGEMENT';
+      if (mappedType === 'WE_ARE_AWARE') mappedType = 'ACKNOWLEDGEMENT';
+      else if (mappedType === 'UNDER_INVESTIGATION') mappedType = 'STATUS_UPDATE';
+      else if (mappedType === 'RESOLVED' || resolutionStatus === 'RESOLVED') mappedType = 'RESOLUTION';
+      else if (mappedType === 'ACTION_TAKEN') mappedType = 'ACTION_REPORTED';
 
-      db.prepare(`
-        INSERT INTO institution_responses (id, post_id, institution_id, institution_name, institution_logo, response_type, message, statement_title, full_statement, reference_number, resolution_status, responder_name, responder_title, action_timeline_json, documents_json, hotlines_json, official, verified, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
-      `).run(
-        respId,
+      // Check if post belongs to a situation if situationId not explicitly provided
+      let linkedSituationId = situationId;
+      if (!linkedSituationId) {
+        const sitRel = db.prepare('SELECT situation_id FROM situation_reports WHERE post_id = ?').get(postId) as any;
+        if (sitRel) linkedSituationId = sitRel.situation_id;
+      }
+
+      const respResult = OfficialResponseService.createResponse({
         postId,
-        instRow.id,
-        instRow.official_name,
-        instRow.logo || null,
-        responseType || 'WE_ARE_AWARE',
-        sanitizeText(message),
-        statementTitle ? sanitizePlainText(statementTitle) : null,
-        fullStatement ? sanitizeText(fullStatement) : null,
-        referenceNumber ? sanitizePlainText(referenceNumber) : null,
-        resolutionStatus || 'IN_PROGRESS',
-        responderName ? sanitizePlainText(responderName) : user.name,
-        responderTitle ? sanitizePlainText(responderTitle) : 'Official Spokesperson',
-        actionTimeline && Array.isArray(actionTimeline) ? JSON.stringify(actionTimeline) : '[]',
-        documents && Array.isArray(documents) ? JSON.stringify(documents) : '[]',
-        hotlines && Array.isArray(hotlines) ? JSON.stringify(hotlines) : '[]',
-        now
-      );
-
-      db.prepare("UPDATE posts SET accountability_status = ? WHERE id = ?")
-        .run(resolutionStatus === 'RESOLVED' ? 'RESOLVED' : 'RESPONDED', postId);
-
-      eventBus.emitReportEvent({
-        reportId: postId,
-        eventType: resolutionStatus === 'RESOLVED' ? 'REPORT_RESOLVED' : 'INSTITUTION_RESPONSE_CREATED',
-        actorType: 'INSTITUTION',
-        actorId: user.id,
+        situationId: linkedSituationId,
         institutionId: instRow.id,
-        metadata: { responseId: respId, status: resolutionStatus }
+        authorId: user.id,
+        authorName: responderName ? sanitizePlainText(responderName) : user.name,
+        authorTitle: responderTitle ? sanitizePlainText(responderTitle) : 'Official Spokesperson',
+        responseType: mappedType,
+        message: sanitizeText(message),
+        statementTitle: statementTitle ? sanitizePlainText(statementTitle) : undefined,
+        fullStatement: fullStatement ? sanitizeText(fullStatement) : undefined,
+        referenceNumber: referenceNumber ? sanitizePlainText(referenceNumber) : undefined,
+        actionTimeline: actionTimeline && Array.isArray(actionTimeline) ? actionTimeline : [],
+        documents: documents && Array.isArray(documents) ? documents : [],
+        hotlines: hotlines && Array.isArray(hotlines) ? hotlines : []
       });
 
-      res.status(201).json({ success: true, responseId: respId });
+      res.status(201).json({ success: true, responseId: respResult.id });
     } catch (err: any) {
       logger.error(`Response submission error: ${err.message}`);
       res.status(500).json({ error: 'Failed to submit official response' });
@@ -2423,6 +2699,182 @@ export function createApp() {
       avgResponseTimeHours: i.avg_response_hours,
       verificationStatus: i.verification_status
     })));
+  });
+
+  app.get('/api/institutions/:id', (req, res) => {
+    try {
+      const inst = InstitutionRegistryService.getById(req.params.id);
+      if (!inst) {
+        return res.status(404).json({ error: 'Institution not found' });
+      }
+      res.json(inst);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch institution' });
+    }
+  });
+
+  app.get('/api/institutions/:id/desks', (req, res) => {
+    try {
+      const { category, region, district } = req.query;
+      const desks = InstitutionRegistryService.routeIssueDesks(
+        (category as string) || 'General',
+        (region as string) || 'Greater Accra',
+        (district as string) || undefined
+      );
+      res.json(desks);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch hierarchical desks' });
+    }
+  });
+
+  app.get('/api/institutions/:id/team', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const team = InstitutionRegistryService.getTeamMembers(req.params.id);
+      res.json(team);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch institution team members' });
+    }
+  });
+
+  app.get('/api/institutions/:id/inbox', (req, res) => {
+    try {
+      const { itemType, actionState, priority, search, limit, cursor } = req.query;
+      const result = InstitutionalInboxService.getInbox({
+        institutionId: req.params.id,
+        itemType: itemType as string,
+        actionState: actionState as string,
+        priority: priority as string,
+        search: search as string,
+        limit: limit ? parseInt(limit as string, 10) : 30,
+        cursor: cursor as string
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch inbox' });
+    }
+  });
+
+  app.post('/api/institutions/:id/inbox/:itemId/transition', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const { targetState, notes } = req.body;
+      if (!targetState) return res.status(400).json({ error: 'targetState is required' });
+      const user = req.user!;
+      const result = InstitutionalInboxService.transitionItemState(
+        req.params.itemId,
+        targetState,
+        { id: user.id, name: user.name, role: user.role },
+        notes
+      );
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to transition inbox item' });
+    }
+  });
+
+  app.get('/api/institutions/:id/announcements', (req, res) => {
+    try {
+      const { limit, cursor, status } = req.query;
+      const result = InstitutionalAnnouncementService.listAnnouncements({
+        institutionId: req.params.id,
+        status: status as string,
+        limit: limit ? parseInt(limit as string, 10) : 20,
+        cursor: cursor as string
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch announcements' });
+    }
+  });
+
+  app.post('/api/institutions/:id/announcements', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { title, body, summary, announcementType, geographicScope, region, district, topic, category, media, officialLinks, relatedSituationIds, expiresAt } = req.body;
+      if (!title || !body || !announcementType) {
+        return res.status(400).json({ error: 'title, body, and announcementType are required' });
+      }
+
+      const announcement = InstitutionalAnnouncementService.createAnnouncement({
+        institutionId: req.params.id,
+        authorId: user.id,
+        authorName: user.name,
+        authorTitle: (user as any).title || 'Official Communications Officer',
+        title: sanitizePlainText(title),
+        body: sanitizeText(body),
+        summary: summary ? sanitizePlainText(summary) : undefined,
+        announcementType,
+        geographicScope: geographicScope || 'NATIONAL',
+        region,
+        district,
+        topic,
+        category,
+        media,
+        officialLinks,
+        relatedSituationIds,
+        expiresAt
+      });
+      res.status(201).json(announcement);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to publish announcement' });
+    }
+  });
+
+  // PUBLIC ANNOUNCEMENTS API
+  app.get('/api/announcements', (req, res) => {
+    try {
+      const { institutionId, region, district, announcementType, status, limit, cursor } = req.query;
+      const result = InstitutionalAnnouncementService.listAnnouncements({
+        institutionId: institutionId as string,
+        region: region as string,
+        district: district as string,
+        announcementType: announcementType as string,
+        status: status as string,
+        limit: limit ? parseInt(limit as string, 10) : 20,
+        cursor: cursor as string
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch announcements' });
+    }
+  });
+
+  app.get('/api/announcements/:id', (req, res) => {
+    try {
+      const announcement = InstitutionalAnnouncementService.getAnnouncementById(req.params.id);
+      if (!announcement) return res.status(404).json({ error: 'Announcement not found' });
+      res.json(announcement);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch announcement' });
+    }
+  });
+
+  // CIVIC SITUATIONS API
+  app.get('/api/situations', (req, res) => {
+    try {
+      const { region, district, category, status, priorityBand, limit, cursor } = req.query;
+      const result = CivicSituationService.listSituations({
+        region: region as string,
+        district: district as string,
+        category: category as string,
+        status: status as string,
+        priorityBand: priorityBand as string,
+        limit: limit ? parseInt(limit as string, 10) : 20,
+        cursor: cursor as string
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch civic situations' });
+    }
+  });
+
+  app.get('/api/situations/:id', (req, res) => {
+    try {
+      const situation = CivicSituationService.getSituationDetail(req.params.id);
+      if (!situation) return res.status(404).json({ error: 'Civic situation not found' });
+      res.json(situation);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch civic situation' });
+    }
   });
 
   // CLUSTERS & ANALYTICS

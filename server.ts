@@ -7,6 +7,7 @@ import { initDatabase, db } from './server/database/db';
 import { seedDatabaseIfEmpty } from './server/seedDatabase';
 import { initStorageZones } from './server/storage/index';
 import { initializeJobWorkers } from './server/jobs/workers';
+import { jobQueue } from './server/jobs/jobQueue';
 import { OutboxService } from './server/infrastructure/events/OutboxService';
 import { CoordinationService } from './server/modules/coordination/CoordinationService';
 import { createApp } from './server/app';
@@ -98,6 +99,7 @@ async function bootstrap() {
 
   // 3. Initialize Background Job Processing Workers & Transactional Outbox
   initializeJobWorkers();
+  jobQueue.recoverInterruptedJobs();
   OutboxService.startOutboxWorker();
 
   // 3b. Start the coordination SLA monitor (warns and escalates overdue work items)

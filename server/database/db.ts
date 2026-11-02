@@ -1334,6 +1334,69 @@ export function initDatabase() {
     );
   `);
 
+  // 12a. Joint Coordination Cases (a single civic issue handled jointly by several institutions)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coordination_cases (
+      id TEXT PRIMARY KEY,
+      post_id TEXT,
+      situation_id TEXT,
+      title TEXT NOT NULL,
+      category TEXT,
+      region TEXT,
+      district TEXT,
+      summary TEXT,
+      status TEXT NOT NULL DEFAULT 'OPEN', -- OPEN, ACTIVE, RESOLVED, CLOSED
+      priority TEXT NOT NULL DEFAULT 'NORMAL', -- ROUTINE, ELEVATED, URGENT, EMERGENCY
+      lead_institution_id TEXT,
+      resolution_summary TEXT,
+      created_by_id TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      resolved_at TEXT,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (situation_id) REFERENCES civic_situations(id) ON DELETE SET NULL,
+      FOREIGN KEY (lead_institution_id) REFERENCES institutions(id) ON DELETE SET NULL
+    );
+  `);
+
+  // 12b. Case Participants (each institution/desk jointly responsible for a case)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coordination_case_participants (
+      id TEXT PRIMARY KEY,
+      case_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      desk_id TEXT,
+      role TEXT NOT NULL DEFAULT 'SUPPORTING', -- LEAD, SUPPORTING, REGULATOR, OBSERVER
+      responsibility TEXT,
+      status TEXT NOT NULL DEFAULT 'INVITED', -- INVITED, ACCEPTED, DECLINED, COMPLETED
+      invited_at TEXT NOT NULL,
+      responded_at TEXT,
+      completed_at TEXT,
+      response_note TEXT,
+      UNIQUE(case_id, institution_id),
+      FOREIGN KEY (case_id) REFERENCES coordination_cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 12c. Case Timeline Events (immutable audit trail of joint coordination activity)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coordination_case_events (
+      id TEXT PRIMARY KEY,
+      case_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      actor_type TEXT NOT NULL DEFAULT 'SYSTEM', -- CITIZEN, INSTITUTION, SYSTEM, MODERATOR, ADMIN
+      actor_id TEXT,
+      actor_name TEXT,
+      institution_id TEXT,
+      description TEXT NOT NULL,
+      metadata_json TEXT DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (case_id) REFERENCES coordination_cases(id) ON DELETE CASCADE
+    );
+  `);
+
   // Safe ALTER migrations for institutional hierarchy and desks
   const extraInstCols = [
     { name: 'desk_level', type: "TEXT NOT NULL DEFAULT 'NATIONAL_DESK'" },
@@ -1509,6 +1572,11 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_inbox_mirror ON institutional_inbox_items(mirror_of_item_id);
     CREATE INDEX IF NOT EXISTS idx_inbox_desk_state ON institutional_inbox_items(desk_id, action_state);
     CREATE INDEX IF NOT EXISTS idx_delegations_parent ON coordination_delegations(parent_delegation_id);
+    CREATE INDEX IF NOT EXISTS idx_cases_post ON coordination_cases(post_id);
+    CREATE INDEX IF NOT EXISTS idx_cases_status ON coordination_cases(status, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_case_participants_case ON coordination_case_participants(case_id, status);
+    CREATE INDEX IF NOT EXISTS idx_case_participants_inst ON coordination_case_participants(institution_id, status);
+    CREATE INDEX IF NOT EXISTS idx_case_events_case ON coordination_case_events(case_id, created_at);
   `);
 
   // A report may be tagged to an institution only once. Historically tag rows

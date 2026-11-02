@@ -59,6 +59,39 @@ export class JobQueue {
   }
 
   /**
+   * Recovers work left behind by a previous process. A job interrupted mid-run
+   * sits in PROCESSING with no worker; a job that exhausted its retries sits in
+   * DEAD_LETTER. On boot we requeue interrupted jobs and give dead-lettered jobs
+   * one fresh attempt so a crash or transient provider outage self-heals instead
+   * of silently stranding alerts. Returns a summary for logging.
+   */
+  public recoverInterruptedJobs(): { requeuedProcessing: number; requeuedDeadLetter: number } {
+    const now = new Date().toISOString();
+    let requeuedProcessing = 0;
+    let requeuedDeadLetter = 0;
+    try {
+      requeuedProcessing = db.prepare(`
+        UPDATE jobs SET status = 'QUEUED', available_at = ?, updated_at = ?
+        WHERE status = 'PROCESSING'
+      `).run(now, now).changes;
+
+      // Revive dead-lettered jobs with a fresh attempt budget. They will retry up
+      // to max_attempts again and re-dead-letter if the underlying cause persists.
+      requeuedDeadLetter = db.prepare(`
+        UPDATE jobs SET status = 'QUEUED', attempts = 0, available_at = ?, updated_at = ?
+        WHERE status = 'DEAD_LETTER'
+      `).run(now, now).changes;
+
+      if (requeuedProcessing || requeuedDeadLetter) {
+        logger.warn(`Recovered background jobs on startup: ${requeuedProcessing} interrupted, ${requeuedDeadLetter} dead-lettered requeued`);
+      }
+    } catch (err: any) {
+      logger.error(`Job recovery failed: ${err.message}`);
+    }
+    return { requeuedProcessing, requeuedDeadLetter };
+  }
+
+  /**
    * Stops background worker loop
    */
   public stopWorker(): void {

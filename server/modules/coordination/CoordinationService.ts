@@ -3,6 +3,7 @@ import { OutboxService } from '../../infrastructure/events/OutboxService';
 import { AuditService } from '../audit/AuditService';
 import { InstitutionalInboxService } from '../institutional-inbox/InstitutionalInboxService';
 import { NotificationService } from '../notifications/NotificationService';
+import { CitizenNotificationService } from '../notifications/CitizenNotificationService';
 import { logger } from '../../shared/logger';
 
 export type DeskLevel = 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST';
@@ -415,12 +416,15 @@ export class CoordinationService {
 
       if (targetStatus === 'ACCEPTED') {
         db.prepare("UPDATE posts SET workflow_stage = 'ACCEPTED', updated_at = ? WHERE id = ?").run(now, delegation.post_id);
+        CitizenNotificationService.notifyAccepted(delegation.post_id, delegation.to_institution_id);
       } else if (targetStatus === 'COMPLETED') {
         db.prepare("UPDATE posts SET workflow_stage = 'RESOLVED', resolved_at = ?, updated_at = ? WHERE id = ?")
           .run(now, now, delegation.post_id);
+        CitizenNotificationService.notifyResolved(delegation.post_id, delegation.to_institution_id);
       } else if (targetStatus === 'DECLINED') {
         db.prepare("UPDATE posts SET owner_institution_id = ?, owner_desk_id = ?, workflow_stage = 'ROUTED', updated_at = ? WHERE id = ?")
           .run(delegation.from_institution_id || null, delegation.from_desk_id || null, now, delegation.post_id);
+        CitizenNotificationService.notifyDeclined(delegation.post_id, delegation.to_institution_id, note);
       }
 
       this.recordReportEvent(delegation.post_id, `DELEGATION_${targetStatus}`, actor, {
@@ -988,6 +992,11 @@ export class CoordinationService {
         escalationLevel: level,
         reason: input.reason || null
       });
+      CitizenNotificationService.notifyEscalated(
+        item.post_id,
+        item.institution_id,
+        `escalated to ${target.name} (level ${level})`
+      );
     }
 
     AuditService.log({

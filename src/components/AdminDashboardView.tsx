@@ -104,15 +104,40 @@ export const AdminDashboardView: React.FC = () => {
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobStatusFilter, setJobStatusFilter] = useState('ALL');
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditTrail, setAuditTrail] = useState<any[]>([]);
+  const [auditTrailTypes, setAuditTrailTypes] = useState<string[]>([]);
+  const [auditEventFilter, setAuditEventFilter] = useState('ALL');
 
   const [coordination, setCoordination] = useState<any>(null);
   const [institutions, setInstitutions] = useState<any[]>([]);
   const [privacy, setPrivacy] = useState<any>(null);
+  const [failedAlerts, setFailedAlerts] = useState<{ items: any[]; summary: { failed: number; notConfigured: number; total: number } } | null>(null);
+  const [jointCases, setJointCases] = useState<any[]>([]);
   const [hierarchy, setHierarchy] = useState<any>(null);
   const [hierarchyInst, setHierarchyInst] = useState<any>(null);
   const [hierarchyLoading, setHierarchyLoading] = useState(false);
 
   const [showInstModal, setShowInstModal] = useState(false);
+  const [showCoordModal, setShowCoordModal] = useState(false);
+  const [coordForm, setCoordForm] = useState({
+    toInstitutionId: '',
+    delegationType: 'ESCALATION',
+    priority: 'URGENT',
+    reason: '',
+    instructions: '',
+    postId: ''
+  });
+  const [showCaseModal, setShowCaseModal] = useState(false);
+  const [caseForm, setCaseForm] = useState({
+    title: '',
+    leadInstitutionId: '',
+    summary: '',
+    priority: 'ELEVATED',
+    region: '',
+    district: '',
+    postId: '',
+    participants: [] as string[]
+  });
   const [instForm, setInstForm] = useState({
     id: '',
     officialName: '',
@@ -147,15 +172,28 @@ export const AdminDashboardView: React.FC = () => {
       } else if (activeTab === 'reports') {
         setAbuseReports(await api.getAdminAbuseReports(reportStatusFilter));
       } else if (activeTab === 'coordination') {
-        setCoordination(await api.getAdminCoordination());
+        const [coord, cases] = await Promise.all([
+          api.getAdminCoordination(),
+          api.getAdminJointCases({ limit: 50 })
+        ]);
+        setCoordination(coord);
+        setJointCases(cases.items || []);
       } else if (activeTab === 'institutions') {
         setInstitutions(await api.getInstitutions());
       } else if (activeTab === 'privacy') {
         setPrivacy(await api.getAdminPrivacy());
       } else if (activeTab === 'system') {
-        const [j, logs] = await Promise.all([api.getAdminJobs(jobStatusFilter), api.getAdminAuditLogs()]);
+        const [j, logs, alerts, trail] = await Promise.all([
+          api.getAdminJobs(jobStatusFilter),
+          api.getAdminAuditLogs(),
+          api.getAdminFailedAlerts(),
+          api.getAdminAuditTrail({ limit: 150, eventType: auditEventFilter })
+        ]);
         setJobs(j);
         setAuditLogs(logs);
+        setFailedAlerts(alerts);
+        setAuditTrail(trail.items || []);
+        setAuditTrailTypes(trail.eventTypes || []);
       }
     } catch (err: any) {
       console.error(`Failed to load tab data for ${activeTab}:`, err);
@@ -163,7 +201,7 @@ export const AdminDashboardView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, userSearch, userRoleFilter, postSearch, moderationFilter, reportStatusFilter, jobStatusFilter, loadOverview, toast]);
+  }, [activeTab, userSearch, userRoleFilter, postSearch, moderationFilter, reportStatusFilter, jobStatusFilter, auditEventFilter, loadOverview, toast]);
 
   useEffect(() => {
     loadTabData();
@@ -353,6 +391,109 @@ export const AdminDashboardView: React.FC = () => {
       toast.success('Job re-queued', 'The background job will be retried by the worker.');
     } catch (err: any) {
       toast.error('Failed to retry job', err?.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRedispatchAlert = async (tagId: string) => {
+    setActionLoading(`alert-${tagId}`);
+    try {
+      const res = await api.redispatchAdminAlert(tagId);
+      const delivered = res.status === 'DELIVERED' || res.status === 'SENT';
+      if (delivered) {
+        toast.success('Alert re-dispatched', `Delivery status is now ${res.status}.`);
+      } else {
+        toast.error('Re-dispatch did not succeed', res.errorMessage || `Delivery status is ${res.status}.`);
+      }
+      const alerts = await api.getAdminFailedAlerts();
+      setFailedAlerts(alerts);
+      if (activeTab === 'overview') await loadOverview();
+    } catch (err: any) {
+      toast.error('Failed to re-dispatch alert', err?.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResolveJointCase = (caseRow: any) => {
+    setPending({
+      title: 'Resolve joint case',
+      tone: 'success',
+      confirmLabel: 'Record resolution',
+      reasonLabel: 'Resolution summary (visible to all participants and the reporter)',
+      reasonRequired: true,
+      message: (
+        <>
+          Record the outcome for the joint case{' '}
+          <span className="font-semibold text-white">{caseRow.title}</span>. All participants and the original reporter
+          will be notified, and the linked report will be marked resolved.
+        </>
+      ),
+      run: async (reason) => {
+        setActionLoading(`case-${caseRow.id}`);
+        try {
+          await api.resolveAdminJointCase(caseRow.id, reason || 'Resolved', false);
+          toast.success('Joint case resolved', 'Participants and the reporter have been notified.');
+          await loadTabData();
+        } catch (err: any) {
+          toast.error('Failed to resolve joint case', err?.message);
+        } finally {
+          setActionLoading(null);
+        }
+      }
+    });
+  };
+
+  const handleCreateCoordinationAction = async () => {
+    if (!coordForm.toInstitutionId || !coordForm.reason.trim()) {
+      toast.error('Missing information', 'A target institution and reason are required.');
+      return;
+    }
+    setActionLoading('coord-create');
+    try {
+      await api.createAdminCoordinationAction({
+        toInstitutionId: coordForm.toInstitutionId,
+        delegationType: coordForm.delegationType,
+        priority: coordForm.priority,
+        reason: coordForm.reason.trim(),
+        instructions: coordForm.instructions.trim() || undefined,
+        postId: coordForm.postId.trim() || undefined
+      });
+      toast.success('Coordination action created', 'The receiving institution has been alerted.');
+      setShowCoordModal(false);
+      setCoordForm({ toInstitutionId: '', delegationType: 'ESCALATION', priority: 'URGENT', reason: '', instructions: '', postId: '' });
+      await loadTabData();
+    } catch (err: any) {
+      toast.error('Failed to create coordination action', err?.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCreateJointCase = async () => {
+    if (!caseForm.title.trim() || !caseForm.leadInstitutionId) {
+      toast.error('Missing information', 'A case title and lead institution are required.');
+      return;
+    }
+    setActionLoading('case-create');
+    try {
+      await api.createAdminJointCase({
+        title: caseForm.title.trim(),
+        leadInstitutionId: caseForm.leadInstitutionId,
+        summary: caseForm.summary.trim() || undefined,
+        priority: caseForm.priority,
+        region: caseForm.region.trim() || undefined,
+        district: caseForm.district.trim() || undefined,
+        postId: caseForm.postId.trim() || undefined,
+        participants: caseForm.participants.map((institutionId) => ({ institutionId, role: 'SUPPORTING' }))
+      });
+      toast.success('Joint case opened', 'All participating institutions have been notified and assigned an action.');
+      setShowCaseModal(false);
+      setCaseForm({ title: '', leadInstitutionId: '', summary: '', priority: 'ELEVATED', region: '', district: '', postId: '', participants: [] });
+      await loadTabData();
+    } catch (err: any) {
+      toast.error('Failed to open joint case', err?.message);
     } finally {
       setActionLoading(null);
     }
@@ -934,17 +1075,83 @@ export const AdminDashboardView: React.FC = () => {
               description="Oversight of transfers, delegations, escalations and SLA compliance across all desks."
               icon={<GitPullRequest className="w-4 h-4 text-amber-400" />}
               actions={
-                <Button variant="warning" loading={actionLoading === 'sla-sweep'} onClick={handleRunSlaSweep} icon={<RefreshCw className="w-3.5 h-3.5" />}>
-                  Run SLA Sweep Now
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" onClick={() => setShowCaseModal(true)} icon={<Plus className="w-3.5 h-3.5" />}>
+                    Open Joint Case
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowCoordModal(true)} icon={<GitPullRequest className="w-3.5 h-3.5" />}>
+                    Escalate / Transfer
+                  </Button>
+                  <Button variant="warning" loading={actionLoading === 'sla-sweep'} onClick={handleRunSlaSweep} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+                    Run SLA Sweep Now
+                  </Button>
+                </div>
               }
             />
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard label="Pending Delegations" value={coordination?.summary?.pendingDelegations ?? 0} hint="Transfers awaiting acceptance" tone="warning" icon={<GitPullRequest className="w-4 h-4" />} />
               <StatCard label="SLA Breaches" value={coordination?.summary?.overdueItems ?? 0} hint="Past their response deadline" tone="critical" icon={<AlertTriangle className="w-4 h-4" />} />
               <StatCard label="Agencies With Open Work" value={coordination?.summary?.institutionsWithOpenWork ?? 0} hint="Holding unresolved reports" icon={<Building2 className="w-4 h-4" />} />
+              <StatCard label="Active Joint Cases" value={jointCases.filter((c) => c.status === 'OPEN' || c.status === 'ACTIVE').length} hint="Multi-institution responses" icon={<Inbox className="w-4 h-4" />} />
             </div>
+
+            <Card className="space-y-3">
+              <SectionHeader
+                title="Joint Multi-Institution Cases"
+                description="Single civic issues handled jointly by several agencies with a lead and supporting participants."
+                icon={<Building2 className="w-4 h-4 text-cyan-400" />}
+                actions={<Button variant="ghost" size="xs" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3 h-3" />}>Refresh</Button>}
+              />
+              {loading ? (
+                <div className="space-y-2">
+                  <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
+                  <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
+                </div>
+              ) : !jointCases.length ? (
+                <EmptyState
+                  icon={<Inbox className="w-5 h-5" />}
+                  title="No joint cases"
+                  description="Open a joint case when an issue needs coordinated action from more than one institution."
+                />
+              ) : (
+                <div className="space-y-2">
+                  {jointCases.map((c: any) => (
+                    <div key={c.id} className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-white truncate">{c.title}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <StatusBadge meta={getPriorityMeta(c.priority)} />
+                          <Badge tone={c.status === 'RESOLVED' || c.status === 'CLOSED' ? 'success' : c.status === 'ACTIVE' ? 'progress' : 'warning'} uppercase size="sm">
+                            {c.status}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Lead: <span className="text-slate-200">{c.leadInstitutionName || c.leadInstitutionId}</span>
+                        {c.region ? ` • ${c.district || ''} ${c.region}` : ''}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <span className="text-[10px] text-slate-500">
+                          {c.completedCount ?? 0}/{c.participantCount ?? 0} participants complete
+                        </span>
+                        {c.status !== 'RESOLVED' && c.status !== 'CLOSED' && (
+                          <Button
+                            size="xs"
+                            variant="success"
+                            loading={actionLoading === `case-${c.id}`}
+                            onClick={() => handleResolveJointCase(c)}
+                            icon={<CheckCircle2 className="w-3 h-3" />}
+                          >
+                            Record Resolution
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card className="space-y-3">
@@ -1181,6 +1388,104 @@ export const AdminDashboardView: React.FC = () => {
             </div>
 
             <div className="space-y-3">
+              <SectionHeader
+                title="Failed Alert Deliveries"
+                description="Alerts to state agencies that failed or had no configured channel. Re-dispatch re-runs the delivery."
+                icon={<ShieldAlert className="w-4 h-4 text-red-400" />}
+                actions={<Button variant="ghost" size="xs" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3 h-3" />}>Refresh</Button>}
+              />
+              {loading ? (
+                <div className="space-y-2">
+                  <div className="h-14 rounded-xl bg-slate-800/60 animate-pulse" />
+                  <div className="h-14 rounded-xl bg-slate-800/60 animate-pulse" />
+                </div>
+              ) : !failedAlerts?.items?.length ? (
+                <EmptyState icon={<CheckCircle2 className="w-5 h-5" />} title="No failed deliveries" description="Every routed alert reached a configured institution channel." />
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <StatCard label="Failed" value={failedAlerts.summary.failed} hint="Delivery attempt errored" tone="critical" icon={<AlertTriangle className="w-4 h-4" />} />
+                    <StatCard label="Not Configured" value={failedAlerts.summary.notConfigured} hint="No channel set for agency" tone="warning" icon={<ShieldAlert className="w-4 h-4" />} />
+                    <StatCard label="Total Undelivered" value={failedAlerts.summary.total} hint="Awaiting operator action" icon={<Inbox className="w-4 h-4" />} />
+                  </div>
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                    {failedAlerts.items.map((a: any) => (
+                      <div key={a.tag_id} className="p-3 bg-slate-900 border border-red-900/40 rounded-xl text-xs space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-white truncate">{a.post_title || a.post_id}</span>
+                          <Badge tone={a.alert_status === 'FAILED' ? 'critical' : 'warning'} uppercase size="sm">{a.alert_status}</Badge>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {a.institution_name}{a.recipient ? ` • ${a.recipient}` : ''}{a.channel_type ? ` (${a.channel_type})` : ''}
+                        </div>
+                        {a.error_message && <p className="text-[11px] text-red-400 line-clamp-2">{a.error_message}</p>}
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <span className="text-[10px] text-slate-500">
+                            {a.retry_count ? `${a.retry_count} retr${a.retry_count === 1 ? 'y' : 'ies'} · ` : ''}
+                            {a.last_attempt_at ? `last attempt ${new Date(a.last_attempt_at).toLocaleString()}` : 'no delivery attempt recorded'}
+                          </span>
+                          <Button
+                            size="xs"
+                            variant="primary"
+                            loading={actionLoading === `alert-${a.tag_id}`}
+                            onClick={() => handleRedispatchAlert(a.tag_id)}
+                            icon={<RotateCcw className="w-3 h-3" />}
+                          >
+                            Re-dispatch
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <SectionHeader
+                title="Administrative Audit Trail"
+                description="Immutable record of privileged and workflow actions: role changes, moderation, delegations, joint cases and alert re-dispatch."
+                icon={<ShieldCheck className="w-4 h-4 text-amber-400" />}
+                actions={
+                  <div className="flex items-center gap-2">
+                    <Select value={auditEventFilter} onChange={(e) => setAuditEventFilter(e.target.value)} className="text-xs">
+                      <option value="ALL">All events</option>
+                      {auditTrailTypes.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </Select>
+                    <Button variant="ghost" size="xs" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3 h-3" />}>Refresh</Button>
+                  </div>
+                }
+              />
+              <Card padded={false} className="p-3 space-y-2 max-h-72 overflow-y-auto">
+                {loading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-8 rounded-lg bg-slate-800/60 animate-pulse" />
+                    ))}
+                  </div>
+                ) : auditTrail.length === 0 ? (
+                  <EmptyState icon={<ShieldCheck className="w-5 h-5" />} title="No administrative actions recorded" description="Privileged and workflow actions will appear here." />
+                ) : (
+                  auditTrail.map((log) => (
+                    <div key={log.id} className="p-2.5 bg-slate-900/80 rounded-lg border border-slate-800 space-y-1 text-[11px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-amber-400 font-bold truncate">[{log.event_type}]</span>
+                        <span className="text-[10px] text-slate-500 shrink-0">{new Date(log.created_at).toLocaleString()}</span>
+                      </div>
+                      <div className="text-slate-400 truncate">
+                        {log.actor_type} · {log.actor_name || log.user_id || 'System'}
+                        {log.target_type ? ` → ${log.target_type} ${log.target_id || ''}` : ''}
+                      </div>
+                      {log.reason && <div className="text-slate-300 line-clamp-2">{log.reason}</div>}
+                    </div>
+                  ))
+                )}
+              </Card>
+            </div>
+
+            <div className="space-y-3">
               <SectionHeader title="Immutable Event Audit Timeline" icon={<Clock className="w-4 h-4 text-emerald-400" />} />
               <Card padded={false} className="p-3 space-y-2 max-h-60 overflow-y-auto">
                 {loading ? (
@@ -1207,6 +1512,136 @@ export const AdminDashboardView: React.FC = () => {
           </div>
         )}
       </ConsoleLayout>
+
+      <Modal
+        open={showCoordModal}
+        onClose={() => setShowCoordModal(false)}
+        title="Escalate or transfer work"
+        description="Oversight action: push a report or stuck work item to another institution's desk."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowCoordModal(false)} disabled={actionLoading === 'coord-create'}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={actionLoading === 'coord-create'} onClick={handleCreateCoordinationAction}>
+              Create Action
+            </Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Target Institution" required>
+            <Select value={coordForm.toInstitutionId} onChange={(e) => setCoordForm({ ...coordForm, toInstitutionId: e.target.value })}>
+              <option value="">Select institution…</option>
+              {institutions.map((inst: any) => (
+                <option key={inst.id} value={inst.id}>{inst.shortName || inst.officialName}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Action Type">
+            <Select value={coordForm.delegationType} onChange={(e) => setCoordForm({ ...coordForm, delegationType: e.target.value })}>
+              <option value="ESCALATION">Escalation</option>
+              <option value="TRANSFER">Transfer</option>
+              <option value="DELEGATION">Delegation</option>
+              <option value="INFORMATION">Information only</option>
+            </Select>
+          </Field>
+          <Field label="Priority">
+            <Select value={coordForm.priority} onChange={(e) => setCoordForm({ ...coordForm, priority: e.target.value })}>
+              <option value="ROUTINE">Routine</option>
+              <option value="ELEVATED">Elevated</option>
+              <option value="URGENT">Urgent</option>
+              <option value="EMERGENCY">Emergency</option>
+            </Select>
+          </Field>
+          <Field label="Report ID" hint="Optional. Links the action to a specific report.">
+            <Input placeholder="post-…" value={coordForm.postId} onChange={(e) => setCoordForm({ ...coordForm, postId: e.target.value })} />
+          </Field>
+          <Field label="Reason" required className="sm:col-span-2">
+            <Input placeholder="Why is this being escalated or transferred?" value={coordForm.reason} onChange={(e) => setCoordForm({ ...coordForm, reason: e.target.value })} />
+          </Field>
+          <Field label="Instructions" className="sm:col-span-2">
+            <Input placeholder="What the receiving desk should do" value={coordForm.instructions} onChange={(e) => setCoordForm({ ...coordForm, instructions: e.target.value })} />
+          </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showCaseModal}
+        onClose={() => setShowCaseModal(false)}
+        title="Open a joint coordination case"
+        description="Bind several institutions to one civic issue with a lead and supporting participants."
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowCaseModal(false)} disabled={actionLoading === 'case-create'}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={actionLoading === 'case-create'} onClick={handleCreateJointCase}>
+              Open Case
+            </Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Case Title" required className="sm:col-span-2">
+            <Input placeholder="Flooding at Odawna — coordinated response" value={caseForm.title} onChange={(e) => setCaseForm({ ...caseForm, title: e.target.value })} />
+          </Field>
+          <Field label="Lead Institution" required>
+            <Select value={caseForm.leadInstitutionId} onChange={(e) => setCaseForm({ ...caseForm, leadInstitutionId: e.target.value, participants: caseForm.participants.filter((p) => p !== e.target.value) })}>
+              <option value="">Select lead…</option>
+              {institutions.map((inst: any) => (
+                <option key={inst.id} value={inst.id}>{inst.shortName || inst.officialName}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Priority">
+            <Select value={caseForm.priority} onChange={(e) => setCaseForm({ ...caseForm, priority: e.target.value })}>
+              <option value="ROUTINE">Routine</option>
+              <option value="ELEVATED">Elevated</option>
+              <option value="URGENT">Urgent</option>
+              <option value="EMERGENCY">Emergency</option>
+            </Select>
+          </Field>
+          <Field label="Region">
+            <Input placeholder="Greater Accra" value={caseForm.region} onChange={(e) => setCaseForm({ ...caseForm, region: e.target.value })} />
+          </Field>
+          <Field label="District">
+            <Input placeholder="Accra Metropolitan" value={caseForm.district} onChange={(e) => setCaseForm({ ...caseForm, district: e.target.value })} />
+          </Field>
+          <Field label="Report ID" hint="Optional. Links the case to a citizen report." className="sm:col-span-2">
+            <Input placeholder="post-…" value={caseForm.postId} onChange={(e) => setCaseForm({ ...caseForm, postId: e.target.value })} />
+          </Field>
+          <Field label="Summary" className="sm:col-span-2">
+            <Input placeholder="What is the shared problem and why does it need multiple agencies?" value={caseForm.summary} onChange={(e) => setCaseForm({ ...caseForm, summary: e.target.value })} />
+          </Field>
+          <Field label="Supporting Institutions" hint="Select every other agency that must act. The lead is added automatically." className="sm:col-span-2">
+            <div className="max-h-48 overflow-y-auto border border-slate-800 rounded-xl divide-y divide-slate-800">
+              {institutions.filter((inst: any) => inst.id !== caseForm.leadInstitutionId).map((inst: any) => {
+                const checked = caseForm.participants.includes(inst.id);
+                return (
+                  <label key={inst.id} className="flex items-center gap-2 px-3 py-2 text-xs text-slate-200 cursor-pointer hover:bg-slate-900">
+                    <input
+                      type="checkbox"
+                      className="accent-cyan-500"
+                      checked={checked}
+                      onChange={(e) =>
+                        setCaseForm({
+                          ...caseForm,
+                          participants: e.target.checked
+                            ? [...caseForm.participants, inst.id]
+                            : caseForm.participants.filter((p) => p !== inst.id)
+                        })
+                      }
+                    />
+                    <span className="truncate">{inst.shortName || inst.officialName}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </Field>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(pending)}

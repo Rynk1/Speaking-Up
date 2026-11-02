@@ -2,6 +2,7 @@ import { db } from '../../database/db';
 import { OutboxService } from '../../infrastructure/events/OutboxService';
 import { AuditService } from '../audit/AuditService';
 import { InstitutionalInboxService } from '../institutional-inbox/InstitutionalInboxService';
+import { CitizenNotificationService } from '../notifications/CitizenNotificationService';
 import { logger } from '../../shared/logger';
 
 export type OfficialResponseType =
@@ -160,6 +161,19 @@ export class OfficialResponseService {
       responseType: input.responseType,
       message: input.message
     });
+
+    // Notify the reporter their report received an official response, and if the
+    // response is a resolution, reflect that lifecycle change to them too.
+    try {
+      CitizenNotificationService.notifyLifecycle(input.postId, 'RESPONDED', {
+        institutionName: institution.short_name || institution.official_name
+      });
+      if (input.responseType === 'RESOLUTION') {
+        CitizenNotificationService.notifyResolved(input.postId, input.institutionId);
+      }
+    } catch (citizenErr: any) {
+      logger.warn(`Citizen response notification warning: ${citizenErr.message}`);
+    }
 
     return {
       id: responseId,

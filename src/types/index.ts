@@ -833,3 +833,62 @@ export interface AdminCoordinationOverview {
   byInstitution: { institutionId: string; institutionName: string; openReports: number }[];
 }
 
+export type JointCaseStatus = 'OPEN' | 'ACTIVE' | 'RESOLVED' | 'CLOSED';
+export type JointCaseParticipantRole = 'LEAD' | 'SUPPORTING' | 'REGULATOR' | 'OBSERVER';
+export type JointCaseParticipantStatus = 'INVITED' | 'ACCEPTED' | 'DECLINED' | 'COMPLETED';
+
+export interface JointCaseParticipant {
+  id: string;
+  caseId: string;
+  institutionId: string;
+  institutionName?: string;
+  institutionShortName?: string;
+  deskId?: string;
+  deskName?: string;
+  deskLevel?: string;
+  role: JointCaseParticipantRole;
+  responsibility?: string;
+  status: JointCaseParticipantStatus;
+  invitedAt: string;
+  respondedAt?: string;
+  completedAt?: string;
+  responseNote?: string;
+}
+
+export interface JointCaseEvent {
+  id: string;
+  caseId: string;
+  eventType: string;
+  actorType: string;
+  actorName?: string;
+  institutionId?: string;
+  description: string;
+  metadataJson?: string;
+  createdAt: string;
+}
+
+export interface JointCase {
+  id: string;
+  postId?: string;
+  situationId?: string;
+  title: string;
+  category?: string;
+  region?: string;
+  district?: string;
+  summary?: string;
+  status: JointCaseStatus;
+  priority: string;
+  leadInstitutionId: string;
+  leadInstitutionName?: string;
+  leadInstitutionShortName?: string;
+  resolutionSummary?: string;
+  postTitle?: string;
+  participantCount?: number;
+  completedCount?: number;
+  participants?: JointCaseParticipant[];
+  events?: JointCaseEvent[];
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+}
+

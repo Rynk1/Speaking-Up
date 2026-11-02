@@ -36,6 +36,7 @@ export interface QueueItemCardProps {
   onOpenCase?: (item: CoordinationQueueItem) => void;
   onReview?: (item: CoordinationQueueItem) => void;
   onEscalate?: (item: CoordinationQueueItem) => void;
+  onAssign?: (item: CoordinationQueueItem) => void;
 }
 
 /**
@@ -52,7 +53,8 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
   onRedispatch,
   onOpenCase,
   onReview,
-  onEscalate
+  onEscalate,
+  onAssign
 }) => {
   const severity = getQueueSeverityMeta(item.severity);
   const source = getQueueSourceMeta(item.source);
@@ -75,6 +77,15 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
   }
   if ((item.source === 'INBOX_ITEM' || item.source === 'DELEGATION') && onEscalate) {
     actions.push(<Button key="escalate" size="xs" variant="warning" loading={busy} onClick={() => onEscalate(item)}>Escalate</Button>);
+  }
+  // Routed inbox items can be given a named owner straight from the feed, so a
+  // single operator can go from detection to accountable official in one step.
+  if (item.source === 'INBOX_ITEM' && item.institutionId && onAssign) {
+    actions.unshift(
+      <Button key="assign" size="xs" variant="primary" loading={busy} icon={<UserCheck className="w-3 h-3" />} onClick={() => onAssign(item)}>
+        {item.assignedOfficerName ? 'Reassign' : 'Assign'}
+      </Button>
+    );
   }
 
   const accent =

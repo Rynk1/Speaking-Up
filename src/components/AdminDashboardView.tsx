@@ -34,6 +34,7 @@ import {
   DataTable,
   EmptyState,
   Field,
+  InlineAlert,
   Input,
   Modal,
   QueueItemCard,
@@ -46,6 +47,7 @@ import {
   TableRow,
   TableSkeleton,
   Td,
+  Textarea,
   Th,
   Tile,
   useToast,
@@ -86,7 +88,9 @@ const TAB_META: Record<AdminTab, { title: string; subtitle: string }> = {
 
 export const AdminDashboardView: React.FC = () => {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  // Oversight lands on the triage feed: the first question an operator answers is
+  // "what needs attention now?", not "what is the platform posture?".
+  const [activeTab, setActiveTab] = useState<AdminTab>('coordination');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -125,6 +129,10 @@ export const AdminDashboardView: React.FC = () => {
 
   const [showInstModal, setShowInstModal] = useState(false);
   const [showCoordModal, setShowCoordModal] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<CoordinationQueueItem | null>(null);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignForm, setAssignForm] = useState({ officerUserId: '', deskId: '', notes: '' });
   const [coordForm, setCoordForm] = useState({
     toInstitutionId: '',
     delegationType: 'ESCALATION',
@@ -571,6 +579,60 @@ export const AdminDashboardView: React.FC = () => {
     setShowCoordModal(true);
   };
 
+  const openAssignModal = async (item: CoordinationQueueItem) => {
+    if (!item.institutionId) return;
+    setAssignTarget(item);
+    setAssignError(null);
+    setAssignForm({ officerUserId: item.assignedOfficerId || '', deskId: item.deskId || '', notes: '' });
+    // Reuse the institution hierarchy to list real desks and officials, so the
+    // operator picks from the same roster the agency itself sees.
+    setHierarchy(null);
+    setHierarchyLoading(true);
+    try {
+      setHierarchy(await api.getAdminInstitutionHierarchy(item.institutionId));
+    } catch (err: any) {
+      setAssignError(err?.message || 'Could not load this agency roster');
+    } finally {
+      setHierarchyLoading(false);
+    }
+  };
+
+  const closeAssignModal = () => {
+    setAssignTarget(null);
+    setAssignError(null);
+    setAssignForm({ officerUserId: '', deskId: '', notes: '' });
+  };
+
+  const submitAssign = async () => {
+    if (!assignTarget?.institutionId) return;
+    const itemId = assignTarget.id.replace('inbox:', '');
+    if (!assignForm.officerUserId && !assignForm.deskId) {
+      setAssignError('Choose an official, a desk, or both.');
+      return;
+    }
+    setAssignLoading(true);
+    setAssignError(null);
+    try {
+      await api.assignInboxItem(assignTarget.institutionId, itemId, {
+        officerUserId: assignForm.officerUserId || undefined,
+        deskId: assignForm.deskId || undefined,
+        notes: assignForm.notes.trim() || undefined
+      });
+      const officerName = (hierarchy?.team || []).find((m: any) => m.userId === assignForm.officerUserId)?.name;
+      closeAssignModal();
+      await refreshQueue();
+      await loadOverview();
+      toast.success(
+        'Work item assigned',
+        officerName ? `${officerName} is now accountable for this item.` : 'The owning desk has been updated.'
+      );
+    } catch (err: any) {
+      setAssignError(err?.message || 'Failed to assign this work item');
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
   const resetInstForm = () => setInstForm({
     id: '', officialName: '', shortName: '', acronym: '', mandate: '',
     category: 'GOVERNMENT', jurisdiction: 'NATIONAL', alertMethod: 'OFFICIAL_EMAIL',
@@ -798,6 +860,7 @@ export const AdminDashboardView: React.FC = () => {
                         onRedispatch={handleQueueRedispatch}
                         onReview={handleQueueReview}
                         onEscalate={handleQueueEscalate}
+                        onAssign={openAssignModal}
                       />
                     ))}
                   </div>
@@ -1436,6 +1499,7 @@ export const AdminDashboardView: React.FC = () => {
                     onRedispatch={handleQueueRedispatch}
                     onReview={handleQueueReview}
                     onEscalate={handleQueueEscalate}
+                    onAssign={openAssignModal}
                   />
                 ))}
               </div>
@@ -1764,6 +1828,90 @@ export const AdminDashboardView: React.FC = () => {
           </div>
         )}
       </ConsoleLayout>
+
+      <Modal
+        open={!!assignTarget}
+        onClose={closeAssignModal}
+        title="Assign an accountable official"
+        description="Give this routed report a named owner without leaving the triage feed."
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeAssignModal} disabled={assignLoading}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={assignLoading} onClick={submitAssign} icon={<UserCheck className="w-3.5 h-3.5" />}>
+              {assignForm.officerUserId ? 'Assign official' : 'Set owning desk'}
+            </Button>
+          </>
+        }
+      >
+        {assignError && <InlineAlert tone="danger" title="Cannot assign">{assignError}</InlineAlert>}
+
+        {assignTarget && (
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
+            <div className="font-bold text-white">{assignTarget.title}</div>
+            <div className="text-slate-400">
+              {assignTarget.institutionName}
+              {assignTarget.deskName ? ` · ${assignTarget.deskName}` : ''}
+            </div>
+          </div>
+        )}
+
+        {hierarchyLoading ? (
+          <div className="space-y-2">
+            <div className="h-10 rounded-lg bg-slate-800/60 animate-pulse" />
+            <div className="h-10 rounded-lg bg-slate-800/60 animate-pulse" />
+          </div>
+        ) : (
+          <>
+            <Field label="Official" hint="The officer is notified the moment you assign the item.">
+              <Select
+                value={assignForm.officerUserId}
+                onChange={(e) => setAssignForm((f) => ({ ...f, officerUserId: e.target.value }))}
+              >
+                <option value="">Unassigned</option>
+                {(hierarchy?.team || [])
+                  .filter((m: any) => m.userId && m.status !== 'SUSPENDED')
+                  .map((m: any) => (
+                    <option key={m.userId} value={m.userId}>
+                      {m.name}
+                      {m.title ? ` — ${m.title}` : ''}
+                      {m.deskName ? ` (${m.deskName})` : ''}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+
+            <Field label="Owning desk" hint="Leave as-is to keep the current desk.">
+              <Select
+                value={assignForm.deskId}
+                onChange={(e) => setAssignForm((f) => ({ ...f, deskId: e.target.value }))}
+              >
+                <option value="">Keep current desk</option>
+                {(hierarchy?.desks || []).map((d: any) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.level})
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Notes" hint="Optional context recorded for the assigned official.">
+              <Textarea
+                rows={2}
+                value={assignForm.notes}
+                onChange={(e) => setAssignForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </Field>
+
+            {!hierarchyLoading && !(hierarchy?.team || []).some((m: any) => m.userId) && (
+              <InlineAlert tone="warning" title="No officials on the roster">
+                This agency has no attached officials yet. Set the owning desk, or add officers under State Agencies first.
+              </InlineAlert>
+            )}
+          </>
+        )}
+      </Modal>
 
       <Modal
         open={showCoordModal}

@@ -829,4 +829,61 @@ describe('Inter-Institutional Coordination & Delegation Workflow', () => {
       .set('Authorization', `Bearer ${moderatorToken}`);
     expect(allowed.status).toBe(200);
   });
+
+  it('33. Oversight can assign an accountable official straight from the queue', async () => {
+    const item = db.prepare(
+      'SELECT * FROM institutional_inbox_items WHERE post_id = ? AND mirror_of_item_id IS NULL'
+    ).get(reportId) as any;
+    expect(item).toBeTruthy();
+
+    // Clear any prior assignment so the assertion is unambiguous.
+    db.prepare('UPDATE institutional_inbox_items SET assigned_officer_user_id = NULL, assigned_at = NULL WHERE id = ?').run(item.id);
+
+    const res = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${item.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ officerUserId: 'user-inst-police', notes: 'Oversight triage: assign an owner.' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.assignment.officerUserId).toBe('user-inst-police');
+
+    const after = db.prepare('SELECT * FROM institutional_inbox_items WHERE id = ?').get(item.id) as any;
+    expect(after.assigned_officer_user_id).toBe('user-inst-police');
+    expect(after.action_state).not.toBe('NEW');
+
+    // The queue must now surface the new owner against the same routed item.
+    const queueRes = await request(app)
+      .get('/api/admin/coordination/queue?source=INBOX_ITEM&limit=200')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(queueRes.status).toBe(200);
+    const queued = queueRes.body.items.find((i: any) => i.id === `inbox:${item.id}`);
+    expect(queued).toBeTruthy();
+    expect(queued.assignedOfficerId).toBe('user-inst-police');
+    expect(queued.assignedOfficerName).toBeTruthy();
+
+    // An official from another institution still cannot be attached.
+    const foreign = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${item.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ officerUserId: 'user-inst-nadmo' });
+    expect(foreign.status).toBe(400);
+  });
+
+  it('34. Assigning a work item requires an owner and rejects an unknown desk', async () => {
+    const item = db.prepare(
+      'SELECT * FROM institutional_inbox_items WHERE post_id = ? AND mirror_of_item_id IS NULL'
+    ).get(reportId) as any;
+
+    const noOwner = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${item.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(noOwner.status).toBe(400);
+
+    const badDesk = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${item.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ deskId: 'desk-that-does-not-exist' });
+    expect(badDesk.status).toBe(400);
+  });
 });

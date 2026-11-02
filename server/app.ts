@@ -2038,7 +2038,8 @@ export function createApp() {
         for (const tag of effectiveTags) {
           const instId = tag.institutionId || tag.id;
           try {
-            const desk = CoordinationService.resolveDeskForLocation(instId, { region: safeRegion, district: safeDistrict });
+            const routing = CoordinationService.resolveRoutingChain(instId, { region: safeRegion, district: safeDistrict });
+            const desk = routing.primary;
             const inboxItemId = InstitutionalInboxService.createInboxItem({
               institutionId: instId,
               itemType: 'REPORT',
@@ -2059,10 +2060,18 @@ export function createApp() {
               const dueAt = new Date(Date.now() + slaMinutes * 60 * 1000).toISOString();
               db.prepare('UPDATE institutional_inbox_items SET desk_id = ?, due_at = ?, updated_at = ? WHERE id = ?')
                 .run(desk.id, dueAt, now, inboxItemId);
-              db.prepare(`
-                INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
-                VALUES (?, ?, ?, ?, 'PRIMARY', ?)
-              `).run(`rt-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`, inboxItemId, instId, desk.id, now);
+              InstitutionalInboxService.addRoute({ inboxItemId, institutionId: instId, deskId: desk.id, routingRole: 'PRIMARY' });
+            }
+
+            // Fan the report out to the supervisory chain (regional/national desks)
+            // so sub-units are informed even when the primary desk is local.
+            for (const chainDesk of routing.chain) {
+              InstitutionalInboxService.addRoute({
+                inboxItemId,
+                institutionId: instId,
+                deskId: chainDesk.id,
+                routingRole: 'SUPPORTING'
+              });
             }
           } catch (inbErr: any) {
             logger.warn(`Institutional inbox population warning: ${inbErr.message}`);
@@ -3009,7 +3018,7 @@ export function createApp() {
   app.post('/api/institutions/:id/desks', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { name, code, level, parentDeskId, region, district, specialization, contactEmail, contactPhone, leadOfficerName } = req.body;
+      const { name, code, level, parentDeskId, region, district, mmdaCode, coverageMode, mobileReady, specialization, contactEmail, contactPhone, leadOfficerName } = req.body;
       if (!name || !code) return res.status(400).json({ error: 'Desk name and code are required' });
 
       const deskId = CoordinationService.createDesk({
@@ -3020,6 +3029,9 @@ export function createApp() {
         parentDeskId,
         region: region ? sanitizePlainText(region) : undefined,
         district: district ? sanitizePlainText(district) : undefined,
+        mmdaCode: mmdaCode ? sanitizePlainText(mmdaCode) : undefined,
+        coverageMode: coverageMode === 'ON_CALL' ? 'ON_CALL' : 'STANDING',
+        mobileReady: Boolean(mobileReady),
         specialization: specialization ? sanitizePlainText(specialization) : undefined,
         contactEmail: contactEmail ? sanitizePlainText(contactEmail) : undefined,
         contactPhone: contactPhone ? sanitizePlainText(contactPhone) : undefined,
@@ -3030,6 +3042,49 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Desk creation error: ${err.message}`);
       res.status(500).json({ error: err.message || 'Failed to create desk' });
+    }
+  });
+
+  // LOCAL GOVERNANCE: extend an institution's operation into an MMDA jurisdiction.
+  // A national desk with no standing local presence mobilises a local desk here; the
+  // new desk is auto-linked to its regional/national supervisor and adopts the open
+  // reports already sitting on that supervisor for the district.
+  app.post('/api/institutions/:id/desks/mobilise', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { region, district, level, mmdaCode, coverageMode, mobileReady, name, code } = req.body;
+      if (!region || !district) return res.status(400).json({ error: 'region and district are required to mobilise a local desk' });
+
+      const result = CoordinationService.mobiliseLocalDesk({
+        institutionId: req.params.id,
+        region: sanitizePlainText(region),
+        district: sanitizePlainText(district),
+        level: ['METROPOLITAN', 'MUNICIPAL', 'DISTRICT'].includes(level) ? level : 'MUNICIPAL',
+        mmdaCode: mmdaCode ? sanitizePlainText(mmdaCode) : undefined,
+        coverageMode: coverageMode === 'ON_CALL' ? 'ON_CALL' : 'STANDING',
+        mobileReady: mobileReady === undefined ? true : Boolean(mobileReady),
+        name: name ? sanitizePlainText(name) : undefined,
+        code: code ? sanitizePlainText(code) : undefined,
+        actor: { id: user.id, name: user.name, role: user.role, institutionId: req.params.id }
+      });
+
+      res.status(201).json({ success: true, ...result });
+    } catch (err: any) {
+      logger.error(`Desk mobilisation error: ${err.message}`);
+      res.status(500).json({ error: err.message || 'Failed to mobilise local desk' });
+    }
+  });
+
+  // LOCAL GOVERNANCE: which MMDA jurisdictions the institution covers in a region,
+  // which are on-call, and which districts have reports but no desk (coverage gaps).
+  app.get('/api/institutions/:id/routing-coverage', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const region = req.query.region as string;
+      if (!region) return res.status(400).json({ error: 'region query parameter is required' });
+      res.json(CoordinationService.getRoutingCoverage(req.params.id, region));
+    } catch (err: any) {
+      logger.error(`Routing coverage error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to compute routing coverage' });
     }
   });
 
@@ -3410,6 +3465,20 @@ export function createApp() {
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to fetch inbox' });
+    }
+  });
+
+  // LOCAL GOVERNANCE: the routing trail for a work item — which sub-units received
+  // it, which owns it (PRIMARY) and which are awareness-only (SUPPORTING/SECONDARY).
+  app.get('/api/institutions/:id/inbox/:itemId/routes', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const item = db.prepare('SELECT id FROM institutional_inbox_items WHERE id = ? AND institution_id = ?')
+        .get(req.params.itemId, req.params.id) as any;
+      if (!item) return res.status(404).json({ error: 'Inbox item not found for this institution' });
+      res.json(InstitutionalInboxService.listRoutes(req.params.itemId));
+    } catch (err: any) {
+      logger.error(`Inbox routes error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch routing trail' });
     }
   });
 

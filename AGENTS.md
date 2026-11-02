@@ -95,6 +95,44 @@ to the situation's institutions) and also advance by system consequence: an
 official response on a linked report moves the situation to
 `OFFICIAL_RESPONSE_ISSUED` through the same transition map.
 
+## Local governance: national → regional → MMDA desks
+
+The desk model is a six-level hierarchy seeded per institution by
+`DESK_TOPOLOGY` in `server/seedDatabase.ts`:
+
+`NATIONAL → REGIONAL → METROPOLITAN | MUNICIPAL | DISTRICT → SPECIALIST`
+
+The three local tiers are the **MMDA** levels. `DESK_LEVEL_RANK` /
+`DESK_LEVEL_ORDER_SQL` in `CoordinationService.ts` are the single ordering source;
+never hard-code a level CASE elsewhere.
+
+- **Coverage is explicit.** `institution_desks.coverage_mode` is `STANDING`
+  (always operational) or `ON_CALL` (the agency mobilises only when a report
+  needs it). An `ON_CALL` desk is *not* a routing target until it is mobilised
+  (its `mmda_code` is set), so a report for that district escalates to the
+  regional desk — which owns the on-call arrangement. `mobile_ready` flags a desk
+  that can be extended into a neighbouring jurisdiction.
+- **Routing has one owner and a visibility chain.**
+  `CoordinationService.resolveRoutingChain` returns the accountable `primary`
+  desk plus the supervisory `chain`. Report creation (`POST /api/posts`) writes a
+  `PRIMARY` route for the owner and `SUPPORTING` routes for the chain, honouring
+  `institutions.desk_fanout_enabled`. There is exactly one `PRIMARY` per item.
+- **Mobilisation adopts the backlog.** `POST /api/institutions/:id/desks/mobilise`
+  creates (or reactivates) a local desk for a gap district, auto-links it under
+  the regional command, and re-homes open reports already sitting on the
+  supervisory desk for that district — demoting the old `PRIMARY` route to
+  `SUPPORTING` so ownership stays singular.
+- **Coverage gaps are first-class.** `GET /api/institutions/:id/routing-coverage?region=`
+  reports standing vs on-call desks and the districts that raised reports but have
+  no desk. The console's *Hierarchy & Desks → Local Coverage* tab renders it and
+  drives mobilisation.
+
+Schema: `institution_desks.mmda_code` (GSS-aligned code), `coverage_mode`,
+`mobile_ready`; `institutions.desk_fanout_enabled`; index
+`idx_desks_local_tier`. Legacy desks named `*Metropolitan*`/`*Municipal*` are
+relabelled on startup. `inbox_item_routes` is `UNIQUE(inbox_item_id, desk_id)`,
+so `INSERT OR IGNORE` keeps fan-out idempotent.
+
 ## Gotchas
 
 - `users.password_hash` is `NOT NULL`. Use `INSERT OR REPLACE` with a `password_hash` when seeding users; a bare `INSERT OR IGNORE` without it is silently skipped, which then breaks any JOIN on `users` (e.g. desk-officer lookups returning empty).

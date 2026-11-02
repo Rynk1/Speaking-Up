@@ -30,22 +30,22 @@ const INSTITUTION_ALERT_EMAILS: Record<string, string[]> = {
 };
 
 // Desk topology per institution: [name, code, level, region?, district?, specialization?]
-const DESK_TOPOLOGY: Record<string, { name: string; code: string; level: 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST'; region?: string; district?: string; specialization?: string }[]> = {
+const DESK_TOPOLOGY: Record<string, { name: string; code: string; level: 'NATIONAL' | 'REGIONAL' | 'METROPOLITAN' | 'MUNICIPAL' | 'DISTRICT' | 'SPECIALIST'; region?: string; district?: string; mmdaCode?: string; coverageMode?: 'STANDING' | 'ON_CALL'; mobileReady?: boolean; specialization?: string }[]> = {
   'ghana-police-service': [
     { name: 'National Command & Operations Desk', code: 'GPS-NAT', level: 'NATIONAL', specialization: 'National command, oversight and major incident coordination' },
     { name: 'Greater Accra Regional Police Command', code: 'GPS-ACC', level: 'REGIONAL', region: 'Greater Accra', specialization: 'Regional patrol, rapid response and traffic enforcement' },
-    { name: 'Accra Metropolitan Divisional Desk', code: 'GPS-AMA', level: 'DISTRICT', region: 'Greater Accra', district: 'Accra Metropolitan', specialization: 'Metropolitan divisional policing' },
+    { name: 'Accra Metropolitan Divisional Desk', code: 'GPS-AMA', level: 'METROPOLITAN', region: 'Greater Accra', district: 'Accra Metropolitan', mmdaCode: 'AMA', specialization: 'Metropolitan divisional policing' },
     { name: 'Cybercrime & Digital Forensics Unit', code: 'GPS-CYBER', level: 'SPECIALIST', specialization: 'Online fraud, cybercrime and digital evidence' }
   ],
   'nadmo-ghana': [
     { name: 'National Disaster Coordination Centre', code: 'NADMO-NAT', level: 'NATIONAL', specialization: 'National emergency coordination and relief logistics' },
     { name: 'Greater Accra Regional NADMO', code: 'NADMO-ACC', level: 'REGIONAL', region: 'Greater Accra', specialization: 'Regional flood and disaster preparedness' },
-    { name: 'Accra Metropolitan NADMO Desk', code: 'NADMO-AMA', level: 'DISTRICT', region: 'Greater Accra', district: 'Accra Metropolitan', specialization: 'Metropolitan disaster response' }
+    { name: 'Accra Metropolitan NADMO Desk', code: 'NADMO-AMA', level: 'METROPOLITAN', region: 'Greater Accra', district: 'Accra Metropolitan', mmdaCode: 'AMA', specialization: 'Metropolitan disaster response' }
   ],
   'ecg-ghana': [
     { name: 'National Grid Control Desk', code: 'ECG-NAT', level: 'NATIONAL', specialization: 'National grid reliability and load management' },
     { name: 'Ashanti Regional Operations Desk', code: 'ECG-ASH', level: 'REGIONAL', region: 'Ashanti', specialization: 'Regional distribution and substation operations' },
-    { name: 'Kumasi Metropolitan Fault Desk', code: 'ECG-KMA', level: 'DISTRICT', region: 'Ashanti', district: 'Kumasi Metropolitan', specialization: 'Metropolitan fault response and repairs' }
+    { name: 'Kumasi Metropolitan Fault Desk', code: 'ECG-KMA', level: 'METROPOLITAN', region: 'Ashanti', district: 'Kumasi Metropolitan', mmdaCode: 'KMA', specialization: 'Metropolitan fault response and repairs' }
   ],
   'gwcl-ghana': [
     { name: 'National Water Supply Control Desk', code: 'GWCL-NAT', level: 'NATIONAL', specialization: 'National water production and supply oversight' },
@@ -58,10 +58,12 @@ const DESK_TOPOLOGY: Record<string, { name: string; code: string; level: 'NATION
   ],
   'ama-accra': [
     { name: 'Accra Metropolitan Coordination Desk', code: 'AMA-NAT', level: 'NATIONAL', specialization: 'Metropolitan assembly coordination' },
-    { name: 'Waste & Sanitation District Desk', code: 'AMA-WASTE', level: 'DISTRICT', region: 'Greater Accra', district: 'Accra Metropolitan', specialization: 'Waste management and sanitation' }
+    { name: 'Accra Metropolitan Waste & Sanitation Desk', code: 'AMA-WASTE', level: 'METROPOLITAN', region: 'Greater Accra', district: 'Accra Metropolitan', mmdaCode: 'AMA', specialization: 'Waste management and sanitation' }
   ],
   'ghs-health': [
     { name: 'National Public Health Desk', code: 'GHS-NAT', level: 'NATIONAL', specialization: 'Public health surveillance and response' },
+    { name: 'Greater Accra Regional Health Directorate Desk', code: 'GHS-ACC', level: 'REGIONAL', region: 'Greater Accra', specialization: 'Regional public health coordination' },
+    { name: 'Accra Metropolitan Health Response Desk', code: 'GHS-AMA', level: 'DISTRICT', region: 'Greater Accra', district: 'Accra Metropolitan', coverageMode: 'ON_CALL', mobileReady: true, specialization: 'On-call metropolitan outbreak response (mobilised when needed)' },
     { name: 'National Ambulance Dispatch Desk', code: 'GHS-AMB', level: 'SPECIALIST', specialization: 'Emergency medical dispatch' }
   ],
   'gnfs-fire': [
@@ -105,27 +107,31 @@ const INSTITUTION_REP_OFFICERS: {
 ];
 
 /**
- * Links the parent_desk_id chain for an institution's desks by level:
- * DISTRICT -> REGIONAL -> NATIONAL. NATIONAL and SPECIALIST desks keep no parent.
- * Idempotent: only writes when the parent is missing or wrong.
+ * Links the parent_desk_id chain for an institution's desks by level and region:
+ * local tiers (Metropolitan/Municipal/District) -> REGIONAL -> NATIONAL, falling
+ * back to NATIONAL when the agency has no regional desk for that region. NATIONAL
+ * and SPECIALIST desks keep no parent. Idempotent: only writes when the parent is
+ * missing or wrong.
  */
 function linkDeskHierarchy(institutionId: string): void {
   const desks = db.prepare(`
-    SELECT id, code, level FROM institution_desks
+    SELECT id, code, level, region FROM institution_desks
     WHERE institution_id = ? AND status = 'ACTIVE'
   `).all(institutionId) as any[];
   if (desks.length === 0) return;
 
-  const byLevel = (level: string) => desks.find((d) => d.level === level);
-  const national = byLevel('NATIONAL');
-  const regional = byLevel('REGIONAL');
+  const national = desks.find((d) => d.level === 'NATIONAL');
+  const regionalFor = (region?: string) =>
+    desks.find((d) => d.level === 'REGIONAL' && (!region || d.region === region)) ||
+    desks.find((d) => d.level === 'REGIONAL');
+  const isLocal = (level: string) => ['METROPOLITAN', 'MUNICIPAL', 'DISTRICT'].includes(level);
 
   const now = new Date().toISOString();
   const setParent = db.prepare('UPDATE institution_desks SET parent_desk_id = ?, updated_at = ? WHERE id = ? AND (parent_desk_id IS NULL OR parent_desk_id != ?)');
 
   for (const desk of desks) {
     let parentId: string | null = null;
-    if (desk.level === 'DISTRICT') parentId = regional?.id || national?.id || null;
+    if (isLocal(desk.level)) parentId = regionalFor(desk.region)?.id || national?.id || null;
     else if (desk.level === 'REGIONAL') parentId = national?.id || null;
     if (parentId && parentId !== desk.id) {
       try {
@@ -226,10 +232,11 @@ export function seedCoordinationHierarchy(): void {
 
   for (const item of unassignedItems) {
     try {
-      const desk = CoordinationService.resolveDeskForLocation(item.institution_id, {
+      const routing = CoordinationService.resolveRoutingChain(item.institution_id, {
         region: item.region,
         district: item.district
       });
+      const desk = routing.primary;
       if (!desk) continue;
 
       const priority = item.item_priority || 'ELEVATED';
@@ -242,6 +249,13 @@ export function seedCoordinationHierarchy(): void {
         INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
         VALUES (?, ?, ?, ?, 'PRIMARY', ?)
       `).run(`rt-${item.id}`, item.id, item.institution_id, desk.id, now);
+
+      for (const chainDesk of routing.chain) {
+        db.prepare(`
+          INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
+          VALUES (?, ?, ?, ?, 'SUPPORTING', ?)
+        `).run(`rt-${item.id}-${chainDesk.id}`, item.id, item.institution_id, chainDesk.id, now);
+      }
     } catch (e) {
       console.error('Error routing inbox item:', item.id, e);
     }

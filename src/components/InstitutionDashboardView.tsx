@@ -768,6 +768,11 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
             team={team}
             currentInstitution={currentInstitution}
             loading={false}
+            onMobilise={async (payload) => {
+              await api.mobiliseLocalDesk(currentInstitution.id, payload);
+              await loadDesksAndTeam();
+            }}
+            onLoadCoverage={(region) => api.getRoutingCoverage(currentInstitution.id, region)}
           />
         )}
 

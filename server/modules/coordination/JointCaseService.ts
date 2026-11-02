@@ -6,6 +6,8 @@ import { NotificationService } from '../notifications/NotificationService';
 import { CitizenNotificationService } from '../notifications/CitizenNotificationService';
 import { CoordinationService, CoordinationActor } from './CoordinationService';
 import { logger } from '../../shared/logger';
+import { AppError } from '../../shared/errors';
+import { checkCanResolveCase, canTransitionParticipant } from '../../../shared/workflow';
 
 export type CaseStatus = 'OPEN' | 'ACTIVE' | 'RESOLVED' | 'CLOSED';
 export type ParticipantRole = 'LEAD' | 'SUPPORTING' | 'REGULATOR' | 'OBSERVER';
@@ -213,14 +215,8 @@ export class JointCaseService {
       .get(caseId, institutionId) as any;
     if (!participant) throw new Error('This institution is not a participant on the case');
 
-    const allowed: Record<string, ParticipantStatus[]> = {
-      INVITED: ['ACCEPTED', 'DECLINED'],
-      ACCEPTED: ['COMPLETED', 'DECLINED'],
-      DECLINED: ['ACCEPTED'],
-      COMPLETED: []
-    };
-    if (!allowed[participant.status]?.includes(status)) {
-      throw new Error(`Invalid participant transition ${participant.status} -> ${status}`);
+    if (!canTransitionParticipant(participant.status, status)) {
+      throw new AppError(`Invalid participant transition ${participant.status} -> ${status}`, 409, 'INVALID_TRANSITION');
     }
 
     const now = new Date().toISOString();
@@ -302,6 +298,19 @@ export class JointCaseService {
     if (!isOversight && actor.institutionId !== caseRow.lead_institution_id) {
       throw new Error('Only the lead institution or platform oversight may resolve this case');
     }
+
+    // Checks & balances: a joint case cannot be closed while participants still
+    // have work outstanding. Oversight may force a close, but only with a
+    // recorded reason, which lands in the audit trail.
+    const outstanding = db.prepare(`
+      SELECT COUNT(*) AS c FROM coordination_case_participants
+      WHERE case_id = ? AND role <> 'OBSERVER' AND status NOT IN ('COMPLETED', 'DECLINED')
+    `).get(caseId) as any;
+    const caseGate = checkCanResolveCase({
+      outstandingParticipants: outstanding?.c || 0,
+      isOversight
+    });
+    if (!caseGate.ok) throw new AppError(caseGate.reason || 'Cannot resolve this case yet.', 409, 'PREREQUISITE_UNMET');
 
     const now = new Date().toISOString();
     const nextStatus: CaseStatus = close ? 'CLOSED' : 'RESOLVED';

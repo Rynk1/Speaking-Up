@@ -47,6 +47,54 @@ The reporting → action workflow is intentionally layered. Understanding this s
 - `requireInstitutionScope('id')` (in `server/middleware/auth.middleware.ts`) restricts `:id`-scoped routes to the caller's own institution. `ADMIN`, `MODERATOR`, and `EXECUTIVE_OBSERVER` bypass it for oversight.
 - Delegation transitions additionally verify the caller belongs to the sending or receiving institution.
 
+## Unified workflow policy (`shared/workflow.ts`)
+
+Every lifecycle in the platform — work-item, delegation, joint-case participant,
+situation and report accountability — is defined once in `shared/workflow.ts`
+and imported by **both** the Express layer and the React client. That is the
+single source of truth for "may this transition happen?"; do not re-implement a
+transition table in a route or a component.
+
+- Pure predicates: `canTransitionWorkItem`, `canTransitionDelegation`,
+  `canTransitionParticipant`, `canTransitionSituation`,
+  `canTransitionAccountability`, plus `nextAccountabilityStatuses` /
+  `nextSituationStatuses` for driving selects.
+- Prerequisite gates: `checkCanAssign`, `checkCanEscalate`, `checkCanHandoff`,
+  `checkCanResolve`. Each returns `{ ok, reason? }`. `evaluateWorkItemActions(facts)`
+  returns per-action `{ enabled, reason }` so the client can render a disabled
+  button with the exact reason instead of hiding it.
+- **Accountability is forward-only**: `ACCOUNTABILITY_STAGE` ranks every status
+  (including legacy aliases); a transition is allowed only when the target rank
+  is ≥ the current rank. `ACCOUNTABILITY_LADDER` is the canonical set the UI
+  offers. `SUBSTANTIVE_ACCOUNTABILITY` maps statuses that assert real work
+  (`RESPONDED`/`ACTION_*`/`RESOLVED`) to the artefact they require, so a report
+  cannot be marked resolved without a published response or recorded action.
+- **System actors bypass operator gates** but can never move an item backwards.
+  Oversight (`ADMIN`/`MODERATOR`) may act where an operator cannot, but a
+  resolution still needs a recorded reason.
+
+Server routes surface the policy decision as a specific error: `409`
+`INVALID_TRANSITION` for a disallowed edge, `409` `PREREQUISITE_UNMET` for a
+legal edge whose artefact is missing, `403` for an ownership/scope failure.
+`server/modules/institutional-inbox/InstitutionalInboxService.transitionItemState`
+is the canonical entry point; `buildWorkItemFacts` gathers the facts the gates
+need. Institution-scope checks apply to `PUT /api/posts/:id/status`,
+`POST /api/posts/:id/response` and `POST /api/situations/:id/status` (a
+representative may only act on a report or situation routed to their agency;
+oversight may act on any).
+
+Client gating: `InstitutionDashboardView` consolidates the nine flat status
+tabs into one **Report Register** with quick-filter chips derived from
+`ACCOUNTABILITY_STAGE` ranks, and drives the post-status select from
+`nextAccountabilityStatuses`. `InstitutionalInboxView` renders workflow buttons
+through `evaluateWorkItemActions`. `SituationDossierModal` drives its status
+select from `nextSituationStatuses` and surfaces the server error inline.
+
+Civic situations have their own route (`POST /api/situations/:id/status`, scoped
+to the situation's institutions) and also advance by system consequence: an
+official response on a linked report moves the situation to
+`OFFICIAL_RESPONSE_ISSUED` through the same transition map.
+
 ## Gotchas
 
 - `users.password_hash` is `NOT NULL`. Use `INSERT OR REPLACE` with a `password_hash` when seeding users; a bare `INSERT OR IGNORE` without it is silently skipped, which then breaks any JOIN on `users` (e.g. desk-officer lookups returning empty).

@@ -21,6 +21,7 @@ import {
 import { CivicSituation, Institution, CivicPost } from '../../types';
 import { api } from '../../services/api';
 import { CivicPriorityIndicator } from './CivicPriorityIndicator';
+import { SITUATION_STAGES, SITUATION_STAGE_LABELS, nextSituationStatuses } from '../../../shared/workflow';
 
 interface SituationDossierModalProps {
   situationId: string | null;
@@ -44,6 +45,7 @@ export const SituationDossierModal: React.FC<SituationDossierModalProps> = ({
   const [situation, setSituation] = useState<CivicSituation | null>(null);
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'timeline' | 'announcements'>('overview');
 
   useEffect(() => {
@@ -74,6 +76,7 @@ export const SituationDossierModal: React.FC<SituationDossierModalProps> = ({
 
   const handleStatusUpdate = async (newStatus: string) => {
     if (!situation) return;
+    setStatusError(null);
     setStatusLoading(true);
     try {
       // Direct status transition via API
@@ -95,21 +98,22 @@ export const SituationDossierModal: React.FC<SituationDossierModalProps> = ({
         const updated = await api.getCivicSituationById(situation.id);
         setSituation(updated);
         if (onSituationUpdated) onSituationUpdated();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setStatusError(body.error || 'The workflow policy refused this status change.');
       }
     } catch (err) {
       console.error('Failed to update situation status:', err);
+      setStatusError('Could not reach the server to update the status.');
     } finally {
       setStatusLoading(false);
     }
   };
 
-  const statusPipeline = [
-    { key: 'REPORTED', label: 'Reported' },
-    { key: 'VERIFYING', label: 'Verifying' },
-    { key: 'ACTIVE_MONITORING', label: 'Monitoring' },
-    { key: 'INTERVENTION_IN_PROGRESS', label: 'Intervention' },
-    { key: 'RESOLVED', label: 'Resolved' }
-  ];
+  const statusPipeline = SITUATION_STAGES.map((key) => ({
+    key,
+    label: SITUATION_STAGE_LABELS[key] || key
+  }));
 
   return (
     <div
@@ -213,18 +217,25 @@ export const SituationDossierModal: React.FC<SituationDossierModalProps> = ({
                   <select
                     value={situation.status}
                     onChange={(e) => handleStatusUpdate(e.target.value)}
-                    disabled={statusLoading}
-                    className="bg-slate-900 text-amber-300 border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-bold focus:outline-none"
+                    disabled={statusLoading || nextSituationStatuses(situation.status).length === 0}
+                    title={
+                      nextSituationStatuses(situation.status).length === 0
+                        ? 'This situation has reached the end of its lifecycle.'
+                        : 'Only the next permitted stage is offered; each stage is enforced by the workflow policy.'
+                    }
+                    className="bg-slate-900 text-amber-300 border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-bold focus:outline-none disabled:opacity-60"
                   >
-                    <option value="REPORTED">REPORTED</option>
-                    <option value="VERIFYING">VERIFYING</option>
-                    <option value="ACTIVE_MONITORING">ACTIVE_MONITORING</option>
-                    <option value="OFFICIAL_RESPONSE_ISSUED">OFFICIAL_RESPONSE_ISSUED</option>
-                    <option value="INTERVENTION_IN_PROGRESS">INTERVENTION_IN_PROGRESS</option>
-                    <option value="RESOLVED">RESOLVED</option>
-                    <option value="CLOSED">CLOSED</option>
+                    <option value={situation.status}>{situation.status.replace(/_/g, ' ')}</option>
+                    {nextSituationStatuses(situation.status).map((s) => (
+                      <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                    ))}
                   </select>
                 </div>
+                {statusError && (
+                  <p className="text-[10px] text-rose-300 bg-rose-950/50 border border-rose-900/60 rounded-lg px-2 py-1">
+                    {statusError}
+                  </p>
+                )}
               </div>
             </div>
 

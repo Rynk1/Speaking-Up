@@ -2,6 +2,13 @@ import { db } from '../../database/db';
 import { OutboxService } from '../../infrastructure/events/OutboxService';
 import { AuditService } from '../audit/AuditService';
 import { logger } from '../../shared/logger';
+import { AppError } from '../../shared/errors';
+import {
+  canTransitionWorkItem,
+  checkCanResolve,
+  WORK_ITEM_SEQUENCE,
+  type WorkItemFacts
+} from '../../../shared/workflow';
 
 export type InboxItemType = 'REPORT' | 'MENTION' | 'FOLLOW_UP' | 'EVIDENCE' | 'RESPONSE' | 'ANNOUNCEMENT' | 'ESCALATION';
 export type ActionState =
@@ -263,7 +270,7 @@ export class InstitutionalInboxService {
       // Only move forward, so a later resolution still advances an already-responded item.
       if (currentRank >= targetRank) continue;
       try {
-        this.transitionItemState(item.id, targetState, actor, reason);
+        this.transitionItemState(item.id, targetState, actor, reason, { system: true });
         advanced++;
       } catch (err: any) {
         logger.warn(`Failed to advance inbox item ${item.id} from response: ${err.message}`);
@@ -272,11 +279,34 @@ export class InstitutionalInboxService {
     return advanced;
   }
 
+  /**
+   * Gathers the facts the workflow policy needs to gate an item's transitions:
+   * whether the linked report already has an official response or a recorded
+   * action, and whether an accountable official is attached.
+   */
+  private static buildWorkItemFacts(item: any, actorRole: string): WorkItemFacts {
+    let hasResponse = false;
+    let hasAction = false;
+    if (item.post_id) {
+      hasResponse = Boolean(db.prepare('SELECT 1 FROM institution_responses WHERE post_id = ? LIMIT 1').get(item.post_id));
+      hasAction = Boolean(db.prepare('SELECT 1 FROM institution_actions WHERE post_id = ? LIMIT 1').get(item.post_id));
+    }
+    return {
+      actionState: item.action_state,
+      hasResponse,
+      hasAction,
+      hasOfficer: Boolean(item.assigned_officer_user_id),
+      isMirror: Boolean(item.mirror_of_item_id),
+      isOversight: actorRole === 'ADMIN' || actorRole === 'MODERATOR'
+    };
+  }
+
   public static transitionItemState(
     itemId: string,
     targetState: ActionState,
     actor: { id: string; name: string; role: string },
-    notes?: string
+    notes?: string,
+    options: { system?: boolean } = {}
   ): any {
     const item = db.prepare('SELECT * FROM institutional_inbox_items WHERE id = ?').get(itemId) as any;
     if (!item) {
@@ -288,6 +318,31 @@ export class InstitutionalInboxService {
 
     const beforeState = item.action_state;
     const now = new Date().toISOString();
+
+    // Checks & balances: an operator may only move along a permitted edge of the
+    // lifecycle. System-driven advances (an official response, a joint-case
+    // resolution, an SLA sweep) are a consequence of a real event and may skip
+    // ahead, but they can never move an item *backwards* out of a later stage.
+    const facts = this.buildWorkItemFacts(item, actor.role);
+    if (options.system) {
+      const fromRank = WORK_ITEM_SEQUENCE.indexOf(beforeState as any);
+      const toRank = WORK_ITEM_SEQUENCE.indexOf(targetState as any);
+      if (beforeState !== 'CITIZEN_FOLLOW_UP' && fromRank !== -1 && toRank !== -1 && toRank < fromRank) {
+        throw new AppError(`Cannot move work item backwards from ${beforeState} to ${targetState}`, 409, 'INVALID_TRANSITION');
+      }
+    } else {
+      if (!canTransitionWorkItem(beforeState, targetState)) {
+        throw new AppError(
+          `Invalid workflow transition ${beforeState} → ${targetState}. The preceding step must be completed first.`,
+          409,
+          'INVALID_TRANSITION'
+        );
+      }
+      if (targetState === 'RESOLVED') {
+        const gate = checkCanResolve(facts, Boolean(notes && notes.trim()));
+        if (!gate.ok) throw new AppError(gate.reason || 'Cannot resolve this item yet.', 409, 'PREREQUISITE_UNMET');
+      }
+    }
 
     db.prepare(`
       UPDATE institutional_inbox_items

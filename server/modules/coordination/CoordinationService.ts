@@ -5,6 +5,14 @@ import { InstitutionalInboxService } from '../institutional-inbox/InstitutionalI
 import { NotificationService } from '../notifications/NotificationService';
 import { CitizenNotificationService } from '../notifications/CitizenNotificationService';
 import { logger } from '../../shared/logger';
+import { AppError } from '../../shared/errors';
+import {
+  canTransitionDelegation,
+  checkCanAssign,
+  checkCanHandoff,
+  checkCanEscalate,
+  type WorkItemFacts
+} from '../../../shared/workflow';
 
 export type DeskLevel = 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST';
 export type DelegationType = 'TRANSFER' | 'DELEGATION' | 'ESCALATION' | 'INFORMATION';
@@ -376,16 +384,8 @@ export class CoordinationService {
     const delegation = db.prepare('SELECT * FROM coordination_delegations WHERE id = ?').get(delegationId) as any;
     if (!delegation) throw new Error(`Delegation ${delegationId} not found`);
 
-    const allowed: Record<string, DelegationStatus[]> = {
-      PENDING: ['ACCEPTED', 'DECLINED', 'CANCELLED'],
-      ACCEPTED: ['COMPLETED', 'CANCELLED'],
-      DECLINED: ['CANCELLED'],
-      COMPLETED: [],
-      CANCELLED: []
-    };
-
-    if (!allowed[delegation.status]?.includes(targetStatus)) {
-      throw new Error(`Invalid delegation transition ${delegation.status} -> ${targetStatus}`);
+    if (!canTransitionDelegation(delegation.status, targetStatus)) {
+      throw new AppError(`Invalid delegation transition ${delegation.status} -> ${targetStatus}`, 409, 'INVALID_TRANSITION');
     }
 
     const now = new Date().toISOString();
@@ -684,6 +684,13 @@ export class CoordinationService {
     }
 
     const fromDeskId = input.fromDeskId || item?.desk_id || null;
+
+    // Checks & balances: work must be acknowledged before it can be routed.
+    if (item) {
+      const gate = checkCanHandoff(this.buildWorkItemFacts(item, input.actor));
+      if (!gate.ok) throw new AppError(gate.reason || 'Handoff not permitted yet.', 409, 'PREREQUISITE_UNMET');
+    }
+
     const direction = this.resolveHandoffDirection(input.institutionId, fromDeskId, input.toDeskId);
     const delegationType: DelegationType = direction === 'UPWARD' ? 'ESCALATION' : 'DELEGATION';
     const priority = input.priority || item?.item_priority || 'ELEVATED';
@@ -817,6 +824,9 @@ export class CoordinationService {
     if (!item) throw new Error(`Inbox item ${input.inboxItemId} not found`);
     if (item.mirror_of_item_id) throw new Error('Cannot assign a read-only mirror');
 
+    const assignGate = checkCanAssign(this.buildWorkItemFacts(item, input.actor));
+    if (!assignGate.ok) throw new AppError(assignGate.reason || 'Assignment not permitted yet.', 409, 'PREREQUISITE_UNMET');
+
     if (input.deskId) {
       const desk = db.prepare('SELECT id FROM institution_desks WHERE id = ? AND institution_id = ?')
         .get(input.deskId, item.institution_id) as any;
@@ -905,6 +915,11 @@ export class CoordinationService {
     const item = db.prepare('SELECT * FROM institutional_inbox_items WHERE id = ?').get(input.inboxItemId) as any;
     if (!item) throw new Error(`Inbox item ${input.inboxItemId} not found`);
     if (item.mirror_of_item_id) throw new Error('Cannot escalate a read-only mirror');
+
+    const escalateGate = checkCanEscalate(this.buildWorkItemFacts(item, input.actor), {
+      isSystem: input.actor.role === 'SYSTEM'
+    });
+    if (!escalateGate.ok) throw new AppError(escalateGate.reason || 'Escalation not permitted yet.', 409, 'PREREQUISITE_UNMET');
 
     const target = this.resolveEscalationTarget(item.institution_id, item.desk_id, input.toDeskId);
     if (!target) throw new Error('No escalation target available for this institution');
@@ -1259,6 +1274,28 @@ export class CoordinationService {
     if (toRank < fromRank) return 'UPWARD';
     if (toRank > fromRank) return 'DOWNWARD';
     return 'LATERAL';
+  }
+
+  /**
+   * Gathers the facts the shared workflow policy needs to gate a work item's
+   * actions: whether the linked report already has an official response or a
+   * recorded action, and whether an accountable official is attached.
+   */
+  private static buildWorkItemFacts(item: any, actor: CoordinationActor): WorkItemFacts {
+    let hasResponse = false;
+    let hasAction = false;
+    if (item?.post_id) {
+      hasResponse = Boolean(db.prepare('SELECT 1 FROM institution_responses WHERE post_id = ? LIMIT 1').get(item.post_id));
+      hasAction = Boolean(db.prepare('SELECT 1 FROM institution_actions WHERE post_id = ? LIMIT 1').get(item.post_id));
+    }
+    return {
+      actionState: item?.action_state,
+      hasResponse,
+      hasAction,
+      hasOfficer: Boolean(item?.assigned_officer_user_id),
+      isMirror: Boolean(item?.mirror_of_item_id),
+      isOversight: actor.role === 'ADMIN' || actor.role === 'MODERATOR'
+    };
   }
 
   /**

@@ -477,7 +477,10 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ status })
     });
-    if (!res.ok) throw new Error('Failed to update issue status');
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to update issue status');
+    }
     return res.json();
   },
 

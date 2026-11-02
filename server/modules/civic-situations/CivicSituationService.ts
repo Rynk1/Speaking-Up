@@ -155,7 +155,7 @@ export class CivicSituationService {
         severity, urgency, status, priority_score, priority_band, priority_factors_json,
         first_reported_at, latest_activity_at, report_count, confirmation_count, evidence_count,
         amplification_count, primary_institution_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, '{}', ?, ?, 1, ?, 0, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE_MONITORING', ?, ?, '{}', ?, ?, 1, ?, 0, ?, ?, ?, ?)
     `).run(
       situationId,
       title,

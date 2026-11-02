@@ -400,7 +400,22 @@ describe('Inter-Institutional Coordination & Delegation Workflow', () => {
       .send({ targetState: 'UNDER_REVIEW' });
     expect(denied.status).toBe(500);
 
-    // Acting on the source propagates to the mirror
+    // Checks & balances: the lifecycle cannot be short-circuited. A brand-new
+    // item cannot jump straight to review; the preceding step is required first.
+    const skipped = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${source.id}/transition`)
+      .set('Authorization', `Bearer ${policeToken}`)
+      .send({ targetState: 'UNDER_REVIEW' });
+    expect(skipped.status).toBe(409);
+    expect(skipped.body.code).toBe('INVALID_TRANSITION');
+
+    // Walking the permitted path succeeds and propagates to the mirror
+    const ack = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${source.id}/transition`)
+      .set('Authorization', `Bearer ${policeToken}`)
+      .send({ targetState: 'ACKNOWLEDGED' });
+    expect(ack.status).toBe(200);
+
     const ok = await request(app)
       .post(`/api/institutions/ghana-police-service/inbox/${source.id}/transition`)
       .set('Authorization', `Bearer ${policeToken}`)

@@ -3,14 +3,8 @@ import {
   Building2,
   ShieldCheck,
   AlertTriangle,
-  Flame,
-  CheckCircle2,
-  Clock,
-  Send,
-  MessageSquare,
-  Filter,
   Check,
-  ChevronRight,
+  Clock,
   Activity,
   FileText,
   Users,
@@ -19,15 +13,10 @@ import {
   Search,
   Radio,
   ExternalLink,
-  ChevronDown,
-  ChevronUp,
-  ArrowRight,
   Layers,
   MapPin,
-  TrendingUp,
   UserCheck,
   HelpCircle,
-  FolderCheck,
   GitPullRequest,
   Plus,
   Trash2,
@@ -58,6 +47,7 @@ import { CoordinationDeskView } from './institution/CoordinationDeskView';
 import { SituationDossierModal } from './institution/SituationDossierModal';
 import { AnnouncementComposerModal } from './institution/AnnouncementComposerModal';
 import { ConsoleLayout, type ConsoleNavSection, SearchInput, Select, useToast } from './ui';
+import { nextAccountabilityStatuses, ACCOUNTABILITY_STAGE } from '../../shared/workflow';
 
 export type InstitutionTab =
   | 'overview'
@@ -66,16 +56,11 @@ export type InstitutionTab =
   | 'announcements'
   | 'desks'
   | 'coordination'
-  | 'new_awareness'
-  | 'urgent'
-  | 'trending'
-  | 'assigned'
-  | 'under_review'
-  | 'responses'
-  | 'action_reported'
-  | 'citizen_followup'
-  | 'closed'
+  | 'register'
   | 'config';
+
+/** The accountability-status filter offered on the consolidated Report Register. */
+type RegisterFilter = 'ALL' | 'NEW' | 'URGENT' | 'IN_REVIEW' | 'RESPONDED' | 'ACTION_REPORTED' | 'CLOSED';
 
 interface InstitutionDashboardViewProps {
   institutions: Institution[];
@@ -105,6 +90,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
   const [activeTab, setActiveTab] = useState<InstitutionTab>('overview');
   const { currentUser, userRole } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [registerFilter, setRegisterFilter] = useState<RegisterFilter>('ALL');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedReportPost, setSelectedReportPost] = useState<CivicPost | null>(null);
   const toast = useToast();
@@ -250,20 +236,30 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
     p.institutionTags.some(t => t.institutionId === currentInstitution?.id)
   );
 
-  // Filter categories matching PRD Phase 7
-  const newAwarenessPosts = taggedPosts.filter(p =>
-    !p.accountabilityStatus || p.accountabilityStatus === 'NOT_ROUTED' || p.accountabilityStatus === 'QUEUED'
-  );
-  const urgentPosts = taggedPosts.filter(p => p.urgency === 'CRITICAL' || p.severity === 'EMERGENCY');
-  const trendingPosts = taggedPosts.filter(p => p.engagement.confirmations >= 5 || (p.engagement.shares && p.engagement.shares >= 3));
-  const assignedPosts = taggedPosts.filter(p => p.accountabilityStatus === 'ASSIGNED');
-  const underReviewPosts = taggedPosts.filter(p => p.accountabilityStatus === 'UNDER_REVIEW' || p.accountabilityStatus === 'ACKNOWLEDGED');
-  const answeredPosts = taggedPosts.filter(p =>
-    p.officialResponses?.some(r => r.institutionId === currentInstitution?.id) || p.accountabilityStatus === 'RESPONDED'
-  );
-  const actionReportedPosts = taggedPosts.filter(p => p.accountabilityStatus === 'ACTION_REPORTED');
-  const citizenFollowupPosts = taggedPosts.filter(p => p.communityEvidence && p.communityEvidence.length > 0);
-  const closedPosts = taggedPosts.filter(p => p.accountabilityStatus === 'RESOLVED' || p.accountabilityStatus === 'COMMUNITY_CONFIRMED');
+  // The consolidated register applies the quick-filter and the keyword search.
+  // Facets are expressed as stage ranks so every legacy status value lands in
+  // exactly one bucket rather than falling through the gaps.
+  const registerPosts = taggedPosts.filter(p => {
+    const stage = ACCOUNTABILITY_STAGE[p.accountabilityStatus || 'NOT_ROUTED'] ?? 0;
+    const isUrgent = p.urgency === 'CRITICAL' || p.severity === 'EMERGENCY';
+    const hasOwnResponse = Boolean(p.officialResponses?.some(r => r.institutionId === currentInstitution?.id));
+    if (registerFilter === 'NEW' && stage > 1) return false;
+    if (registerFilter === 'URGENT' && !isUrgent) return false;
+    if (registerFilter === 'IN_REVIEW' && !(stage >= 2 && stage <= 3)) return false;
+    if (registerFilter === 'RESPONDED' && !(stage >= 4 || hasOwnResponse)) return false;
+    if (registerFilter === 'ACTION_REPORTED' && stage !== 5) return false;
+    if (registerFilter === 'CLOSED' && stage < 6) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      return (
+        p.title.toLowerCase().includes(q) ||
+        p.content.toLowerCase().includes(q) ||
+        (p.location?.district || '').toLowerCase().includes(q) ||
+        (p.location?.region || '').toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
   const pendingInboxCount = inboxItems.filter(i => i.actionState === 'NEW' || i.actionState === 'SEEN' || i.actionState === 'UNDER_REVIEW').length;
   const activeSituationsCount = situations.filter(s => s.status === 'ACTIVE_MONITORING' || s.status === 'INTERVENTION_IN_PROGRESS' || s.status === 'REPORTED' || s.status === 'VERIFYING').length;
@@ -276,18 +272,24 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
       case 'announcements': return 'Official Communiqués';
       case 'desks': return 'Hierarchy & Routing Desks';
       case 'coordination': return 'Coordination & Delegations';
-      case 'new_awareness': return 'New Awareness';
-      case 'urgent': return 'Urgent / Crisis Desk';
-      case 'trending': return 'Trending / Viral Issues';
-      case 'assigned': return 'Assigned Internally';
-      case 'under_review': return 'Under Field Assessment';
-      case 'responses': return 'Responded / Statements';
-      case 'action_reported': return 'Action Reported';
-      case 'citizen_followup': return 'Citizen Evidence Follow-up';
-      case 'closed': return 'Closed / Resolved Archive';
+      case 'register': return 'Report Register';
       case 'config': return 'Agency & Channel Config';
     }
   };
+
+  const stageOf = (p: CivicPost) => ACCOUNTABILITY_STAGE[p.accountabilityStatus || 'NOT_ROUTED'] ?? 0;
+  const urgentPosts = taggedPosts.filter(p => p.urgency === 'CRITICAL' || p.severity === 'EMERGENCY');
+  const newAwarenessPosts = taggedPosts.filter(p => stageOf(p) <= 1);
+  const answeredPosts = taggedPosts.filter(p => stageOf(p) >= 4);
+  const registerFilters: { id: RegisterFilter; label: string; count: number }[] = [
+    { id: 'ALL', label: 'All', count: taggedPosts.length },
+    { id: 'NEW', label: 'New', count: newAwarenessPosts.length },
+    { id: 'URGENT', label: 'Urgent', count: urgentPosts.length },
+    { id: 'IN_REVIEW', label: 'In Review', count: taggedPosts.filter(p => stageOf(p) >= 2 && stageOf(p) <= 3).length },
+    { id: 'RESPONDED', label: 'Responded', count: answeredPosts.length },
+    { id: 'ACTION_REPORTED', label: 'Action Reported', count: taggedPosts.filter(p => stageOf(p) === 5).length },
+    { id: 'CLOSED', label: 'Closed', count: taggedPosts.filter(p => stageOf(p) >= 6).length }
+  ];
 
   const navSections: ConsoleNavSection<InstitutionTab>[] = [
     {
@@ -302,17 +304,9 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
       ]
     },
     {
-      label: 'Citizen Issue Queues',
+      label: 'Citizen Reports',
       items: [
-        { id: 'new_awareness', label: 'New Awareness', icon: <FileText className="w-4 h-4" />, badge: newAwarenessPosts.length },
-        { id: 'urgent', label: 'Urgent / Crisis Desk', icon: <Flame className="w-4 h-4 text-red-400" />, badge: urgentPosts.length },
-        { id: 'trending', label: 'Trending / Viral', icon: <TrendingUp className="w-4 h-4 text-amber-400" />, badge: trendingPosts.length },
-        { id: 'assigned', label: 'Assigned Internally', icon: <UserCheck className="w-4 h-4 text-emerald-400" />, badge: assignedPosts.length },
-        { id: 'under_review', label: 'Under Assessment', icon: <Clock className="w-4 h-4 text-blue-400" />, badge: underReviewPosts.length },
-        { id: 'responses', label: 'Responded Statements', icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />, badge: answeredPosts.length },
-        { id: 'action_reported', label: 'Action Reported', icon: <GitPullRequest className="w-4 h-4 text-amber-300" />, badge: actionReportedPosts.length },
-        { id: 'citizen_followup', label: 'Citizen Evidence', icon: <MessageSquare className="w-4 h-4 text-purple-400" />, badge: citizenFollowupPosts.length },
-        { id: 'closed', label: 'Closed / Resolved', icon: <FolderCheck className="w-4 h-4 text-slate-400" />, badge: closedPosts.length }
+        { id: 'register', label: 'Report Register', icon: <FileText className="w-4 h-4" />, badge: taggedPosts.length }
       ]
     },
     {
@@ -531,17 +525,15 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                     value={post.accountabilityStatus || 'NEW_AWARENESS'}
                     onChange={e => handleStatusChange(post.id, e.target.value)}
                     disabled={actionLoading === `status-${post.id}`}
+                    title="Only forward steps are offered; each substantive status requires its artefact."
                     className="bg-slate-900 text-amber-300 border border-slate-700 rounded-lg p-1 text-[11px] font-bold focus:outline-none"
                   >
-                    <option value="NEW_AWARENESS">NEW_AWARENESS</option>
-                    <option value="URGENT">URGENT</option>
-                    <option value="TRENDING">TRENDING</option>
-                    <option value="ASSIGNED">ASSIGNED</option>
-                    <option value="UNDER_REVIEW">UNDER_REVIEW</option>
-                    <option value="RESPONDED">RESPONDED</option>
-                    <option value="ACTION_REPORTED">ACTION_REPORTED</option>
-                    <option value="CITIZEN_FOLLOW_UP">CITIZEN_FOLLOW_UP</option>
-                    <option value="CLOSED">RESOLVED / CLOSED</option>
+                    <option value={post.accountabilityStatus || 'NEW_AWARENESS'}>
+                      {(post.accountabilityStatus || 'NEW_AWARENESS').replace(/_/g, ' ')}
+                    </option>
+                    {nextAccountabilityStatuses(post.accountabilityStatus).map(s => (
+                      <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -630,10 +622,10 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
       }
     >
         {/* Global Search Bar for Tagged Queue */}
-        {!['overview', 'inbox', 'situations', 'announcements', 'desks', 'config'].includes(activeTab) && (
+        {activeTab === 'register' && (
           <SearchInput
             icon={<Search className="w-4 h-4" />}
-            placeholder={`Filter ${getTabLabel(activeTab)} by keyword or district…`}
+            placeholder={`Filter the report register by keyword, district or region…`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -791,16 +783,32 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
           />
         )}
 
-        {/* WORKFLOW TABS CONTENT */}
-        {activeTab === 'new_awareness' && renderPostList(newAwarenessPosts, 'No new unacknowledged citizen awareness reports.')}
-        {activeTab === 'urgent' && renderPostList(urgentPosts, 'No active critical or high-severity safety reports.')}
-        {activeTab === 'trending' && renderPostList(trendingPosts, 'No high-velocity trending issues right now.')}
-        {activeTab === 'assigned' && renderPostList(assignedPosts, 'No internally assigned issues yet. Click "Assign Dept" on any report.')}
-        {activeTab === 'under_review' && renderPostList(underReviewPosts, 'No issues currently under field inspection.')}
-        {activeTab === 'responses' && renderPostList(answeredPosts, 'No official response statements published yet.')}
-        {activeTab === 'action_reported' && renderPostList(actionReportedPosts, 'No direct field intervention actions reported yet.')}
-        {activeTab === 'citizen_followup' && renderPostList(citizenFollowupPosts, 'No citizen evidence follow-ups submitted yet.')}
-        {activeTab === 'closed' && renderPostList(closedPosts, 'No closed or resolved issues in archive.')}
+        {/* TAB: CONSOLIDATED REPORT REGISTER */}
+        {activeTab === 'register' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {registerFilters.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setRegisterFilter(f.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 border ${
+                    registerFilter === f.id
+                      ? 'bg-amber-500 text-slate-950 border-amber-400'
+                      : 'bg-slate-900 text-slate-300 border-slate-800 hover:text-white hover:border-slate-700'
+                  }`}
+                >
+                  {f.label}
+                  <span className={`text-[10px] px-1.5 rounded-full ${
+                    registerFilter === f.id ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-950 text-slate-400'
+                  }`}>
+                    {f.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {renderPostList(registerPosts, 'No reports match this register view yet.')}
+          </div>
+        )}
 
         {/* TAB: AGENCY CONFIG */}
         {activeTab === 'config' && (

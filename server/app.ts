@@ -14,6 +14,7 @@ import { sanitizeText, sanitizePlainText } from './shared/sanitize';
 import { logger } from './shared/logger';
 import { idempotencyMiddleware } from './shared/idempotency';
 import { globalErrorHandler } from './shared/errors';
+import { canTransitionAccountability, SUBSTANTIVE_ACCOUNTABILITY, ACCOUNTABILITY_STAGE, canTransitionSituation } from '../shared/workflow';
 import { BASE_UPLOAD_DIR, STORAGE_ZONES, verifySignedAccessToken, generateSignedAccessToken } from './storage';
 import { processMediaFile } from './media/mediaPipeline';
 import { PrivacyOrchestrator } from './privacy/privacyOrchestrator';
@@ -2313,6 +2314,26 @@ export function createApp() {
       const instRow = db.prepare('SELECT * FROM institutions WHERE id = ?').get(institutionId) as any;
       if (!instRow) return res.status(404).json({ error: 'Institution not found' });
 
+      // Checks & balances: a representative may only publish for the agency they
+      // belong to (oversight may act on any), and only for a report that agency
+      // was actually tagged on or already owns. This closes a real gap where any
+      // rep could answer on behalf of any agency by passing its id.
+      const isOversight = user.role === 'ADMIN' || user.role === 'MODERATOR';
+      if (!isOversight && user.institutionId !== institutionId) {
+        return res.status(403).json({ error: 'You can only publish responses for your own institution' });
+      }
+      if (!isOversight) {
+        const tagged = db.prepare(
+          'SELECT 1 FROM post_institution_tags WHERE post_id = ? AND institution_id = ?'
+        ).get(postId, institutionId);
+        const owns = db.prepare(
+          'SELECT owner_institution_id FROM posts WHERE id = ?'
+        ).get(postId) as any;
+        if (!tagged && owns?.owner_institution_id !== institutionId) {
+          return res.status(403).json({ error: 'This report is not routed to your institution' });
+        }
+      }
+
       // Determine response type
       let mappedType: any = responseType || 'ACKNOWLEDGEMENT';
       if (mappedType === 'WE_ARE_AWARE') mappedType = 'ACKNOWLEDGEMENT';
@@ -2355,6 +2376,42 @@ export function createApp() {
             updated_at = ?
         WHERE id = ?
       `).run(instRow.id, isResolution ? 'RESOLVED' : 'RESPONDED', isResolution ? 1 : 0, nowResp, nowResp, postId);
+
+      // A public response on a report that belongs to a civic situation moves
+      // the situation to "official response issued" — a system consequence of a
+      // real event, so it advances without an operator click but still respects
+      // the situation's own transition map.
+      try {
+        const sitRel = db.prepare('SELECT situation_id FROM situation_reports WHERE report_id = ?').get(postId) as any;
+        if (sitRel?.situation_id) {
+          const sit = db.prepare('SELECT status FROM civic_situations WHERE id = ?').get(sitRel.situation_id) as any;
+          if (sit && canTransitionSituation(sit.status, 'OFFICIAL_RESPONSE_ISSUED')) {
+            db.prepare('UPDATE civic_situations SET status = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?')
+              .run('OFFICIAL_RESPONSE_ISSUED', nowResp, nowResp, sitRel.situation_id);
+            db.prepare(`
+              INSERT INTO situation_events (id, situation_id, event_type, actor_type, actor_id, actor_name, institution_id, description, metadata_json, created_at)
+              VALUES (?, ?, 'SITUATION_STATUS_OFFICIAL_RESPONSE_ISSUED', 'INSTITUTION', ?, ?, ?, ?, ?, ?)
+            `).run(
+              `sev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              sitRel.situation_id,
+              user.id,
+              user.name,
+              instRow.id,
+              `Official response issued by ${instRow.official_name}`,
+              JSON.stringify({ beforeState: sit.status, afterState: 'OFFICIAL_RESPONSE_ISSUED', postId }),
+              nowResp
+            );
+            OutboxService.enqueueEvent('civic.situation.status_changed', 'SITUATION', sitRel.situation_id, {
+              situationId: sitRel.situation_id,
+              beforeState: sit.status,
+              afterState: 'OFFICIAL_RESPONSE_ISSUED',
+              reason: 'OFFICIAL_RESPONSE'
+            });
+          }
+        }
+      } catch (sitErr: any) {
+        logger.warn(`Situation response advance warning: ${sitErr.message}`);
+      }
 
       // Notify the reporting citizen that an official response was published
       const respPost = db.prepare('SELECT author_id, title FROM posts WHERE id = ?').get(postId) as any;
@@ -2628,20 +2685,60 @@ export function createApp() {
       const user = req.user!;
       const { status } = req.body;
 
-      const validStatuses = [
-        'NEW_AWARENESS',
-        'URGENT',
-        'TRENDING',
-        'ASSIGNED',
-        'UNDER_REVIEW',
-        'RESPONDED',
-        'ACTION_REPORTED',
-        'CITIZEN_FOLLOW_UP',
-        'CLOSED'
-      ];
+      const validStatuses = Object.keys(ACCOUNTABILITY_STAGE);
 
       if (!status || !validStatuses.includes(status)) {
         return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      }
+
+      const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(postId) as any;
+      if (!post) return res.status(404).json({ error: 'Report not found' });
+
+      // Checks & balances: a representative may only act on a report routed to
+      // their own agency (oversight may act on any). Without this, any rep could
+      // drive the status of a report that was never assigned to them.
+      const isOversight = user.role === 'ADMIN' || user.role === 'MODERATOR';
+      if (!isOversight) {
+        const tagged = db.prepare(
+          'SELECT 1 FROM post_institution_tags WHERE post_id = ? AND institution_id = ?'
+        ).get(postId, user.institutionId || '');
+        if (!tagged && post.owner_institution_id !== user.institutionId) {
+          return res.status(403).json({ error: 'This report is not routed to your institution' });
+        }
+      }
+
+      // Checks & balances: the accountability status may only move forward. A
+      // substantive status asserts that real work has happened, so it cannot be
+      // claimed without the matching artefact — a published response, a recorded
+      // action, or a resolution — which stops an operator marking a report
+      // "Resolved" out of thin air or un-resolving a closed one.
+      const current = post.accountability_status || 'NOT_ROUTED';
+      if (current !== status && !canTransitionAccountability(current, status)) {
+        return res.status(409).json({
+          error: `Invalid status change ${current} → ${status}. Complete the preceding step first.`,
+          code: 'INVALID_TRANSITION'
+        });
+      }
+
+      const requirement = SUBSTANTIVE_ACCOUNTABILITY[status];
+      if (requirement) {
+        const hasResponse = Boolean(db.prepare('SELECT 1 FROM institution_responses WHERE post_id = ? LIMIT 1').get(postId));
+        const hasAction = Boolean(db.prepare('SELECT 1 FROM institution_actions WHERE post_id = ? LIMIT 1').get(postId));
+        const isOversight = user.role === 'ADMIN' || user.role === 'MODERATOR';
+        const satisfied =
+          requirement === 'RESPONSE' ? hasResponse : requirement === 'ACTION' ? hasAction || hasResponse : hasResponse || hasAction;
+        if (!satisfied && !isOversight) {
+          const artefact =
+            requirement === 'RESPONSE'
+              ? 'publish an official response'
+              : requirement === 'ACTION'
+              ? 'report remedial action'
+              : 'publish an official response or report remedial action';
+          return res.status(409).json({
+            error: `A report cannot be marked ${status} silently — ${artefact} first.`,
+            code: 'PREREQUISITE_UNMET'
+          });
+        }
       }
 
       const now = new Date().toISOString();
@@ -3185,7 +3282,7 @@ export function createApp() {
       res.json({ success: true, case: result });
     } catch (err: any) {
       logger.error(`Joint case resolve error: ${err.message}`);
-      res.status(400).json({ error: err.message || 'Failed to resolve joint case' });
+      res.status(err.statusCode || 400).json({ error: err.message || 'Failed to resolve joint case', code: err.code });
     }
   });
 
@@ -3265,7 +3362,7 @@ export function createApp() {
       res.json({ success: true, delegation: result });
     } catch (err: any) {
       logger.error(`Delegation transition error: ${err.message}`);
-      res.status(400).json({ error: err.message || 'Failed to transition delegation' });
+      res.status(err.statusCode || 400).json({ error: err.message || 'Failed to transition delegation', code: err.code });
     }
   });
 
@@ -3316,11 +3413,20 @@ export function createApp() {
     }
   });
 
-  app.post('/api/institutions/:id/inbox/:itemId/transition', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+  app.post('/api/institutions/:id/inbox/:itemId/transition', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
     try {
       const { targetState, notes } = req.body;
       if (!targetState) return res.status(400).json({ error: 'targetState is required' });
       const user = req.user!;
+
+      // The item must belong to the institution named in the path, so a rep can
+      // never advance another agency's work item by guessing its id.
+      const item = db.prepare('SELECT institution_id FROM institutional_inbox_items WHERE id = ?').get(req.params.itemId) as any;
+      if (!item) return res.status(404).json({ error: 'Work item not found' });
+      if (item.institution_id !== req.params.id) {
+        return res.status(403).json({ error: 'Work item does not belong to this institution' });
+      }
+
       const result = InstitutionalInboxService.transitionItemState(
         req.params.itemId,
         targetState,
@@ -3329,7 +3435,7 @@ export function createApp() {
       );
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ error: err.message || 'Failed to transition inbox item' });
+      res.status(err.statusCode || 500).json({ error: err.message || 'Failed to transition inbox item', code: err.code });
     }
   });
 
@@ -3436,6 +3542,81 @@ export function createApp() {
       res.json(situation);
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to fetch civic situation' });
+    }
+  });
+
+  // Advance a civic situation through its lifecycle (Reported → Verifying →
+  // Monitoring → Intervention → Resolved → Closed). Checks & balances: only a
+  // permitted edge is accepted, so a situation cannot be marked resolved from
+  // the outset, and every change is written to the situation timeline and audit.
+  app.post('/api/situations/:id/status', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { status } = req.body;
+      if (!status) return res.status(400).json({ error: 'status is required' });
+
+      const situation = db.prepare('SELECT * FROM civic_situations WHERE id = ?').get(req.params.id) as any;
+      if (!situation) return res.status(404).json({ error: 'Civic situation not found' });
+
+      const isOversight = user.role === 'ADMIN' || user.role === 'MODERATOR';
+      if (!isOversight) {
+        const involved = db.prepare(
+          'SELECT 1 FROM situation_institutions WHERE situation_id = ? AND institution_id = ?'
+        ).get(req.params.id, user.institutionId || '');
+        if (!involved) return res.status(403).json({ error: 'This situation is not routed to your institution' });
+      }
+
+      if (situation.status !== status && !canTransitionSituation(situation.status, status)) {
+        return res.status(409).json({
+          error: `Invalid situation transition ${situation.status} → ${status}. Complete the preceding stage first.`,
+          code: 'INVALID_TRANSITION'
+        });
+      }
+
+      const now = new Date().toISOString();
+      db.prepare('UPDATE civic_situations SET status = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?')
+        .run(status, now, now, req.params.id);
+
+      const sevId = `sev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      db.prepare(`
+        INSERT INTO situation_events (id, situation_id, event_type, actor_type, actor_id, actor_name, institution_id, description, metadata_json, created_at)
+        VALUES (?, ?, ?, 'INSTITUTION', ?, ?, ?, ?, ?, ?)
+      `).run(
+        sevId,
+        req.params.id,
+        `SITUATION_STATUS_${status}`,
+        user.id,
+        user.name,
+        user.institutionId || null,
+        `Status moved to ${status}`,
+        JSON.stringify({ beforeState: situation.status, afterState: status }),
+        now
+      );
+
+      AuditService.log({
+        eventType: 'SITUATION_STATUS_CHANGED',
+        userId: user.id,
+        actorType: 'INSTITUTION',
+        institutionId: user.institutionId,
+        targetType: 'SITUATION',
+        targetId: req.params.id,
+        beforeState: { status: situation.status },
+        afterState: { status },
+        reason: `Situation status updated to ${status}`,
+        metadata: { actorName: user.name, actorRole: user.role }
+      });
+
+      OutboxService.enqueueEvent('civic.situation.status_changed', 'SITUATION', req.params.id, {
+        situationId: req.params.id,
+        beforeState: situation.status,
+        afterState: status,
+        actorId: user.id
+      });
+
+      res.json({ success: true, situationId: req.params.id, status });
+    } catch (err: any) {
+      logger.error(`Situation status error: ${err.message}`);
+      res.status(err.statusCode || 500).json({ error: err.message || 'Failed to update situation status' });
     }
   });
 

@@ -1453,6 +1453,13 @@ export function initDatabase() {
     } catch {}
   }
 
+  // Normalize legacy civic-situation status: rows written before the situation
+  // lifecycle was unified carry the bare value 'ACTIVE', which no stage map or
+  // UI facet recognises. Map it onto the canonical ACTIVE_MONITORING stage.
+  try {
+    db.prepare("UPDATE civic_situations SET status = 'ACTIVE_MONITORING' WHERE status = 'ACTIVE'").run();
+  } catch {}
+
   // Safe ALTER migrations for abuse_reports: record who resolved a complaint
   // and why, so the admin UI can honestly claim the reason was captured.
   const abuseReportCols = [

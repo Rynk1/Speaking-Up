@@ -34,6 +34,31 @@ import {
   WorkflowStepper
 } from '../ui';
 import { getInboxStateMeta, getPriorityMeta } from '../../utils/status';
+import { evaluateWorkItemActions, type WorkItemActionAvailability } from '../../../shared/workflow';
+
+/**
+ * Renders an action button that is disabled with an explanatory tooltip when the
+ * workflow policy says the preceding step has not been completed. This is the
+ * same policy the API enforces, so the console can never offer a step the server
+ * would refuse.
+ */
+const GatedButton: React.FC<{
+  action?: WorkItemActionAvailability;
+  variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'warning';
+  icon?: React.ReactNode;
+  loading?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ action, variant, icon, loading, onClick, children }) => {
+  const disabled = !action?.enabled;
+  return (
+    <span title={action?.reason || undefined} className="inline-flex">
+      <Button variant={variant} size="xs" icon={icon} loading={loading} disabled={disabled} onClick={onClick}>
+        {children}
+      </Button>
+    </span>
+  );
+};
 
 interface InstitutionalInboxViewProps {
   items: InstitutionalInboxItem[];
@@ -194,6 +219,15 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
           filtered.map((item) => {
             const isUpdating = updatingId === item.id;
             const stateMeta = getInboxStateMeta(item.actionState);
+            const actions = evaluateWorkItemActions({
+              actionState: item.actionState,
+              hasOfficer: Boolean(item.assignedOfficerId),
+              isMirror: Boolean(item.mirrorOfItemId),
+              hasResponse: false,
+              hasAction: false
+            });
+            const byId = (id: string) => actions.find((a) => a.id === id);
+            const nextStep = actions.find((a) => a.isNextStep);
 
             return (
               <Card key={item.id} className="space-y-3" data-inbox-card={item.id}>
@@ -263,58 +297,57 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
                       <span className="text-[11px] text-slate-500 italic">Read-only visibility mirror — act on the source work item.</span>
                     ) : (
                       <>
+                        {nextStep && (
+                          <span className="text-[10px] text-emerald-300/90 font-semibold">
+                            Next: {nextStep.label}
+                          </span>
+                        )}
                         {item.actionState === 'NEW' && (
-                          <Button variant="secondary" size="xs" loading={isUpdating} onClick={() => handleStateChange(item.id, 'SEEN')}>
+                          <GatedButton action={byId('SEEN')} variant="secondary" loading={isUpdating} onClick={() => handleStateChange(item.id, 'SEEN')}>
                             Mark Seen
-                          </Button>
+                          </GatedButton>
                         )}
-                        {['NEW', 'SEEN'].includes(item.actionState) && (
-                          <Button variant="secondary" size="xs" loading={isUpdating} onClick={() => handleStateChange(item.id, 'ACKNOWLEDGED')}>
-                            Acknowledge
-                          </Button>
-                        )}
-                        {['NEW', 'SEEN', 'ACKNOWLEDGED'].includes(item.actionState) && (
-                          <Button variant="warning" size="xs" loading={isUpdating} onClick={() => handleStateChange(item.id, 'UNDER_REVIEW')}>
-                            Start Review
-                          </Button>
-                        )}
-                        {item.actionState !== 'RESOLVED' && (
-                          <Button variant="success" size="xs" loading={isUpdating} onClick={() => handleStateChange(item.id, 'RESOLVED')}>
-                            Mark Resolved
-                          </Button>
-                        )}
+                        <GatedButton action={byId('ACKNOWLEDGE')} variant="secondary" loading={isUpdating} onClick={() => handleStateChange(item.id, 'ACKNOWLEDGED')}>
+                          Acknowledge
+                        </GatedButton>
+                        <GatedButton action={byId('START_REVIEW')} variant="warning" loading={isUpdating} onClick={() => handleStateChange(item.id, 'UNDER_REVIEW')}>
+                          Start Review
+                        </GatedButton>
+                        <GatedButton action={byId('RESOLVE')} variant="success" loading={isUpdating} onClick={() => handleStateChange(item.id, 'RESOLVED')}>
+                          Mark Resolved
+                        </GatedButton>
                         {onAssign && team.length > 0 && (
-                          <Button
+                          <GatedButton
+                            action={byId('ASSIGN')}
                             variant="primary"
-                            size="xs"
                             loading={isUpdating}
                             icon={<UserPlus className="w-3 h-3" />}
                             onClick={() => setActionTarget({ item, action: 'ASSIGN' })}
                           >
                             Assign
-                          </Button>
+                          </GatedButton>
                         )}
                         {onHandoff && desks.length > 0 && (
-                          <Button
+                          <GatedButton
+                            action={byId('HANDOFF')}
                             variant="secondary"
-                            size="xs"
                             loading={isUpdating}
                             icon={<Forward className="w-3 h-3" />}
                             onClick={() => setActionTarget({ item, action: 'HANDOFF' })}
                           >
                             Handoff
-                          </Button>
+                          </GatedButton>
                         )}
-                        {onEscalate && item.actionState !== 'RESOLVED' && (
-                          <Button
+                        {onEscalate && (
+                          <GatedButton
+                            action={byId('ESCALATE')}
                             variant="danger"
-                            size="xs"
                             loading={isUpdating}
                             icon={<ArrowUpCircle className="w-3 h-3" />}
                             onClick={() => setActionTarget({ item, action: 'ESCALATE' })}
                           >
                             Escalate
-                          </Button>
+                          </GatedButton>
                         )}
                       </>
                     )}

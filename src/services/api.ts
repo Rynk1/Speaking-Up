@@ -25,6 +25,7 @@ import {
   InstitutionWorkload,
   AssignedReport,
   AdminCoordinationOverview,
+  CoordinationQueueResponse,
   JointCase
 } from '../types';
 
@@ -769,6 +770,18 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch coordination oversight');
+    return camelize(await res.json());
+  },
+
+  async getAdminCoordinationQueue(params?: { severity?: string; source?: string; limit?: number }): Promise<CoordinationQueueResponse> {
+    const query = new URLSearchParams();
+    if (params?.severity) query.append('severity', params.severity);
+    if (params?.source) query.append('source', params.source);
+    if (params?.limit) query.append('limit', params.limit.toString());
+    const res = await fetch(`/api/admin/coordination/queue?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch coordination queue');
     return camelize(await res.json());
   },
 

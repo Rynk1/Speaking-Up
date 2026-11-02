@@ -48,6 +48,7 @@ import { AlertStateMachine } from './modules/alerting/AlertStateMachine';
 import { PrivacyProjectionService } from './modules/privacy/PrivacyProjectionService';
 import { CoordinationService } from './modules/coordination/CoordinationService';
 import { JointCaseService } from './modules/coordination/JointCaseService';
+import { CoordinationQueueService } from './modules/coordination/CoordinationQueueService';
 import { NotificationService } from './modules/notifications/NotificationService';
 import { CitizenNotificationService } from './modules/notifications/CitizenNotificationService';
 
@@ -3933,6 +3934,7 @@ export function createApp() {
         overdueItems,
         failedAlerts,
         alertsByStatus,
+        coordinationQueue: CoordinationQueueService.buildQueue({ limit: 1 }).summary,
         systemHealth,
         databaseStatus: databaseHealthy ? 'CONNECTED' : 'UNAVAILABLE'
       });
@@ -4303,6 +4305,36 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Admin privacy fetch error: ${err.message}`);
       res.status(500).json({ error: 'Failed to fetch privacy posture' });
+    }
+  });
+
+  // ADMIN COORDINATION QUEUE: one severity-ranked triage feed merging routed
+  // inbox items, pending delegations, joint cases, failed alerts, abuse
+  // complaints and moderation holds.
+  app.get('/api/admin/coordination/queue', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const limit = parseInt((req.query.limit as string) || '100', 10) || 100;
+      const sourceParam = (req.query.sources as string) || '';
+      const sources = sourceParam ? (sourceParam.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) as any[]) : undefined;
+      const severity = (req.query.severity as string) || 'ALL';
+      const source = (req.query.source as string) || 'ALL';
+
+      const { items, summary } = CoordinationQueueService.buildQueue({ limit: limit * 2, sources });
+
+      const filtered = items.filter((item) => {
+        if (severity !== 'ALL' && item.severity !== severity) return false;
+        if (source !== 'ALL' && item.source !== source) return false;
+        return true;
+      });
+
+      res.json({
+        items: filtered.slice(0, limit),
+        summary,
+        totalCount: filtered.length
+      });
+    } catch (err: any) {
+      logger.error(`Admin coordination queue error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to build coordination queue' });
     }
   });
 

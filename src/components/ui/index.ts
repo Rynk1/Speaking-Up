@@ -10,4 +10,8 @@ export { ToastProvider, useToast } from './Toast';
 export { WorkflowStepper, SlaMeter } from './Progress';
 export { ConsoleLayout } from './ConsoleLayout';
 export type { ConsoleNavItem, ConsoleNavSection } from './ConsoleLayout';
+export { SegmentedControl } from './SegmentedControl';
+export type { SegmentedControlProps, SegmentedOption } from './SegmentedControl';
+export { QueueItemCard } from './QueueItemCard';
+export type { QueueItemCardProps } from './QueueItemCard';
 export { toneClasses, toneSolidClasses, toneDotClasses, toneBarClasses } from './tokens';

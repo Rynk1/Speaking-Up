@@ -752,4 +752,81 @@ describe('Inter-Institutional Coordination & Delegation Workflow', () => {
       .set('Authorization', `Bearer ${citizenToken}`);
     expect(trailDenied.status).toBe(403);
   });
+
+  it('29. The unified operations queue merges live work from every source', async () => {
+    const res = await request(app)
+      .get('/api/admin/coordination/queue?limit=200')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+
+    // Every item is derived from a real record: its id is namespaced by source.
+    const prefixFor: Record<string, string> = {
+      INBOX_ITEM: 'inbox',
+      DELEGATION: 'delegation',
+      JOINT_CASE: 'case',
+      ALERT: 'alert',
+      ABUSE_REPORT: 'abuse',
+      MODERATION: 'moderation'
+    };
+    for (const item of res.body.items) {
+      expect(prefixFor[item.source]).toBeTruthy();
+      expect(item.id.startsWith(`${prefixFor[item.source]}:`)).toBe(true);
+      expect(typeof item.severity).toBe('string');
+      expect(['BREACHED', 'URGENT', 'DUE_SOON', 'ON_TRACK', 'INFO']).toContain(item.severity);
+    }
+
+    // The queue must be ordered by severity: no BREACHED item appears after a lower rank.
+    const rank: Record<string, number> = { BREACHED: 0, URGENT: 1, DUE_SOON: 2, ON_TRACK: 3, INFO: 4 };
+    const severities = res.body.items.map((i: any) => rank[i.severity]);
+    const sorted = [...severities].sort((a, b) => a - b);
+    expect(severities).toEqual(sorted);
+
+    // Summary counts must reconcile with the returned items.
+    const summary = res.body.summary;
+    expect(summary.total).toBeGreaterThanOrEqual(res.body.items.length);
+    const summed = ['BREACHED', 'URGENT', 'DUE_SOON', 'ON_TRACK', 'INFO'].reduce(
+      (acc, k) => acc + (summary[k] || 0),
+      0
+    );
+    expect(summed).toBe(summary.total);
+  });
+
+  it('30. The queue surfaces the routed inbox item created for the seeded report', async () => {
+    const res = await request(app)
+      .get('/api/admin/coordination/queue?source=INBOX_ITEM&limit=200')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items.every((i: any) => i.source === 'INBOX_ITEM')).toBe(true);
+
+    const item = res.body.items.find((i: any) => i.postId === reportId);
+    expect(item).toBeTruthy();
+    expect(item.institutionId).toBe('ghana-police-service');
+    expect(item.dueAt).toBeTruthy();
+  });
+
+  it('31. Queue severity filtering returns only the requested band', async () => {
+    const res = await request(app)
+      .get('/api/admin/coordination/queue?severity=URGENT&limit=200')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items.every((i: any) => i.severity === 'URGENT')).toBe(true);
+  });
+
+  it('32. The operations queue is denied to citizens and granted to moderators', async () => {
+    const denied = await request(app)
+      .get('/api/admin/coordination/queue')
+      .set('Authorization', `Bearer ${citizenToken}`);
+    expect(denied.status).toBe(403);
+
+    const moderatorToken = jwt.sign(
+      { id: 'mod-1', email: 'mod@gov.gh', name: 'Moderator', role: 'MODERATOR' },
+      config.jwtSecret,
+      { expiresIn: '1h' }
+    );
+    const allowed = await request(app)
+      .get('/api/admin/coordination/queue')
+      .set('Authorization', `Bearer ${moderatorToken}`);
+    expect(allowed.status).toBe(200);
+  });
 });

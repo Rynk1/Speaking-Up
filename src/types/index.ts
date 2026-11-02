@@ -892,3 +892,53 @@ export interface JointCase {
   resolvedAt?: string;
 }
 
+export type QueueSeverity = 'BREACHED' | 'URGENT' | 'DUE_SOON' | 'ON_TRACK' | 'INFO';
+
+export type QueueSource =
+  | 'INBOX_ITEM'
+  | 'DELEGATION'
+  | 'JOINT_CASE'
+  | 'ALERT'
+  | 'ABUSE_REPORT'
+  | 'MODERATION';
+
+export interface CoordinationQueueItem {
+  id: string;
+  source: QueueSource;
+  severity: QueueSeverity;
+  title: string;
+  subtitle: string | null;
+  institutionId: string | null;
+  institutionName: string | null;
+  deskId: string | null;
+  deskName: string | null;
+  postId: string | null;
+  situationId: string | null;
+  caseId: string | null;
+  status: string;
+  priority: string;
+  dueAt: string | null;
+  createdAt: string;
+  ageMs: number;
+  slaState: string;
+  assignedOfficerId: string | null;
+  assignedOfficerName: string | null;
+  escalationLevel: number;
+  meta: Record<string, any>;
+}
+
+export interface CoordinationQueueSummary {
+  total: number;
+  BREACHED: number;
+  URGENT: number;
+  DUE_SOON: number;
+  ON_TRACK: number;
+  INFO: number;
+}
+
+export interface CoordinationQueueResponse {
+  items: CoordinationQueueItem[];
+  summary: CoordinationQueueSummary;
+  totalCount: number;
+}
+

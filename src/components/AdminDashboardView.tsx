@@ -108,6 +108,9 @@ export const AdminDashboardView: React.FC = () => {
   const [coordination, setCoordination] = useState<any>(null);
   const [institutions, setInstitutions] = useState<any[]>([]);
   const [privacy, setPrivacy] = useState<any>(null);
+  const [hierarchy, setHierarchy] = useState<any>(null);
+  const [hierarchyInst, setHierarchyInst] = useState<any>(null);
+  const [hierarchyLoading, setHierarchyLoading] = useState(false);
 
   const [showInstModal, setShowInstModal] = useState(false);
   const [instForm, setInstForm] = useState({
@@ -380,6 +383,20 @@ export const AdminDashboardView: React.FC = () => {
       resetInstForm();
     }
     setShowInstModal(true);
+  };
+
+  const openHierarchy = async (inst: any) => {
+    setHierarchyInst(inst);
+    setHierarchy(null);
+    setHierarchyLoading(true);
+    try {
+      setHierarchy(await api.getAdminInstitutionHierarchy(inst.id));
+    } catch (err: any) {
+      toast.error('Failed to load institution structure', err?.message);
+      setHierarchyInst(null);
+    } finally {
+      setHierarchyLoading(false);
+    }
   };
 
   const handleSaveInstitution = async (e: React.FormEvent) => {
@@ -777,9 +794,14 @@ export const AdminDashboardView: React.FC = () => {
                         </span>
                       </Td>
                       <Td align="right">
-                        <Button variant="ghost" size="xs" icon={<Pencil className="w-3.5 h-3.5" />} onClick={() => openInstitutionModal(inst)}>
-                          Configure
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="xs" icon={<GitPullRequest className="w-3.5 h-3.5" />} onClick={() => openHierarchy(inst)}>
+                            Desks
+                          </Button>
+                          <Button variant="ghost" size="xs" icon={<Pencil className="w-3.5 h-3.5" />} onClick={() => openInstitutionModal(inst)}>
+                            Configure
+                          </Button>
+                        </div>
                       </Td>
                     </TableRow>
                   );
@@ -834,6 +856,73 @@ export const AdminDashboardView: React.FC = () => {
                   <Input placeholder="Constitutional mandate or service scope" value={instForm.mandate} onChange={(e) => setInstForm({ ...instForm, mandate: e.target.value })} />
                 </Field>
               </form>
+            </Modal>
+
+            <Modal
+              open={Boolean(hierarchyInst)}
+              onClose={() => setHierarchyInst(null)}
+              title={`${hierarchyInst?.shortName || 'Institution'} — Desks & Officials`}
+              description="Live desk hierarchy, attached officials and open workload."
+              size="lg"
+              footer={
+                <Button variant="ghost" onClick={() => setHierarchyInst(null)}>
+                  Close
+                </Button>
+              }
+            >
+              {hierarchyLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-14 rounded-xl bg-slate-800/60 animate-pulse" />
+                  ))}
+                </div>
+              ) : !hierarchy ? (
+                <EmptyState icon={<Building2 className="w-5 h-5" />} title="No structure available" description="This agency has no desks configured yet." />
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <Tile label="Active Desks" value={String(hierarchy.desks?.length ?? 0)} />
+                    <Tile label="Officials" value={String(hierarchy.team?.length ?? 0)} />
+                    <Tile label="Owned Work" value={String(hierarchy.workload?.total ?? 0)} tone="warning" />
+                    <Tile label="Overdue" value={String(hierarchy.workload?.overdueItems ?? 0)} tone={(hierarchy.workload?.overdueItems ?? 0) > 0 ? 'critical' : 'success'} />
+                  </div>
+
+                  <div className="space-y-2">
+                    <SectionHeader title="Desk Hierarchy" icon={<GitPullRequest className="w-4 h-4 text-amber-400" />} />
+                    {!hierarchy.desks?.length ? (
+                      <EmptyState icon={<Inbox className="w-5 h-5" />} title="No desks registered" />
+                    ) : (
+                      hierarchy.desks.map((desk: any) => {
+                        const openItems = (hierarchy.workload?.byDesk || []).find((d: any) => d.deskId === desk.id)?.openItems ?? 0;
+                        return (
+                        <div key={desk.id} className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-xs font-bold text-white">{desk.name}</div>
+                              <div className="text-[10px] text-slate-500">{desk.level} · {desk.officerCount ?? 0} officials</div>
+                            </div>
+                            <Badge tone={openItems > 0 ? 'warning' : 'success'} size="sm">{openItems} open</Badge>
+                          </div>
+                          {desk.officers?.length ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {desk.officers.map((o: any) => (
+                                <span key={o.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-300">
+                                  <UserCheck className="w-3 h-3 text-emerald-400" />
+                                  {o.name || o.userId}
+                                  <span className="text-slate-500">· {String(o.role || '').replace(/_/g, ' ').toLowerCase()}</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-slate-500">No officials attached to this desk.</div>
+                          )}
+                        </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
             </Modal>
           </div>
         )}

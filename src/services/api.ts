@@ -17,10 +17,35 @@ import {
   InstitutionalInboxItem,
   InstitutionalAnnouncement,
   InstitutionalDesk,
-  InstitutionTeamMember
+  InstitutionTeamMember,
+  DeskOfficer,
+  CoordinationDelegation,
+  DelegationType,
+  DelegationStatus,
+  InstitutionWorkload,
+  AssignedReport,
+  AdminCoordinationOverview
 } from '../types';
 
 const TOKEN_KEY = 'speakup_jwt_token';
+
+/**
+ * Recursively converts snake_case object keys to camelCase. Coordination endpoints
+ * return raw SQLite rows; the UI and its types are camelCase. Keys that are already
+ * camelCase (or have no underscores) are left untouched, and arrays are walked.
+ */
+export function camelize<T = any>(value: any): T {
+  if (Array.isArray(value)) return value.map((v) => camelize(v)) as unknown as T;
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    const out: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value)) {
+      const camelKey = key.includes('_') ? key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase()) : key;
+      out[camelKey] = camelize(val);
+    }
+    return out as T;
+  }
+  return value as T;
+}
 
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -483,6 +508,30 @@ export const api = {
     return res.json();
   },
 
+  /**
+   * Deterministic institution routing. Used as the fallback when AI tagging is
+   * unavailable so a report is never left with no responsible authority.
+   */
+  async resolveInstitutions(params: {
+    category?: string;
+    region?: string;
+    district?: string;
+    title?: string;
+    content?: string;
+  }): Promise<Array<{ id: string; tier: string; matchReason: string }>> {
+    const query = new URLSearchParams();
+    if (params.category) query.append('category', params.category);
+    if (params.region) query.append('region', params.region);
+    if (params.district) query.append('district', params.district);
+    if (params.title) query.append('title', params.title);
+    if (params.content) query.append('content', params.content);
+    const res = await fetch(`/api/institutions/resolve?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to resolve responsible institutions');
+    return res.json();
+  },
+
   async getInstitutionById(id: string): Promise<{ institution: Institution; taggedPosts: CivicPost[] }> {
     const res = await fetch(`/api/institutions/${id}`, {
       headers: getAuthHeaders()
@@ -511,7 +560,7 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch institutional inbox');
-    return res.json();
+    return camelize(await res.json());
   },
 
   async transitionInboxItem(institutionId: string, itemId: string, targetState: string, notes?: string): Promise<{ success: boolean; item: InstitutionalInboxItem }> {
@@ -524,7 +573,7 @@ export const api = {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Failed to transition inbox item');
     }
-    return res.json();
+    return camelize(await res.json());
   },
 
   async getInstitutionDesks(institutionId: string, params?: { category?: string; region?: string; district?: string }): Promise<InstitutionalDesk[]> {
@@ -537,7 +586,7 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch institution desks');
-    return res.json();
+    return camelize(await res.json());
   },
 
   async getInstitutionTeam(institutionId: string): Promise<InstitutionTeamMember[]> {
@@ -545,7 +594,198 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch institution team');
-    return res.json();
+    return camelize(await res.json());
+  },
+
+  // Coordination: desks, officers, delegations, workload
+  async createInstitutionDesk(institutionId: string, desk: Partial<InstitutionalDesk>): Promise<{ success: boolean; deskId: string }> {
+    const res = await fetch(`/api/institutions/${institutionId}/desks`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(desk)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create desk');
+    }
+    return camelize(await res.json());
+  },
+
+  async assignDeskOfficer(institutionId: string, deskId: string, payload: { userId: string; role?: string; isPrimary?: boolean }): Promise<any> {
+    const res = await fetch(`/api/institutions/${institutionId}/desks/${deskId}/officers`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to assign desk officer');
+    }
+    return camelize(await res.json());
+  },
+
+  async getDeskOfficers(institutionId: string, deskId: string): Promise<DeskOfficer[]> {
+    const res = await fetch(`/api/institutions/${institutionId}/desks/${deskId}/officers`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch desk officers');
+    return camelize(await res.json());
+  },
+
+  async getInstitutionDelegations(institutionId: string, params?: { direction?: 'INCOMING' | 'OUTGOING' | 'ALL'; status?: string; limit?: number }): Promise<{ items: CoordinationDelegation[]; totalCount: number }> {
+    const query = new URLSearchParams();
+    if (params?.direction) query.append('direction', params.direction);
+    if (params?.status) query.append('status', params.status);
+    if (params?.limit) query.append('limit', params.limit.toString());
+
+    const res = await fetch(`/api/institutions/${institutionId}/delegations?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch delegations');
+    return camelize(await res.json());
+  },
+
+  async createDelegation(institutionId: string, payload: {
+    postId?: string;
+    situationId?: string;
+    toInstitutionId: string;
+    toDeskId?: string;
+    delegationType?: DelegationType;
+    actionRequired?: 'ACTION' | 'ACKNOWLEDGEMENT' | 'INFORMATION';
+    priority?: string;
+    reason: string;
+    instructions?: string;
+    dueAt?: string;
+  }): Promise<any> {
+    const res = await fetch(`/api/institutions/${institutionId}/delegations`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create delegation');
+    }
+    return camelize(await res.json());
+  },
+
+  async transitionDelegation(delegationId: string, status: DelegationStatus, note?: string): Promise<any> {
+    const res = await fetch(`/api/delegations/${delegationId}/transition`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status, note })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to transition delegation');
+    }
+    return camelize(await res.json());
+  },
+
+  async handoffToDesk(institutionId: string, payload: {
+    toDeskId: string;
+    fromDeskId?: string;
+    postId?: string;
+    inboxItemId?: string;
+    reason: string;
+    instructions?: string;
+    priority?: string;
+    ccDeskIds?: string[];
+  }): Promise<any> {
+    const res = await fetch(`/api/institutions/${institutionId}/desks/handoff`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to hand off work item');
+    }
+    return camelize(await res.json());
+  },
+
+  async assignInboxItem(institutionId: string, itemId: string, payload: {
+    officerUserId?: string;
+    deskId?: string;
+    notes?: string;
+  }): Promise<any> {
+    const res = await fetch(`/api/institutions/${institutionId}/inbox/${itemId}/assign`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to assign work item');
+    }
+    return camelize(await res.json());
+  },
+
+  async escalateInboxItem(institutionId: string, itemId: string, payload: { reason?: string; toDeskId?: string } = {}): Promise<any> {
+    const res = await fetch(`/api/institutions/${institutionId}/inbox/${itemId}/escalate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to escalate work item');
+    }
+    return camelize(await res.json());
+  },
+
+  async getInstitutionWorkload(institutionId: string): Promise<InstitutionWorkload> {
+    const res = await fetch(`/api/institutions/${institutionId}/workload`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch institution workload');
+    return camelize(await res.json());
+  },
+
+  async getAssignedReports(institutionId: string, officerUserId?: string): Promise<AssignedReport[]> {
+    const query = new URLSearchParams();
+    if (officerUserId) query.append('officerUserId', officerUserId);
+    const res = await fetch(`/api/institutions/${institutionId}/assigned-reports?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch assigned reports');
+    return camelize(await res.json());
+  },
+
+  async getAdminPrivacy(): Promise<any> {
+    const res = await fetch('/api/admin/privacy', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch privacy posture');
+    return camelize(await res.json());
+  },
+
+  async getAdminCoordination(): Promise<AdminCoordinationOverview> {
+    const res = await fetch('/api/admin/coordination', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch coordination oversight');
+    return camelize(await res.json());
+  },
+
+  async runSlaSweep(): Promise<{ success: boolean; overdueItems: number; warningItems: number; escalatedDelegations: number; ladderEscalations: number; notified: number }> {
+    const res = await fetch('/api/admin/coordination/run-sla-sweep', {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to run SLA sweep');
+    }
+    return camelize(await res.json());
+  },
+
+  async getAdminInstitutionHierarchy(institutionId: string): Promise<any> {
+    const res = await fetch(`/api/admin/institutions/${institutionId}/hierarchy`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch institution hierarchy');
+    return camelize(await res.json());
   },
 
   async getInstitutionAnnouncements(institutionId: string, params?: { status?: string; limit?: number; cursor?: string }): Promise<{ items: InstitutionalAnnouncement[]; nextCursor: string | null }> {
@@ -850,21 +1090,21 @@ export const api = {
     return res.json();
   },
 
-  async updateUserRole(userId: string, role: string): Promise<any> {
+  async updateUserRole(userId: string, role: string, reason?: string): Promise<any> {
     const res = await fetch(`/api/admin/users/${userId}/role`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ role })
+      body: JSON.stringify({ role, reason })
     });
     if (!res.ok) throw new Error('Failed to update user role');
     return res.json();
   },
 
-  async updateUserVerification(userId: string, isVerified: boolean): Promise<any> {
+  async updateUserVerification(userId: string, isVerified: boolean, reason?: string): Promise<any> {
     const res = await fetch(`/api/admin/users/${userId}/verify`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ isVerified })
+      body: JSON.stringify({ isVerified, reason })
     });
     if (!res.ok) throw new Error('Failed to update user verification');
     return res.json();
@@ -884,7 +1124,7 @@ export const api = {
     return res.json();
   },
 
-  async updatePostModeration(postId: string, data: { moderationStatus?: string; reportLifecycleStatus?: string }): Promise<any> {
+  async updatePostModeration(postId: string, data: { moderationStatus?: string; reportLifecycleStatus?: string; reason?: string }): Promise<any> {
     const res = await fetch(`/api/admin/posts/${postId}/moderation`, {
       method: 'PUT',
       headers: getAuthHeaders(),
@@ -903,11 +1143,11 @@ export const api = {
     return res.json();
   },
 
-  async updateAbuseReport(reportId: string, status: string): Promise<any> {
+  async updateAbuseReport(reportId: string, status: string, reason?: string): Promise<any> {
     const res = await fetch(`/api/admin/abuse-reports/${reportId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status, reason })
     });
     if (!res.ok) throw new Error('Failed to update abuse report');
     return res.json();

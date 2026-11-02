@@ -56,6 +56,11 @@ eventBus.on('*', (eventData: any) => {
       if (eventData.visibility === 'protected' && client.userRole !== 'INSTITUTION_REP' && client.userRole !== 'ADMIN') {
         continue;
       }
+      // User-targeted events (e.g. notifications) only reach the intended account
+      const targetUserId = eventData.payload?.userId || eventData.userId;
+      if (targetUserId && client.userId !== targetUserId && client.userRole !== 'ADMIN') {
+        continue;
+      }
       client.res.write(`data: ${payload}\n\n`);
     } catch (err) {
       clients.delete(client);

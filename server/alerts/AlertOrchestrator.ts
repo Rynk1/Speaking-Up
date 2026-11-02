@@ -3,6 +3,7 @@ import { logger } from '../shared/logger';
 import { eventBus } from '../events/eventBus';
 import { InstitutionRoutingService } from '../services/InstitutionRoutingService';
 import { ChannelHealthMonitor } from './ChannelHealthMonitor';
+import { InstitutionRegistryService } from '../modules/institutions/InstitutionRegistryService';
 import { EmailAdapter } from './adapters/EmailAdapter';
 import { SmsAdapter } from './adapters/SmsAdapter';
 import { WhatsAppAdapter } from './adapters/WhatsAppAdapter';
@@ -61,27 +62,31 @@ export class AlertOrchestrator {
       channelType = channel.channel_type;
       endpoint = channel.endpoint;
     } else {
-      // Fallback based on institution record defaults
-      if (inst.alert_method === 'DIRECT_API') {
+      // Fallback based on institution record defaults. Never invent an
+      // endpoint: an alert must fail closed as NOT_CONFIGURED rather than
+      // report a fabricated delivery address as success.
+      const waList = JSON.parse(inst.whatsapp_channels_json || '[]');
+      const emailList = JSON.parse(inst.email_channels_json || '[]');
+
+      if (inst.alert_method === 'DIRECT_API' && inst.official_website) {
         channelType = 'WEBHOOK';
-        endpoint = inst.official_website ? `${inst.official_website.replace(/\/$/, '')}/api/speakup-webhook` : 'https://api.gov.gh/alerts';
-      } else if (inst.alert_method === 'WHATSAPP_LINE') {
+        endpoint = `${inst.official_website.replace(/\/$/, '')}/api/speakup-webhook`;
+      } else if (inst.alert_method === 'WHATSAPP_LINE' && waList[0]) {
         channelType = 'WHATSAPP';
-        const waList = JSON.parse(inst.whatsapp_channels_json || '[]');
-        endpoint = waList[0] || '+233241234567';
-      } else if (inst.alert_method === 'OFFICIAL_EMAIL') {
+        endpoint = waList[0];
+      } else if (inst.alert_method === 'OFFICIAL_EMAIL' && emailList[0]) {
         channelType = 'EMAIL';
-        const emailList = JSON.parse(inst.email_channels_json || '[]');
-        endpoint = emailList[0] || `alerts@${inst.short_name.toLowerCase().replace(/\s+/g, '')}.gov.gh`;
-      } else if (inst.alert_method === 'NONE') {
+        endpoint = emailList[0];
+      } else {
         const notConfiguredMsg = 'No direct communication channel configured; public tag active';
         db.prepare(`
           INSERT INTO post_institution_tags (id, post_id, institution_id, institution_name, short_name, acronym, alert_requested, alert_status, alert_method_used, delivery_timestamp, created_at)
           VALUES (?, ?, ?, ?, ?, ?, 1, 'NOT_CONFIGURED', ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET alert_status = 'NOT_CONFIGURED', alert_method_used = excluded.alert_method_used
-        `).run(`tag-${Date.now()}`, postId, inst.id, inst.official_name, inst.short_name, inst.acronym, notConfiguredMsg, now, now);
+          ON CONFLICT(post_id, institution_id) DO UPDATE SET alert_status = 'NOT_CONFIGURED', alert_method_used = excluded.alert_method_used
+        `).run(`tag-${postId}-${inst.id}`, postId, inst.id, inst.official_name, inst.short_name, inst.acronym, notConfiguredMsg, now, now);
 
         db.prepare("UPDATE posts SET accountability_status = 'ROUTED' WHERE id = ?").run(postId);
+        InstitutionRegistryService.reconcileReachCounters(inst.id);
 
         return { status: 'NOT_CONFIGURED', errorMessage: notConfiguredMsg };
       }
@@ -147,10 +152,12 @@ export class AlertOrchestrator {
     db.prepare(`
       INSERT INTO post_institution_tags (id, post_id, institution_id, institution_name, short_name, acronym, alert_requested, alert_status, alert_method_used, delivery_timestamp, created_at)
       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET alert_status = excluded.alert_status, alert_method_used = excluded.alert_method_used, delivery_timestamp = excluded.delivery_timestamp
-    `).run(`tag-${Date.now()}`, postId, inst.id, inst.official_name, inst.short_name, inst.acronym, result.status, alertMethodUsed, now, now);
+      ON CONFLICT(post_id, institution_id) DO UPDATE SET alert_status = excluded.alert_status, alert_method_used = excluded.alert_method_used, delivery_timestamp = excluded.delivery_timestamp
+    `).run(`tag-${postId}-${inst.id}`, postId, inst.id, inst.official_name, inst.short_name, inst.acronym, result.status, alertMethodUsed, now, now);
 
-    db.prepare('UPDATE institutions SET active_mentions_count = active_mentions_count + 1 WHERE id = ?').run(inst.id);
+    // Counters are derived from tag/response history so retries and repeated
+    // dispatches never inflate reach.
+    InstitutionRegistryService.reconcileReachCounters(inst.id);
 
     const accountabilityStatus = result.status === 'DELIVERED' ? 'ALERT_DELIVERED' : result.status === 'SENT' ? 'ALERT_SENT' : 'ROUTED';
     db.prepare('UPDATE posts SET accountability_status = ? WHERE id = ?').run(accountabilityStatus, postId);

@@ -156,4 +156,83 @@ describe('Admin Dashboard & Platform Management Test Suite', () => {
     expect(auditRes.status).toBe(200);
     expect(Array.isArray(auditRes.body)).toBe(true);
   });
+
+  it('7. Honest Audit: admin actions persist the operator reason in the audit trail', async () => {
+    const listRes = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const target = listRes.body[0];
+
+    const roleRes = await request(app)
+      .put(`/api/admin/users/${target.id}/role`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ role: 'MODERATOR', reason: 'Elevated for district moderation rota' });
+
+    expect(roleRes.status).toBe(200);
+    expect(roleRes.body.reasonRecorded).toBe(true);
+
+    const audit = db.prepare(`
+      SELECT * FROM audit_logs WHERE event_type = 'USER_ROLE_CHANGED' AND target_id = ?
+      ORDER BY created_at DESC LIMIT 1
+    `).get(target.id) as any;
+
+    expect(audit).toBeDefined();
+    expect(audit.reason).toBe('Elevated for district moderation rota');
+    expect(audit.actor_type).toBe('ADMIN');
+  });
+
+  it('8. Honest Audit: abuse complaint resolution stores the reason and resolver', async () => {
+    const post = db.prepare('SELECT id FROM posts LIMIT 1').get() as any;
+    const reportId = `abuse-test-${Date.now()}`;
+    db.prepare(`
+      INSERT INTO abuse_reports (id, post_id, user_id, reason, status, created_at)
+      VALUES (?, ?, 'user-current', 'Spam', 'PENDING', ?)
+    `).run(reportId, post.id, new Date().toISOString());
+
+    const res = await request(app)
+      .put(`/api/admin/abuse-reports/${reportId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'RESOLVED', reason: 'Removed duplicate content' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reasonRecorded).toBe(true);
+
+    const stored = db.prepare('SELECT * FROM abuse_reports WHERE id = ?').get(reportId) as any;
+    expect(stored.status).toBe('RESOLVED');
+    expect(stored.resolution_reason).toBe('Removed duplicate content');
+    expect(stored.resolved_at).toBeTruthy();
+  });
+
+  it('9. Data Integrity: a report is tagged to an institution at most once and reach counters match', async () => {
+    const dupes = db.prepare(`
+      SELECT post_id, institution_id, COUNT(*) AS c
+      FROM post_institution_tags GROUP BY post_id, institution_id HAVING c > 1
+    `).all() as any[];
+    expect(dupes).toEqual([]);
+
+    const institutions = db.prepare('SELECT id, active_mentions_count FROM institutions').all() as any[];
+    for (const inst of institutions) {
+      const actual = (db.prepare('SELECT COUNT(*) AS c FROM post_institution_tags WHERE institution_id = ?').get(inst.id) as any).c;
+      expect(inst.active_mentions_count).toBe(actual);
+    }
+  });
+
+  it('10. Admin Privacy Posture: reports real detectors, policies and storage zones', async () => {
+    const res = await request(app)
+      .get('/api/admin/privacy')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toHaveProperty('totalFindings');
+    expect(res.body.summary).toHaveProperty('enabledPolicies');
+    expect(Array.isArray(res.body.policies)).toBe(true);
+    expect(res.body.policies.length).toBeGreaterThan(0);
+    expect(res.body.storage.protected).toContain('uploads');
+
+    // Non-admins cannot read privacy posture
+    const denied = await request(app)
+      .get('/api/admin/privacy')
+      .set('Authorization', `Bearer ${citizenToken}`);
+    expect(denied.status).toBe(403);
+  });
 });

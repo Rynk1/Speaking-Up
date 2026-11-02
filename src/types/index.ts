@@ -344,7 +344,10 @@ export interface UserProfile {
 export interface NotificationItem {
   id: string;
   userId: string;
-  type: 'INSTITUTION_RESPONSE' | 'ISSUE_TRENDING' | 'CONFIRMATION_SPIKE' | 'EMERGENCY_ALERT' | 'EVIDENCE_ADDED' | 'REPOST';
+  type: 'INSTITUTION_RESPONSE' | 'ISSUE_TRENDING' | 'CONFIRMATION_SPIKE' | 'EMERGENCY_ALERT' | 'EVIDENCE_ADDED' | 'REPOST'
+    | 'WORK_ITEM_ASSIGNED' | 'WORK_ITEM_ESCALATED' | 'WORK_ITEM_ESCALATED_OVERSIGHT' | 'WORK_ITEM_ROUTED'
+    | 'DELEGATION_RECEIVED' | 'DELEGATION_ESCALATED' | 'DELEGATION_ACCEPTED' | 'DELEGATION_DECLINED'
+    | 'DELEGATION_COMPLETED' | 'DELEGATION_OVERDUE' | 'SLA_BREACH' | 'SLA_WARNING';
   title: string;
   message: string;
   postId?: string;
@@ -658,6 +661,13 @@ export interface InstitutionalInboxItem {
   assignedDeskName?: string;
   assignedOfficerId?: string;
   assignedOfficerName?: string;
+  assignedAt?: string;
+  assignedByUserId?: string;
+  mirrorOfItemId?: string;
+  handoffNotes?: string;
+  escalationLevel?: number;
+  lastEscalatedAt?: string;
+  dueAt?: string;
   actionState: InboxActionState;
   isRead: boolean;
   notes?: string;
@@ -707,6 +717,7 @@ export interface InstitutionalAnnouncement {
 export interface InstitutionalDesk {
   id: string;
   institutionId: string;
+  parentDeskId?: string;
   name: string;
   code: string;
   level: 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST';
@@ -716,16 +727,109 @@ export interface InstitutionalDesk {
   contactEmail?: string;
   contactPhone?: string;
   leadOfficerName?: string;
+  status?: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+  officerCount?: number;
 }
 
 export interface InstitutionTeamMember {
   id: string;
-  institutionId: string;
+  institutionId?: string;
+  userId?: string;
   name: string;
   email: string;
-  role: 'ADMIN' | 'COMMUNICATIONS_OFFICER' | 'DUTY_INSPECTOR' | 'ANALYST' | 'VIEWER';
+  handle?: string;
+  avatar?: string;
+  role: string;
+  department?: string;
   title?: string;
   deskId?: string;
   deskName?: string;
+  deskLevel?: string;
   status: 'ACTIVE' | 'INVITED' | 'SUSPENDED';
 }
+
+export interface DeskOfficer {
+  id: string;
+  deskId: string;
+  institutionId: string;
+  userId: string;
+  name: string;
+  email: string;
+  handle?: string;
+  avatar?: string;
+  role: string;
+  isPrimary: boolean | number;
+  status: string;
+}
+
+export type DelegationType = 'TRANSFER' | 'DELEGATION' | 'ESCALATION' | 'INFORMATION';
+export type DelegationStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'COMPLETED' | 'CANCELLED';
+
+export interface CoordinationDelegation {
+  id: string;
+  postId?: string;
+  situationId?: string;
+  fromInstitutionId?: string;
+  fromDeskId?: string;
+  toInstitutionId: string;
+  toDeskId?: string;
+  delegationType: DelegationType;
+  actionRequired: 'ACTION' | 'ACKNOWLEDGEMENT' | 'INFORMATION';
+  reason: string;
+  instructions?: string;
+  status: DelegationStatus;
+  priority: string;
+  actorName?: string;
+  dueAt?: string;
+  acceptedAt?: string;
+  declinedReason?: string;
+  completedAt?: string;
+  parentDelegationId?: string;
+  escalationLevel?: number;
+  createdAt: string;
+  postTitle?: string;
+  toInstitutionName?: string;
+  fromInstitutionName?: string;
+  toDeskName?: string;
+  region?: string;
+  district?: string;
+  urgency?: string;
+}
+
+export interface InstitutionWorkload {
+  institutionId: string;
+  total: number;
+  byStage: Record<string, number>;
+  byDesk: { deskId: string; deskName: string; level: string; openItems: number }[];
+  overdueItems: number;
+  pendingDelegations: number;
+}
+
+export interface AssignedReport {
+  id: string;
+  title: string;
+  category: string;
+  urgency: string;
+  severity: string;
+  region: string;
+  district: string;
+  workflowStage: string;
+  accountabilityStatus: string;
+  ownerDeskId?: string;
+  assignedOfficerUserId?: string;
+  slaDueAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCoordinationOverview {
+  summary: {
+    pendingDelegations: number;
+    overdueItems: number;
+    institutionsWithOpenWork: number;
+  };
+  pendingDelegations: any[];
+  overdueItems: any[];
+  byInstitution: { institutionId: string; institutionName: string; openReports: number }[];
+}
+

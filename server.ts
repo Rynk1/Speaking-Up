@@ -8,6 +8,7 @@ import { seedDatabaseIfEmpty } from './server/seedDatabase';
 import { initStorageZones } from './server/storage/index';
 import { initializeJobWorkers } from './server/jobs/workers';
 import { OutboxService } from './server/infrastructure/events/OutboxService';
+import { CoordinationService } from './server/modules/coordination/CoordinationService';
 import { createApp } from './server/app';
 import { logger } from './server/shared/logger';
 
@@ -98,6 +99,9 @@ async function bootstrap() {
   // 3. Initialize Background Job Processing Workers & Transactional Outbox
   initializeJobWorkers();
   OutboxService.startOutboxWorker();
+
+  // 3b. Start the coordination SLA monitor (warns and escalates overdue work items)
+  CoordinationService.startCoordinationSlaWorker();
 
   // 4. Create Express Application with API & Health Endpoints
   const app = createApp();

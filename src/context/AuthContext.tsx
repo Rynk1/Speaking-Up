@@ -27,6 +27,8 @@ interface AuthContextType {
   userRole: 'citizen' | 'institution_rep' | 'journalist' | 'moderator' | 'admin';
   setUserRole: (role: 'citizen' | 'institution_rep' | 'journalist' | 'moderator' | 'admin') => void;
   isAuthenticated: boolean;
+  /** True until the stored session has been validated, so route guards can wait instead of bouncing. */
+  isAuthLoading: boolean;
   isAuthOpen: boolean;
   authMode: 'signin' | 'signup';
   authPromptInfo: AuthPromptInfo | null;
@@ -53,6 +55,8 @@ const POST_DRAFT_KEY = 'speakup_post_draft';
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [userRole, setUserRole] = useState<'citizen' | 'institution_rep' | 'journalist' | 'moderator' | 'admin'>('citizen');
+  // Starts true when a stored token exists so guards can wait for validation; false when there is nothing to restore.
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(() => !!api.getToken());
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [authPromptInfo, setAuthPromptInfo] = useState<AuthPromptInfo | null>(null);
@@ -71,25 +75,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Restore existing token & user on startup
   useEffect(() => {
     const token = api.getToken();
-    if (token) {
-      api.getCurrentUser()
-        .then(user => {
-          if (user) {
-            setCurrentUser(user);
-            if (user.role) {
-              const roleLower = user.role.toLowerCase();
-              if (['citizen', 'institution_rep', 'journalist', 'moderator', 'admin'].includes(roleLower)) {
-                setUserRole(roleLower as any);
-              }
+    if (!token) {
+      setIsAuthLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    api.getCurrentUser()
+      .then(user => {
+        if (cancelled) return;
+        if (user) {
+          setCurrentUser(user);
+          if (user.role) {
+            const roleLower = user.role.toLowerCase();
+            if (['citizen', 'institution_rep', 'journalist', 'moderator', 'admin'].includes(roleLower)) {
+              setUserRole(roleLower as any);
             }
           }
-        })
-        .catch(() => {
-          // Stale or expired token
-          api.clearToken();
-          setCurrentUser(null);
-        });
-    }
+        }
+      })
+      .catch(() => {
+        // Stale or expired token
+        api.clearToken();
+        setCurrentUser(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsAuthLoading(false);
+      });
 
     // Check if there was a pending action in sessionStorage
     try {
@@ -100,6 +112,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch {
       // Ignore parse error
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const savePostDraft = useCallback((draft: any) => {
@@ -215,6 +231,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         userRole,
         setUserRole,
         isAuthenticated: !!currentUser,
+        isAuthLoading,
         isAuthOpen,
         authMode,
         authPromptInfo,

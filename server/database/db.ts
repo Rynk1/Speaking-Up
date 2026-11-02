@@ -1249,6 +1249,91 @@ export function initDatabase() {
     );
   `);
 
+  // 9. Institution Desks (hierarchical operational units: national / regional / district / specialist)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institution_desks (
+      id TEXT PRIMARY KEY,
+      institution_id TEXT NOT NULL,
+      parent_desk_id TEXT,
+      name TEXT NOT NULL,
+      code TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'NATIONAL', -- NATIONAL, REGIONAL, DISTRICT, SPECIALIST
+      region TEXT,
+      district TEXT,
+      specialization TEXT,
+      contact_email TEXT,
+      contact_phone TEXT,
+      lead_officer_name TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE, SUSPENDED, ARCHIVED
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 10. Institution Desk Officers (verified officials attached to a desk)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institution_desk_officers (
+      id TEXT PRIMARY KEY,
+      desk_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'CASE_OFFICER', -- DESK_LEAD, CASE_OFFICER, DUTY_OFFICER, COMMUNICATIONS_OFFICER, OBSERVER
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE, INVITED, SUSPENDED
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(desk_id, user_id),
+      FOREIGN KEY (desk_id) REFERENCES institution_desks(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 11. Coordination Delegations & Transfers (immutable routing between institutions/desks)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coordination_delegations (
+      id TEXT PRIMARY KEY,
+      post_id TEXT,
+      situation_id TEXT,
+      from_institution_id TEXT,
+      from_desk_id TEXT,
+      to_institution_id TEXT NOT NULL,
+      to_desk_id TEXT,
+      delegation_type TEXT NOT NULL DEFAULT 'TRANSFER', -- TRANSFER, DELEGATION, ESCALATION, INFORMATION
+      action_required TEXT NOT NULL DEFAULT 'ACTION', -- ACTION, ACKNOWLEDGEMENT, INFORMATION
+      reason TEXT NOT NULL,
+      instructions TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING', -- PENDING, ACCEPTED, DECLINED, COMPLETED, CANCELLED
+      priority TEXT NOT NULL DEFAULT 'NORMAL', -- ROUTINE, ELEVATED, URGENT, EMERGENCY
+      actor_id TEXT,
+      actor_name TEXT,
+      actor_role TEXT,
+      due_at TEXT,
+      accepted_at TEXT,
+      declined_reason TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (situation_id) REFERENCES civic_situations(id) ON DELETE SET NULL,
+      FOREIGN KEY (to_institution_id) REFERENCES institutions(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 12. Inbox Item Routing (which desks/sub-units an awareness item is routed to)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inbox_item_routes (
+      id TEXT PRIMARY KEY,
+      inbox_item_id TEXT NOT NULL,
+      institution_id TEXT NOT NULL,
+      desk_id TEXT,
+      routing_role TEXT NOT NULL DEFAULT 'PRIMARY', -- PRIMARY, SECONDARY, SUPPORTING, CC
+      routed_at TEXT NOT NULL,
+      UNIQUE(inbox_item_id, desk_id),
+      FOREIGN KEY (inbox_item_id) REFERENCES institutional_inbox_items(id) ON DELETE CASCADE
+    );
+  `);
+
   // Safe ALTER migrations for institutional hierarchy and desks
   const extraInstCols = [
     { name: 'desk_level', type: "TEXT NOT NULL DEFAULT 'NATIONAL_DESK'" },
@@ -1305,6 +1390,78 @@ export function initDatabase() {
     } catch {}
   }
 
+  // Safe ALTER migrations for abuse_reports: record who resolved a complaint
+  // and why, so the admin UI can honestly claim the reason was captured.
+  const abuseReportCols = [
+    { name: 'resolution_reason', type: 'TEXT' },
+    { name: 'resolved_by_user_id', type: 'TEXT' },
+    { name: 'resolved_at', type: 'TEXT' }
+  ];
+  for (const col of abuseReportCols) {
+    try {
+      db.exec(`ALTER TABLE abuse_reports ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
+  // Safe ALTER migrations for posts: formal work-item ownership & SLA tracking
+  const workflowPostCols = [
+    { name: 'owner_institution_id', type: 'TEXT' },
+    { name: 'owner_desk_id', type: 'TEXT' },
+    { name: 'assigned_officer_user_id', type: 'TEXT' },
+    { name: 'workflow_stage', type: "TEXT DEFAULT 'REPORTED'" },
+    { name: 'sla_due_at', type: 'TEXT' },
+    { name: 'resolved_at', type: 'TEXT' }
+  ];
+  for (const col of workflowPostCols) {
+    try {
+      db.exec(`ALTER TABLE posts ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
+  // Safe ALTER migrations for institutional_inbox_items: desk routing & ownership
+  const inboxCols = [
+    { name: 'desk_id', type: 'TEXT' },
+    { name: 'assigned_officer_user_id', type: 'TEXT' },
+    { name: 'delegation_id', type: 'TEXT' },
+    { name: 'due_at', type: 'TEXT' },
+    { name: 'sla_notified_at', type: 'TEXT' },
+    { name: 'assigned_at', type: 'TEXT' },
+    { name: 'assigned_by_user_id', type: 'TEXT' },
+    { name: 'mirror_of_item_id', type: 'TEXT' },
+    { name: 'handoff_notes', type: 'TEXT' },
+    { name: 'escalation_level', type: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'last_escalated_at', type: 'TEXT' }
+  ];
+  for (const col of inboxCols) {
+    try {
+      db.exec(`ALTER TABLE institutional_inbox_items ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
+  // Safe ALTER migrations for coordination_delegations: internal handoff & escalation ladder
+  const delegationCols = [
+    { name: 'parent_delegation_id', type: 'TEXT' },
+    { name: 'escalation_level', type: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'sla_notified_at', type: 'TEXT' }
+  ];
+  for (const col of delegationCols) {
+    try {
+      db.exec(`ALTER TABLE coordination_delegations ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
+  // Safe ALTER migrations for institution_users: desk attachment
+  const instUserCols = [
+    { name: 'desk_id', type: 'TEXT' },
+    { name: 'title', type: 'TEXT' },
+    { name: 'status', type: "TEXT DEFAULT 'ACTIVE'" }
+  ];
+  for (const col of instUserCols) {
+    try {
+      db.exec(`ALTER TABLE institution_users ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
   // Indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_posts_region ON posts(region);
@@ -1343,7 +1500,48 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_announcements_inst ON institutional_announcements(institution_id, status);
     CREATE INDEX IF NOT EXISTS idx_announcements_published ON institutional_announcements(published_at);
     CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_logs(target_type, target_id);
+    CREATE INDEX IF NOT EXISTS idx_desks_inst ON institution_desks(institution_id, level);
+    CREATE INDEX IF NOT EXISTS idx_desk_officers_desk ON institution_desk_officers(desk_id, status);
+    CREATE INDEX IF NOT EXISTS idx_delegations_to_inst ON coordination_delegations(to_institution_id, status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_delegations_post ON coordination_delegations(post_id);
+    CREATE INDEX IF NOT EXISTS idx_inbox_routes_item ON inbox_item_routes(inbox_item_id);
+    CREATE INDEX IF NOT EXISTS idx_posts_owner_inst ON posts(owner_institution_id, workflow_stage);
+    CREATE INDEX IF NOT EXISTS idx_inbox_mirror ON institutional_inbox_items(mirror_of_item_id);
+    CREATE INDEX IF NOT EXISTS idx_inbox_desk_state ON institutional_inbox_items(desk_id, action_state);
+    CREATE INDEX IF NOT EXISTS idx_delegations_parent ON coordination_delegations(parent_delegation_id);
   `);
+
+  // A report may be tagged to an institution only once. Historically tag rows
+  // used random ids, so repeated routing/alerting created duplicates that
+  // double-counted reach and split alert status across rows. Collapse any
+  // existing duplicates (keeping the most advanced status) and enforce the
+  // natural key so alert upserts are idempotent.
+  try {
+    db.exec(`
+      DELETE FROM post_institution_tags
+      WHERE rowid NOT IN (
+        SELECT rowid FROM (
+          SELECT rowid, ROW_NUMBER() OVER (
+            PARTITION BY post_id, institution_id
+            ORDER BY
+              CASE alert_status
+                WHEN 'DELIVERED' THEN 1
+                WHEN 'ACKNOWLEDGED' THEN 2
+                WHEN 'SENT' THEN 3
+                WHEN 'QUEUED' THEN 4
+                WHEN 'PENDING' THEN 5
+                WHEN 'NOT_CONFIGURED' THEN 6
+                ELSE 7
+              END,
+              created_at DESC, rowid DESC
+          ) AS rn FROM post_institution_tags
+        ) WHERE rn = 1
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_inst_tags_unique ON post_institution_tags(post_id, institution_id);
+    `);
+  } catch (err: any) {
+    console.warn('Institution tag uniqueness migration notice:', err?.message);
+  }
 
   console.log('Database tables and indexes verified successfully.');
 

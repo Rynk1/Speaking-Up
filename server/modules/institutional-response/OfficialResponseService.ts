@@ -1,6 +1,7 @@
 import { db } from '../../database/db';
 import { OutboxService } from '../../infrastructure/events/OutboxService';
 import { AuditService } from '../audit/AuditService';
+import { InstitutionalInboxService } from '../institutional-inbox/InstitutionalInboxService';
 import { logger } from '../../shared/logger';
 
 export type OfficialResponseType =
@@ -74,6 +75,20 @@ export class OfficialResponseService {
       input.redirectedToInstitutionName || null,
       now,
       now
+    );
+
+    // Advance the awareness-queue work items so the institution's own inbox no longer
+    // shows a report it has just answered. Runs before the post status write below so
+    // the response-derived status remains authoritative on the post.
+    const inboxState =
+      input.responseType === 'RESOLUTION' ? 'RESOLVED' :
+      input.responseType === 'ACTION_REPORTED' ? 'ACTION_REPORTED' :
+      input.responseType === 'ACKNOWLEDGEMENT' ? 'ACKNOWLEDGED' : 'PUBLIC_RESPONSE';
+    InstitutionalInboxService.syncWorkItemFromResponse(
+      input.postId,
+      inboxState,
+      { id: input.authorId, name: input.authorName, role: 'INSTITUTION_REP' },
+      `Official ${input.responseType} published`
     );
 
     // Update post accountability status

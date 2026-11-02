@@ -48,6 +48,8 @@ import { InstitutionalAnnouncementService } from './modules/announcements/Instit
 import { AlertStateMachine } from './modules/alerting/AlertStateMachine';
 import { PrivacyProjectionService } from './modules/privacy/PrivacyProjectionService';
 import { CoordinationService } from './modules/coordination/CoordinationService';
+import type { CoverageMode } from './modules/coordination/CoordinationService';
+import { listMmdasForRegion, MMDA_REGIONS, GHANA_MMDA_BY_REGION } from '../shared/ghanaMmda';
 import { JointCaseService } from './modules/coordination/JointCaseService';
 import { CoordinationQueueService } from './modules/coordination/CoordinationQueueService';
 import { NotificationService } from './modules/notifications/NotificationService';
@@ -3085,6 +3087,56 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Routing coverage error: ${err.message}`);
       res.status(500).json({ error: 'Failed to compute routing coverage' });
+    }
+  });
+
+  // LOCAL GOVERNANCE: the Ghana MMDA reference registry a national desk rolls out
+  // from. Public reference data (no institution scope) — lists every region and the
+  // assemblies known for it, so the console can render the rollout picker.
+  app.get('/api/reference/mmda', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const region = req.query.region as string | undefined;
+      if (region) return res.json({ region, assemblies: listMmdasForRegion(region) });
+      res.json({ regions: MMDA_REGIONS, byRegion: GHANA_MMDA_BY_REGION });
+    } catch (err: any) {
+      logger.error(`MMDA reference error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to load MMDA reference data' });
+    }
+  });
+
+  // LOCAL GOVERNANCE: roll out an institution's national → regional → MMDA desk
+  // network in one action. Idempotent, so a national administrator can re-run it.
+  app.post('/api/institutions/:id/desks/provision', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { regions } = req.body;
+      if (!Array.isArray(regions) || regions.length === 0) {
+        return res.status(400).json({ error: 'regions must be a non-empty array' });
+      }
+
+      const normalised = regions
+        .filter((r: any) => r && typeof r.region === 'string' && r.region.trim())
+        .map((r: any) => ({
+          region: sanitizePlainText(r.region),
+          mmdaCodes: Array.isArray(r.mmdaCodes) ? r.mmdaCodes.map((c: any) => sanitizePlainText(String(c))) : undefined,
+          coverageMode: (r.coverageMode === 'ON_CALL' ? 'ON_CALL' : 'STANDING') as CoverageMode,
+          mobileReady: Boolean(r.mobileReady)
+        }));
+
+      if (normalised.length === 0) {
+        return res.status(400).json({ error: 'No valid regions supplied' });
+      }
+
+      const result = CoordinationService.provisionHierarchy({
+        institutionId: req.params.id,
+        regions: normalised,
+        actor: { id: user.id, name: user.name, role: user.role, institutionId: req.params.id }
+      });
+
+      res.status(201).json({ success: true, ...result });
+    } catch (err: any) {
+      logger.error(`Hierarchy provisioning error: ${err.message}`);
+      res.status(500).json({ error: err.message || 'Failed to provision hierarchy' });
     }
   });
 

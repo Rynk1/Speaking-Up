@@ -13,6 +13,7 @@ import {
   checkCanEscalate,
   type WorkItemFacts
 } from '../../../shared/workflow';
+import { listMmdasForRegion } from '../../../shared/ghanaMmda';
 
 export type DeskLevel = 'NATIONAL' | 'REGIONAL' | 'METROPOLITAN' | 'MUNICIPAL' | 'DISTRICT' | 'SPECIALIST';
 export type LocalDeskLevel = 'METROPOLITAN' | 'MUNICIPAL' | 'DISTRICT';
@@ -173,6 +174,110 @@ export class CoordinationService {
 
     if (level === 'REGIONAL') return national || null;
     return null;
+  }
+
+  /**
+   * Rolls out an institution's desk network from the Ghana MMDA registry in one
+   * action. For each selected region it ensures a REGIONAL desk exists (creating a
+   * national desk first if the agency has none) and creates a local MMDA desk for
+   * every selected assembly. Idempotent: existing desks are reported as `skipped`,
+   * so a national administrator can re-run the rollout safely after adding a
+   * region. Returns a per-desk outcome the console renders as a summary.
+   */
+  public static provisionHierarchy(input: {
+    institutionId: string;
+    regions: { region: string; mmdaCodes?: string[]; coverageMode?: CoverageMode; mobileReady?: boolean }[];
+    actor: CoordinationActor;
+  }): {
+    created: number;
+    skipped: number;
+    desks: { region: string; name: string; level: DeskLevel; mmdaCode?: string; status: 'created' | 'skipped' }[];
+  } {
+    const institution = db.prepare('SELECT * FROM institutions WHERE id = ?').get(input.institutionId) as any;
+    if (!institution) throw new Error(`Institution ${input.institutionId} not found`);
+    if (!Array.isArray(input.regions) || input.regions.length === 0) {
+      throw new Error('Select at least one region to roll out');
+    }
+
+    const results: { region: string; name: string; level: DeskLevel; mmdaCode?: string; status: 'created' | 'skipped' }[] = [];
+    const existing = () => db.prepare(`
+      SELECT * FROM institution_desks WHERE institution_id = ? AND status = 'ACTIVE'
+    `).all(input.institutionId) as any[];
+
+    // Ensure the institution has a national command desk to hang the network from.
+    let all = existing();
+    if (!all.some((d) => d.level === 'NATIONAL')) {
+      this.createDesk({
+        institutionId: input.institutionId,
+        name: `${institution.short_name || institution.official_name} National Command Desk`,
+        code: `${(institution.acronym || 'INST').toUpperCase()}-NAT`,
+        level: 'NATIONAL',
+        specialization: 'National command and oversight'
+      });
+      results.push({ region: '-', name: `${institution.acronym} National Command Desk`, level: 'NATIONAL', status: 'created' });
+      all = existing();
+    }
+
+    for (const sel of input.regions) {
+      const region = sel.region;
+      const regionDesk = all.find((d) => d.level === 'REGIONAL' && d.region === region);
+      if (!regionDesk) {
+        this.createDesk({
+          institutionId: input.institutionId,
+          name: `${region} Regional Operations Desk`,
+          code: `${(institution.acronym || 'INST').toUpperCase()}-${region.replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase()}`,
+          level: 'REGIONAL',
+          region,
+          specialization: `Regional coordination for ${region}`
+        });
+        results.push({ region, name: `${region} Regional Operations Desk`, level: 'REGIONAL', status: 'created' });
+        all = existing();
+      } else {
+        results.push({ region, name: regionDesk.name, level: 'REGIONAL', status: 'skipped' });
+      }
+
+      const registry = listMmdasForRegion(region);
+      const wanted = sel.mmdaCodes && sel.mmdaCodes.length
+        ? registry.filter((m) => sel.mmdaCodes!.includes(m.code))
+        : registry;
+
+      for (const mmda of wanted) {
+        const already = all.find((d) => d.mmda_code === mmda.code || (d.district === mmda.name && d.region === region));
+        if (already) {
+          results.push({ region, name: already.name, level: already.level, mmdaCode: already.mmda_code || undefined, status: 'skipped' });
+          continue;
+        }
+        this.createDesk({
+          institutionId: input.institutionId,
+          name: `${mmda.name} ${institution.acronym || ''} Desk`.replace(/\s+/g, ' ').trim(),
+          code: `${mmda.code}-${Date.now().toString().slice(-4)}`,
+          level: mmda.tier,
+          region,
+          district: mmda.name,
+          mmdaCode: mmda.code,
+          coverageMode: sel.coverageMode || 'STANDING',
+          mobileReady: sel.mobileReady ?? false,
+          specialization: `Local response for ${mmda.name}`
+        });
+        results.push({ region, name: `${mmda.name} Desk`, level: mmda.tier, mmdaCode: mmda.code, status: 'created' });
+        all = existing();
+      }
+    }
+
+    const created = results.filter((r) => r.status === 'created').length;
+    const skipped = results.filter((r) => r.status === 'skipped').length;
+
+    AuditService.log({
+      eventType: 'HIERARCHY_PROVISIONED',
+      userId: input.actor.id,
+      actorType: 'INSTITUTION',
+      institutionId: input.institutionId,
+      targetType: 'INSTITUTION',
+      targetId: input.institutionId,
+      afterState: { created, skipped, regions: input.regions.map((r) => r.region) }
+    });
+
+    return { created, skipped, desks: results };
   }
 
   public static listDesks(institutionId: string): any[] {

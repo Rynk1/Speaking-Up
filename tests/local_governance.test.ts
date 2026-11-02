@@ -211,4 +211,79 @@ describe('Local Governance: national → regional → MMDA desk elevation', () =
       .set('Authorization', `Bearer ${policeToken}`);
     expect(missing.status).toBe(404);
   });
+
+  it('9. The MMDA reference registry is exposed for the rollout picker', async () => {
+    const res = await request(app)
+      .get('/api/reference/mmda')
+      .set('Authorization', `Bearer ${policeToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.regions).toContain('Greater Accra');
+    expect(res.body.byRegion['Greater Accra'].some((a: any) => a.code === 'GAR-AMA')).toBe(true);
+
+    const scoped = await request(app)
+      .get('/api/reference/mmda?region=Ashanti')
+      .set('Authorization', `Bearer ${policeToken}`);
+    expect(scoped.status).toBe(200);
+    expect(scoped.body.assemblies.some((a: any) => a.code === 'ASH-KMA')).toBe(true);
+
+    const unauth = await request(app).get('/api/reference/mmda');
+    expect(unauth.status).toBe(401);
+  });
+
+  it('10. National rollout provisions national → regional → MMDA in one action', async () => {
+    const res = await request(app)
+      .post('/api/institutions/ghs-health/desks/provision')
+      .set('Authorization', `Bearer ${ghsToken}`)
+      .send({ regions: [{ region: 'Ashanti', mmdaCodes: ['ASH-KMA', 'ASH-OMA'], coverageMode: 'STANDING' }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.created).toBeGreaterThan(0);
+
+    const desks = CoordinationService.listDesks('ghs-health');
+    const metro = desks.find((d: any) => d.mmda_code === 'ASH-KMA');
+    expect(metro?.level).toBe('METROPOLITAN');
+    expect(metro?.region).toBe('Ashanti');
+    // The new local desk hangs off the Ashanti regional desk.
+    const parent = desks.find((d: any) => d.id === metro?.parent_desk_id);
+    expect(parent?.level).toBe('REGIONAL');
+    expect(parent?.region).toBe('Ashanti');
+    // Unticked assemblies in the region are not created.
+    expect(desks.some((d: any) => d.mmda_code === 'ASH-BOK')).toBe(false);
+  });
+
+  it('11. Rollout is idempotent — re-running only reports skips', async () => {
+    const first = await request(app)
+      .post('/api/institutions/ghs-health/desks/provision')
+      .set('Authorization', `Bearer ${ghsToken}`)
+      .send({ regions: [{ region: 'Ashanti', mmdaCodes: ['ASH-KMA'], coverageMode: 'STANDING' }] });
+    expect(first.status).toBe(201);
+
+    const second = await request(app)
+      .post('/api/institutions/ghs-health/desks/provision')
+      .set('Authorization', `Bearer ${ghsToken}`)
+      .send({ regions: [{ region: 'Ashanti', mmdaCodes: ['ASH-KMA'], coverageMode: 'STANDING' }] });
+    expect(second.status).toBe(201);
+    expect(second.body.created).toBe(0);
+    expect(second.body.skipped).toBeGreaterThan(0);
+
+    // No duplicate desk was created for the same assembly.
+    const count = db.prepare(`
+      SELECT COUNT(*) AS n FROM institution_desks WHERE institution_id = 'ghs-health' AND mmda_code = 'ASH-KMA'
+    `).get() as any;
+    expect(count.n).toBe(1);
+  });
+
+  it('12. Rollout is scoped to the acting institution and validated', async () => {
+    const forbidden = await request(app)
+      .post('/api/institutions/ghana-police-service/desks/provision')
+      .set('Authorization', `Bearer ${ghsToken}`)
+      .send({ regions: [{ region: 'Volta' }] });
+    expect([403, 404]).toContain(forbidden.status);
+
+    const empty = await request(app)
+      .post('/api/institutions/ghs-health/desks/provision')
+      .set('Authorization', `Bearer ${ghsToken}`)
+      .send({ regions: [] });
+    expect(empty.status).toBe(400);
+  });
 });

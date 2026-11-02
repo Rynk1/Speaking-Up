@@ -126,12 +126,29 @@ never hard-code a level CASE elsewhere.
   reports standing vs on-call desks and the districts that raised reports but have
   no desk. The console's *Hierarchy & Desks → Local Coverage* tab renders it and
   drives mobilisation.
+- **National rollout is one action.** `POST /api/institutions/:id/desks/provision`
+  takes `{ regions: [{ region, mmdaCodes?, coverageMode?, mobileReady? }] }` and
+  ensures a national desk, a regional desk per region, and a local MMDA desk per
+  selected assembly (omitting `mmdaCodes` means the whole region). It is
+  **idempotent** — existing desks are reported as `skipped`, so a national admin
+  can re-run it after adding a region without creating duplicates. The picker is
+  built from the shared Ghana MMDA registry (`shared/ghanaMmda.ts`, exposed at
+  `GET /api/reference/mmda`); that registry is a seed-quality subset of the 261
+  assemblies (capitals + most-populated districts), and unlisted jurisdictions can
+  still be added with the single-desk `POST /desks` endpoint.
 
 Schema: `institution_desks.mmda_code` (GSS-aligned code), `coverage_mode`,
 `mobile_ready`; `institutions.desk_fanout_enabled`; index
 `idx_desks_local_tier`. Legacy desks named `*Metropolitan*`/`*Municipal*` are
 relabelled on startup. `inbox_item_routes` is `UNIQUE(inbox_item_id, desk_id)`,
 so `INSERT OR IGNORE` keeps fan-out idempotent.
+
+**Escalation already runs unattended.** `runSlaSweep` (called every 15 minutes by
+`startCoordinationSlaWorker`, started in `server.ts`) warns approaching SLAs and
+auto-escalates breached items up the desk hierarchy via `escalateInboxItem`, with
+`sla_notified_at` keeping the sweep idempotent. It is also exposed for manual
+runs at `POST /api/admin/coordination/run-sla-sweep` (admin/moderator). Do not
+rebuild this — extend it.
 
 ## Gotchas
 

@@ -667,6 +667,30 @@ export const api = {
     return camelize(await res.json());
   },
 
+  // NATIONAL ROLLOUT: the Ghana MMDA reference registry the rollout picker is built
+  // from, and the one-action provisioning of an institution's desk network.
+  async getMmdaReference(): Promise<{ regions: string[]; byRegion: Record<string, { code: string; name: string; tier: string }[]> }> {
+    const res = await fetch('/api/reference/mmda', { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch MMDA reference');
+    return res.json();
+  },
+
+  async provisionDeskHierarchy(
+    institutionId: string,
+    regions: { region: string; mmdaCodes?: string[]; coverageMode?: 'STANDING' | 'ON_CALL'; mobileReady?: boolean }[]
+  ): Promise<{ success: boolean; created: number; skipped: number; desks: { region: string; name: string; level: string; mmdaCode?: string; status: 'created' | 'skipped' }[] }> {
+    const res = await fetch(`/api/institutions/${institutionId}/desks/provision`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ regions })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to provision desk hierarchy');
+    }
+    return res.json();
+  },
+
   async getInboxItemRoutes(institutionId: string, itemId: string): Promise<any[]> {
     const res = await fetch(`/api/institutions/${institutionId}/inbox/${itemId}/routes`, {
       headers: getAuthHeaders()

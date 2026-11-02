@@ -23,11 +23,13 @@ import {
   Clock,
   ExternalLink,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  GitPullRequest,
+  ArrowRight
 } from 'lucide-react';
 import { api } from '../services/api';
 
-type AdminTab = 'overview' | 'content' | 'reports' | 'users' | 'institutions' | 'privacy' | 'system';
+type AdminTab = 'overview' | 'content' | 'reports' | 'users' | 'institutions' | 'coordination' | 'privacy' | 'system';
 
 export const AdminDashboardView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -59,6 +61,10 @@ export const AdminDashboardView: React.FC = () => {
   // Audit logs state
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
+  // Coordination oversight state
+  const [coordination, setCoordination] = useState<any>(null);
+  const [sweepResult, setSweepResult] = useState<string | null>(null);
+
   // Institution Modal / Form state
   const [showInstModal, setShowInstModal] = useState(false);
   const [instForm, setInstForm] = useState({
@@ -79,6 +85,7 @@ export const AdminDashboardView: React.FC = () => {
       case 'reports': return 'Abuse Flag Queue';
       case 'users': return 'User Management';
       case 'institutions': return 'State Institutions';
+      case 'coordination': return 'Coordination Oversight';
       case 'privacy': return 'P³RE Privacy Engine';
       case 'system': return 'Job Queue & Audit';
     }
@@ -109,6 +116,9 @@ export const AdminDashboardView: React.FC = () => {
       } else if (activeTab === 'reports') {
         const r = await api.getAdminAbuseReports(reportStatusFilter);
         setAbuseReports(r);
+      } else if (activeTab === 'coordination') {
+        const c = await api.getAdminCoordination();
+        setCoordination(c);
       } else if (activeTab === 'system') {
         const [j, logs] = await Promise.all([
           api.getAdminJobs(jobStatusFilter),
@@ -129,6 +139,20 @@ export const AdminDashboardView: React.FC = () => {
   }, [loadTabData]);
 
   // Handlers
+  const handleRunSlaSweep = async () => {
+    setActionLoading('sla-sweep');
+    setSweepResult(null);
+    try {
+      const r = await api.runSlaSweep();
+      setSweepResult(`Swept ${r.overdueItems} overdue, ${r.warningItems} approaching; escalated ${r.escalatedDelegations} delegations and ${r.ladderEscalations ?? 0} work items up the desk ladder (${r.notified} officials notified).`);
+      await loadTabData();
+    } catch (err: any) {
+      setSweepResult(`SLA sweep failed: ${err.message}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleUserRoleChange = async (userId: string, newRole: string) => {
     setActionLoading(`user-role-${userId}`);
     try {
@@ -303,6 +327,19 @@ export const AdminDashboardView: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab('coordination')}
+              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
+                activeTab === 'coordination'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <GitPullRequest className="w-4 h-4" /> Coordination Oversight
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('privacy')}
               className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
                 activeTab === 'privacy'
@@ -405,7 +442,7 @@ export const AdminDashboardView: React.FC = () => {
 
               {/* Navigation Tabs List */}
               <nav className="space-y-1.5">
-                {(['overview', 'content', 'reports', 'users', 'institutions', 'privacy', 'system'] as AdminTab[]).map(tab => (
+                {(['overview', 'content', 'reports', 'users', 'institutions', 'coordination', 'privacy', 'system'] as AdminTab[]).map(tab => (
                   <button
                     key={`drawer-adm-${tab}`}
                     onClick={() => {
@@ -453,6 +490,7 @@ export const AdminDashboardView: React.FC = () => {
               {activeTab === 'reports' && 'Citizen Abuse & Flagging Review Queue'}
               {activeTab === 'users' && 'User Accounts & Access Management'}
               {activeTab === 'institutions' && 'State Agencies & Alert Channel Configuration'}
+              {activeTab === 'coordination' && 'Inter-Institutional Coordination & SLA Oversight'}
               {activeTab === 'privacy' && 'P³RE Privacy Engine Policy & Audit'}
               {activeTab === 'system' && 'Durable Job Queue & Event Timeline Audit'}
             </h1>
@@ -897,6 +935,143 @@ export const AdminDashboardView: React.FC = () => {
                 <li>Ghana Water Company Ltd (GWCL) — <span className="text-emerald-400">reports@gwcl.com.gh</span> (Email)</li>
                 <li>NADMO Disaster Emergency — <span className="text-emerald-400">emergency@nadmo.gov.gh</span> (SMS / API)</li>
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: COORDINATION OVERSIGHT */}
+        {activeTab === 'coordination' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <GitPullRequest className="w-4 h-4 text-amber-400" /> Cross-Institution Coordination
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Oversight of transfers, delegations, escalations and SLA compliance across all desks.
+                </p>
+              </div>
+              <button
+                onClick={handleRunSlaSweep}
+                disabled={actionLoading === 'sla-sweep'}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-slate-950 text-xs font-bold rounded-lg flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${actionLoading === 'sla-sweep' ? 'animate-spin' : ''}`} />
+                Run SLA Sweep Now
+              </button>
+            </div>
+
+            {sweepResult && (
+              <div className="p-3 bg-slate-900 border border-amber-900/50 rounded-xl text-[11px] text-amber-200">
+                {sweepResult}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-4 bg-slate-950/80 border border-amber-900/50 rounded-2xl">
+                <div className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1">
+                  <GitPullRequest className="w-3.5 h-3.5" /> Pending Delegations
+                </div>
+                <div className="text-2xl font-black text-white mt-1">{coordination?.summary?.pendingDelegations ?? 0}</div>
+                <p className="text-[10px] text-slate-400">Inter-institution transfers awaiting acceptance</p>
+              </div>
+              <div className="p-4 bg-slate-950/80 border border-red-900/50 rounded-2xl">
+                <div className="text-[10px] uppercase font-bold text-red-400 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" /> SLA Breaches
+                </div>
+                <div className="text-2xl font-black text-white mt-1">{coordination?.summary?.overdueItems ?? 0}</div>
+                <p className="text-[10px] text-slate-400">Inbox items past their response deadline</p>
+              </div>
+              <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl">
+                <div className="text-[10px] uppercase font-bold text-slate-300 flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5" /> Agencies With Open Work
+                </div>
+                <div className="text-2xl font-black text-white mt-1">{coordination?.summary?.institutionsWithOpenWork ?? 0}</div>
+                <p className="text-[10px] text-slate-400">Institutions holding unresolved reports</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2">
+                    <GitPullRequest className="w-4 h-4 text-amber-400" /> Pending Delegations
+                  </h3>
+                  <button onClick={loadTabData} className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1">
+                    <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Refresh
+                  </button>
+                </div>
+                {(!coordination?.pendingDelegations || coordination.pendingDelegations.length === 0) ? (
+                  <p className="text-xs text-slate-500 py-6 text-center">No pending delegations across the platform.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto">
+                    {coordination.pendingDelegations.map((d: any) => (
+                      <div key={d.id} className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-white truncate">{d.postTitle || 'Linked report'}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800 uppercase">
+                            {d.delegationType}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                          <span>{d.fromInstitutionName || 'External'}</span>
+                          <ArrowRight className="w-3 h-3" />
+                          <span className="text-slate-200">{d.toInstitutionName}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 line-clamp-2">{d.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
+                <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-400" /> SLA Overdue Inbox Items
+                </h3>
+                {(!coordination?.overdueItems || coordination.overdueItems.length === 0) ? (
+                  <p className="text-xs text-slate-500 py-6 text-center">No overdue items. All desks within SLA.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto">
+                    {coordination.overdueItems.map((item: any) => (
+                      <div key={item.id} className="p-3 bg-slate-900 border border-red-900/40 rounded-xl text-xs space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-white truncate">{item.title}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950/70 text-red-300 border border-red-800 uppercase">
+                            {item.itemPriority}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {item.institutionName}{item.deskName ? ` • ${item.deskName}` : ''}
+                        </div>
+                        {item.dueAt && (
+                          <div className="text-[11px] text-red-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Due {new Date(item.dueAt).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
+              <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-purple-400" /> Open Workload by Institution
+              </h3>
+              {(!coordination?.byInstitution || coordination.byInstitution.length === 0) ? (
+                <p className="text-xs text-slate-500 py-6 text-center">No open institutional work items.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {coordination.byInstitution.map((row: any) => (
+                    <div key={row.institutionId} className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between">
+                      <span className="text-xs text-slate-200 truncate">{row.institutionName || row.institutionId}</span>
+                      <span className="text-sm font-black text-purple-400">{row.openReports}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

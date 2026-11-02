@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Inbox,
   AlertTriangle,
@@ -14,9 +14,14 @@ import {
   ArrowUpRight,
   Layers,
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  UserPlus,
+  Forward,
+  ArrowUpCircle,
+  EyeOff,
+  X
 } from 'lucide-react';
-import { InstitutionalInboxItem, CivicPost } from '../../types';
+import { InstitutionalInboxItem, CivicPost, InstitutionalDesk, InstitutionTeamMember } from '../../types';
 import { CivicPriorityIndicator } from './CivicPriorityIndicator';
 
 interface InstitutionalInboxViewProps {
@@ -27,7 +32,14 @@ interface InstitutionalInboxViewProps {
   onSelectPost: (post: CivicPost) => void;
   onOpenSituationDossier?: (situationId: string) => void;
   onRespondToItem?: (item: InstitutionalInboxItem) => void;
+  desks?: InstitutionalDesk[];
+  team?: InstitutionTeamMember[];
+  onAssign?: (itemId: string, payload: { officerUserId?: string; deskId?: string; notes?: string }) => Promise<void>;
+  onHandoff?: (itemId: string, payload: { toDeskId: string; reason: string; instructions?: string; ccDeskIds?: string[] }) => Promise<void>;
+  onEscalate?: (itemId: string, payload: { reason?: string; toDeskId?: string }) => Promise<void>;
 }
+
+type WorkItemAction = 'ASSIGN' | 'HANDOFF' | 'ESCALATE';
 
 export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
   items,
@@ -36,13 +48,33 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
   onTransitionState,
   onSelectPost,
   onOpenSituationDossier,
-  onRespondToItem
+  onRespondToItem,
+  desks = [],
+  team = [],
+  onAssign,
+  onHandoff,
+  onEscalate
 }) => {
   const [filterPriority, setFilterPriority] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterState, setFilterState] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [actionTarget, setActionTarget] = useState<{ item: InstitutionalInboxItem; action: WorkItemAction } | null>(null);
+
+  const deskNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const d of desks) map[d.id] = d.name;
+    return map;
+  }, [desks]);
+
+  const officerNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of team) {
+      if (m.userId) map[m.userId] = m.name;
+    }
+    return map;
+  }, [team]);
 
   // Filter items
   const filtered = items.filter((item) => {
@@ -63,6 +95,20 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
     setUpdatingId(itemId);
     try {
       await onTransitionState(itemId, newState);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleActionSubmit = async (payload: any) => {
+    if (!actionTarget) return;
+    const { item, action } = actionTarget;
+    setUpdatingId(item.id);
+    try {
+      if (action === 'ASSIGN' && onAssign) await onAssign(item.id, payload);
+      else if (action === 'HANDOFF' && onHandoff) await onHandoff(item.id, payload);
+      else if (action === 'ESCALATE' && onEscalate) await onEscalate(item.id, payload);
+      setActionTarget(null);
     } finally {
       setUpdatingId(null);
     }
@@ -210,6 +256,16 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 uppercase">
                         {item.itemType}
                       </span>
+                      {item.mirrorOfItemId && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-600 uppercase flex items-center gap-1">
+                          <EyeOff className="w-3 h-3" /> Visibility Mirror
+                        </span>
+                      )}
+                      {(item.escalationLevel ?? 0) > 0 && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-950/80 text-red-300 border border-red-700 uppercase">
+                          Escalation L{item.escalationLevel}
+                        </span>
+                      )}
                       {item.region && (
                         <span className="text-[10px] text-amber-400 font-semibold">
                           📍 {item.district ? `${item.district}, ` : ''}{item.region}
@@ -247,53 +303,127 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
                   {item.summary}
                 </p>
 
+                {/* Routing & Assignment telemetry */}
+                {(item.assignedDeskId || item.assignedOfficerId || item.dueAt || item.handoffNotes) && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                    {item.assignedDeskId && (
+                      <span className="flex items-center gap-1">
+                        <Building2 className="w-3 h-3 text-slate-500" />
+                        {deskNameById[item.assignedDeskId] || 'Assigned desk'}
+                      </span>
+                    )}
+                    {item.assignedOfficerId && (
+                      <span className="flex items-center gap-1 text-blue-300">
+                        <UserPlus className="w-3 h-3" />
+                        {officerNameById[item.assignedOfficerId] || 'Assigned officer'}
+                      </span>
+                    )}
+                    {item.dueAt && (
+                      <span className="flex items-center gap-1 text-amber-400">
+                        <Clock className="w-3 h-3" /> Due {new Date(item.dueAt).toLocaleString()}
+                      </span>
+                    )}
+                    {item.handoffNotes && (
+                      <span className="text-slate-500 italic">“{item.handoffNotes}”</span>
+                    )}
+                  </div>
+                )}
+
                 {/* Workflow Transition Action Strip */}
                 <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] text-slate-400 font-semibold">Workflow Action:</span>
 
-                    {item.actionState === 'NEW' && (
-                      <button
-                        onClick={() => handleStateChange(item.id, 'SEEN')}
-                        disabled={isUpdating}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition-colors"
-                      >
-                        Mark Seen
-                      </button>
-                    )}
+                    {item.mirrorOfItemId ? (
+                      <span className="text-[11px] text-slate-500 italic">
+                        Read-only visibility mirror — act on the source work item.
+                      </span>
+                    ) : (
+                      <>
+                        {item.actionState === 'NEW' && (
+                          <button
+                            onClick={() => handleStateChange(item.id, 'SEEN')}
+                            disabled={isUpdating}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition-colors"
+                          >
+                            Mark Seen
+                          </button>
+                        )}
 
-                    {['NEW', 'SEEN'].includes(item.actionState) && (
-                      <button
-                        onClick={() => handleStateChange(item.id, 'ACKNOWLEDGED')}
-                        disabled={isUpdating}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-bold border border-slate-700 transition-colors"
-                      >
-                        Acknowledge
-                      </button>
-                    )}
+                        {['NEW', 'SEEN'].includes(item.actionState) && (
+                          <button
+                            onClick={() => handleStateChange(item.id, 'ACKNOWLEDGED')}
+                            disabled={isUpdating}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-bold border border-slate-700 transition-colors"
+                          >
+                            Acknowledge
+                          </button>
+                        )}
 
-                    {['NEW', 'SEEN', 'ACKNOWLEDGED'].includes(item.actionState) && (
-                      <button
-                        onClick={() => handleStateChange(item.id, 'UNDER_REVIEW')}
-                        disabled={isUpdating}
-                        className="px-2.5 py-1 rounded-lg bg-amber-950/60 hover:bg-amber-900/80 text-amber-200 text-[11px] font-bold border border-amber-700/60 transition-colors"
-                      >
-                        Start Review
-                      </button>
-                    )}
+                        {['NEW', 'SEEN', 'ACKNOWLEDGED'].includes(item.actionState) && (
+                          <button
+                            onClick={() => handleStateChange(item.id, 'UNDER_REVIEW')}
+                            disabled={isUpdating}
+                            className="px-2.5 py-1 rounded-lg bg-amber-950/60 hover:bg-amber-900/80 text-amber-200 text-[11px] font-bold border border-amber-700/60 transition-colors"
+                          >
+                            Start Review
+                          </button>
+                        )}
 
-                    {item.actionState !== 'RESOLVED' && (
-                      <button
-                        onClick={() => handleStateChange(item.id, 'RESOLVED')}
-                        disabled={isUpdating}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 text-[11px] font-bold border border-emerald-700/60 transition-colors"
-                      >
-                        Mark Resolved
-                      </button>
+                        {item.actionState !== 'RESOLVED' && (
+                          <button
+                            onClick={() => handleStateChange(item.id, 'RESOLVED')}
+                            disabled={isUpdating}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 text-[11px] font-bold border border-emerald-700/60 transition-colors"
+                          >
+                            Mark Resolved
+                          </button>
+                        )}
+
+                        {onAssign && team.length > 0 && (
+                          <button
+                            onClick={() => setActionTarget({ item, action: 'ASSIGN' })}
+                            disabled={isUpdating}
+                            className="px-2.5 py-1 rounded-lg bg-blue-950/60 hover:bg-blue-900/80 text-blue-300 text-[11px] font-bold border border-blue-700/60 transition-colors flex items-center gap-1 disabled:opacity-50"
+                          >
+                            <UserPlus className="w-3 h-3" /> Assign
+                          </button>
+                        )}
+
+                        {onHandoff && desks.length > 0 && (
+                          <button
+                            onClick={() => setActionTarget({ item, action: 'HANDOFF' })}
+                            disabled={isUpdating}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition-colors flex items-center gap-1 disabled:opacity-50"
+                          >
+                            <Forward className="w-3 h-3" /> Handoff
+                          </button>
+                        )}
+
+                        {onEscalate && item.actionState !== 'RESOLVED' && (
+                          <button
+                            onClick={() => setActionTarget({ item, action: 'ESCALATE' })}
+                            disabled={isUpdating}
+                            className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 text-[11px] font-bold border border-red-700/60 transition-colors flex items-center gap-1 disabled:opacity-50"
+                          >
+                            <ArrowUpCircle className="w-3 h-3" /> Escalate
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {item.postId && onRespondToItem && !item.mirrorOfItemId && (
+                      <button
+                        onClick={() => onRespondToItem(item)}
+                        className="text-xs text-emerald-300 hover:text-emerald-200 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-700/60 transition-colors"
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        <span>Respond</span>
+                      </button>
+                    )}
+
                     {item.situationId && onOpenSituationDossier && (
                       <button
                         onClick={() => onOpenSituationDossier(item.situationId!)}
@@ -319,6 +449,262 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
             );
           })
         )}
+      </div>
+
+      {actionTarget && (
+        <WorkItemActionModal
+          item={actionTarget.item}
+          action={actionTarget.action}
+          desks={desks}
+          team={team}
+          onClose={() => setActionTarget(null)}
+          onSubmit={handleActionSubmit}
+        />
+      )}
+    </div>
+  );
+};
+
+interface WorkItemActionModalProps {
+  item: InstitutionalInboxItem;
+  action: WorkItemAction;
+  desks: InstitutionalDesk[];
+  team: InstitutionTeamMember[];
+  onClose: () => void;
+  onSubmit: (payload: any) => Promise<void>;
+}
+
+const ACTION_META: Record<WorkItemAction, { title: string; hint: string; cta: string }> = {
+  ASSIGN: {
+    title: 'Assign work item',
+    hint: 'Attach a named official and optionally re-home the item onto their desk.',
+    cta: 'Assign'
+  },
+  HANDOFF: {
+    title: 'Handoff to a desk',
+    hint: 'Move ownership to another sub-unit. The current desk keeps a read-only mirror.',
+    cta: 'Handoff'
+  },
+  ESCALATE: {
+    title: 'Escalate work item',
+    hint: 'Send this up the desk hierarchy to the next supervisory level. Two levels notify oversight.',
+    cta: 'Escalate'
+  }
+};
+
+const WorkItemActionModal: React.FC<WorkItemActionModalProps> = ({ item, action, desks, team, onClose, onSubmit }) => {
+  const [officerUserId, setOfficerUserId] = useState('');
+  const [deskId, setDeskId] = useState(item.assignedDeskId || '');
+  const [toDeskId, setToDeskId] = useState('');
+  const [reason, setReason] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [notes, setNotes] = useState('');
+  const [ccDeskIds, setCcDeskIds] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const meta = ACTION_META[action];
+
+  const handleSubmit = async () => {
+    setError(null);
+    let payload: any = {};
+    if (action === 'ASSIGN') {
+      if (!officerUserId && !deskId) return setError('Select an officer or a desk');
+      payload = { officerUserId: officerUserId || undefined, deskId: deskId || undefined, notes: notes.trim() || undefined };
+    } else if (action === 'HANDOFF') {
+      if (!toDeskId) return setError('Select a target desk');
+      if (reason.trim().length < 3) return setError('A reason is required');
+      payload = {
+        toDeskId,
+        reason: reason.trim(),
+        instructions: instructions.trim() || undefined,
+        ccDeskIds: ccDeskIds.length ? ccDeskIds : undefined
+      };
+    } else {
+      if (reason.trim().length > 0 && reason.trim().length < 3) return setError('Reason must be at least 3 characters');
+      payload = { reason: reason.trim() || undefined, toDeskId: toDeskId || undefined };
+    }
+
+    setSubmitting(true);
+    try {
+      await onSubmit(payload);
+    } catch (e: any) {
+      setError(e.message || 'Action failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleCc = (id: string) => {
+    setCcDeskIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+          <div>
+            <h3 className="text-sm font-bold text-white">{meta.title}</h3>
+            <p className="text-[11px] text-slate-400 mt-0.5">{meta.hint}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          {error && (
+            <div className="bg-red-950/60 border border-red-800 text-red-200 text-xs p-2.5 rounded-xl flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5" /> {error}
+            </div>
+          )}
+
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
+            <div className="font-bold text-white">{item.title}</div>
+            <div className="text-slate-400 line-clamp-2">{item.summary}</div>
+          </div>
+
+          {action === 'ASSIGN' && (
+            <>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">Officer</label>
+                <select
+                  value={officerUserId}
+                  onChange={(e) => setOfficerUserId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200"
+                >
+                  <option value="">Unassigned</option>
+                  {team.filter(m => m.userId).map(m => (
+                    <option key={m.userId} value={m.userId}>{m.name}{m.title ? ` — ${m.title}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">Desk (optional)</label>
+                <select
+                  value={deskId}
+                  onChange={(e) => setDeskId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200"
+                >
+                  <option value="">Keep current desk</option>
+                  {desks.map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.level})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">Notes (optional)</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 resize-none"
+                />
+              </div>
+            </>
+          )}
+
+          {action === 'HANDOFF' && (
+            <>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">Target desk</label>
+                <select
+                  value={toDeskId}
+                  onChange={(e) => setToDeskId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200"
+                >
+                  <option value="">Select desk...</option>
+                  {desks.filter(d => d.id !== item.assignedDeskId).map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.level})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">Reason (required)</label>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={2}
+                  placeholder="Why is this being handed off?"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 resize-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">Instructions (optional)</label>
+                <textarea
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 resize-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">CC sub-units (visibility only)</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {desks.filter(d => d.id !== toDeskId).map(d => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => toggleCc(d.id)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                        ccDeskIds.includes(d.id)
+                          ? 'bg-amber-500 text-slate-950 border-amber-500'
+                          : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-500'
+                      }`}
+                    >
+                      {d.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {action === 'ESCALATE' && (
+            <>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">Escalate to (optional)</label>
+                <select
+                  value={toDeskId}
+                  onChange={(e) => setToDeskId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200"
+                >
+                  <option value="">Next supervisory desk (automatic)</option>
+                  {desks.map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.level})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase">Reason (optional)</label>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={2}
+                  placeholder="Why is this being escalated?"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 resize-none"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-slate-800">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {submitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            {meta.cta}
+          </button>
+        </div>
       </div>
     </div>
   );

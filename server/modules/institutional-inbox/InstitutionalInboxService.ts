@@ -86,6 +86,85 @@ export class InstitutionalInboxService {
   }
 
   /**
+   * Creates a read-only visibility mirror of an existing inbox item on a sub-unit
+   * desk. Mirrors carry no ownership: they exist so a parent desk's instruction is
+   * visible inline in the child desk's queue. State is kept in sync with the source.
+   */
+  public static createMirrorItem(sourceItemId: string, deskId: string): string | null {
+    const source = db.prepare('SELECT * FROM institutional_inbox_items WHERE id = ?').get(sourceItemId) as any;
+    if (!source) return null;
+    if (source.desk_id === deskId) return null;
+
+    const desk = db.prepare('SELECT * FROM institution_desks WHERE id = ?').get(deskId) as any;
+    if (!desk) return null;
+
+    const existing = db.prepare(`
+      SELECT id FROM institutional_inbox_items
+      WHERE mirror_of_item_id = ? AND desk_id = ?
+    `).get(sourceItemId, deskId) as any;
+    if (existing) return existing.id;
+
+    const id = `inb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO institutional_inbox_items (
+        id, institution_id, item_type, item_priority, priority_score,
+        post_id, situation_id, title, summary, region, district,
+        signal_summary_json, action_state, is_read, desk_id, due_at,
+        mirror_of_item_id, escalation_level, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      desk.institution_id,
+      source.item_type,
+      source.item_priority,
+      source.priority_score,
+      source.post_id || null,
+      source.situation_id || null,
+      source.title,
+      `[Mirror • ${desk.name}] ${source.summary}`,
+      source.region || null,
+      source.district || null,
+      source.signal_summary_json || '{}',
+      source.action_state,
+      deskId,
+      source.due_at || null,
+      sourceItemId,
+      source.escalation_level || 0,
+      now,
+      now
+    );
+
+    db.prepare(`
+      INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
+      VALUES (?, ?, ?, ?, 'CC', ?)
+    `).run(`rt-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`, id, desk.institution_id, deskId, now);
+
+    OutboxService.enqueueEvent('institution.inbox.item_created', 'INBOX_ITEM', id, {
+      itemId: id,
+      institutionId: desk.institution_id,
+      itemType: source.item_type,
+      title: source.title,
+      mirrorOf: sourceItemId
+    });
+
+    return id;
+  }
+
+  /**
+   * Propagates a state change from a source item to all of its visibility mirrors.
+   */
+  public static syncMirrors(sourceItemId: string, targetState: string, now: string): number {
+    const result = db.prepare(`
+      UPDATE institutional_inbox_items
+      SET action_state = ?, updated_at = ?
+      WHERE mirror_of_item_id = ? AND action_state != ?
+    `).run(targetState, now, sourceItemId, targetState);
+    return result.changes;
+  }
+
+  /**
    * Retrieves inbox items for an institution with search and filtering
    */
   public static getInbox(params: {
@@ -156,9 +235,43 @@ export class InstitutionalInboxService {
   }
 
   /**
-   * Transitions an inbox item through the state model
-   * NEW -> SEEN -> ACKNOWLEDGED -> UNDER_REVIEW -> RESPONSE_PREPARED -> PUBLIC_RESPONSE -> ACTION_REPORTED -> RESOLVED -> CITIZEN_FOLLOW_UP
+   * Advances the inbox work item(s) tracking a report when an official response is
+   * published for it. Without this the awareness queue keeps showing a report the
+   * institution has already answered. Mirrors are skipped (they follow the source).
+   * Returns the number of work items advanced.
    */
+  public static syncWorkItemFromResponse(
+    postId: string,
+    targetState: ActionState,
+    actor: { id: string; name: string; role: string },
+    reason: string
+  ): number {
+    const order: ActionState[] = [
+      'NEW', 'SEEN', 'ACKNOWLEDGED', 'UNDER_REVIEW', 'RESPONSE_PREPARED',
+      'PUBLIC_RESPONSE', 'ACTION_REPORTED', 'RESOLVED'
+    ];
+    const targetRank = order.indexOf(targetState);
+
+    const items = db.prepare(`
+      SELECT id, action_state FROM institutional_inbox_items
+      WHERE post_id = ? AND mirror_of_item_id IS NULL
+    `).all(postId) as any[];
+
+    let advanced = 0;
+    for (const item of items) {
+      const currentRank = order.indexOf(item.action_state);
+      // Only move forward, so a later resolution still advances an already-responded item.
+      if (currentRank >= targetRank) continue;
+      try {
+        this.transitionItemState(item.id, targetState, actor, reason);
+        advanced++;
+      } catch (err: any) {
+        logger.warn(`Failed to advance inbox item ${item.id} from response: ${err.message}`);
+      }
+    }
+    return advanced;
+  }
+
   public static transitionItemState(
     itemId: string,
     targetState: ActionState,
@@ -169,6 +282,9 @@ export class InstitutionalInboxService {
     if (!item) {
       throw new Error(`Inbox item ${itemId} not found`);
     }
+    if (item.mirror_of_item_id) {
+      throw new Error('This is a read-only visibility mirror; act on the source work item');
+    }
 
     const beforeState = item.action_state;
     const now = new Date().toISOString();
@@ -178,6 +294,9 @@ export class InstitutionalInboxService {
       SET action_state = ?, is_read = 1, updated_at = ?
       WHERE id = ?
     `).run(targetState, now, itemId);
+
+    // Keep read-only mirrors of this item in sync with the source state.
+    this.syncMirrors(itemId, targetState, now);
 
     // If associated with a post, synchronize post accountability_status
     if (item.post_id) {

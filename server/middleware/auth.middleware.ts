@@ -79,3 +79,22 @@ export function requirePermission(permission: string) {
     next();
   };
 }
+
+/**
+ * Ensures an institution representative can only act within their own institution.
+ * Oversight roles (ADMIN, MODERATOR, EXECUTIVE_OBSERVER) may cross institution
+ * boundaries for monitoring and coordination oversight.
+ */
+export function requireInstitutionScope(paramName = 'id') {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    if (['ADMIN', 'MODERATOR', 'EXECUTIVE_OBSERVER'].includes(req.user.role)) {
+      return next();
+    }
+    const targetInstitutionId = req.params[paramName];
+    if (!req.user.institutionId || req.user.institutionId !== targetInstitutionId) {
+      return res.status(403).json({ error: 'Access denied: outside your institution scope' });
+    }
+    next();
+  };
+}

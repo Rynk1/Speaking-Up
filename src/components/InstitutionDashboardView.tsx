@@ -48,11 +48,13 @@ import {
   InstitutionTeamMember
 } from '../types';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { CivicPostReportModal } from './CivicPostReportModal';
 import { InstitutionalInboxView } from './institution/InstitutionalInboxView';
 import { SituationsDeskView } from './institution/SituationsDeskView';
 import { AnnouncementsDeskView } from './institution/AnnouncementsDeskView';
 import { HierarchyDesksView } from './institution/HierarchyDesksView';
+import { CoordinationDeskView } from './institution/CoordinationDeskView';
 import { SituationDossierModal } from './institution/SituationDossierModal';
 import { AnnouncementComposerModal } from './institution/AnnouncementComposerModal';
 
@@ -62,6 +64,7 @@ export type InstitutionTab =
   | 'situations'
   | 'announcements'
   | 'desks'
+  | 'coordination'
   | 'new_awareness'
   | 'urgent'
   | 'trending'
@@ -99,6 +102,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
   onSelectPost
 }) => {
   const [activeTab, setActiveTab] = useState<InstitutionTab>('overview');
+  const { currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
@@ -202,6 +206,24 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
     }
   };
 
+  const handleAssignInboxItem = async (itemId: string, payload: { officerUserId?: string; deskId?: string; notes?: string }) => {
+    if (!currentInstitution) return;
+    await api.assignInboxItem(currentInstitution.id, itemId, payload);
+    await Promise.all([loadInbox(), loadDesksAndTeam()]);
+  };
+
+  const handleHandoffInboxItem = async (itemId: string, payload: { toDeskId: string; reason: string; instructions?: string; ccDeskIds?: string[] }) => {
+    if (!currentInstitution) return;
+    await api.handoffToDesk(currentInstitution.id, { inboxItemId: itemId, ...payload });
+    await Promise.all([loadInbox(), loadDesksAndTeam()]);
+  };
+
+  const handleEscalateInboxItem = async (itemId: string, payload: { reason?: string; toDeskId?: string }) => {
+    if (!currentInstitution) return;
+    await api.escalateInboxItem(currentInstitution.id, itemId, payload);
+    await Promise.all([loadInbox(), loadDesksAndTeam()]);
+  };
+
   const handleOpenSituationDossier = (situationId: string) => {
     setSelectedSituationId(situationId);
     setIsSituationDossierOpen(true);
@@ -242,6 +264,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
       case 'situations': return 'Civic Situation Dossiers';
       case 'announcements': return 'Official Communiqués';
       case 'desks': return 'Hierarchy & Routing Desks';
+      case 'coordination': return 'Coordination & Delegations';
       case 'new_awareness': return 'New Awareness';
       case 'urgent': return 'Urgent / Crisis Desk';
       case 'trending': return 'Trending / Viral Issues';
@@ -639,6 +662,19 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                   {desks.length}
                 </span>
               </button>
+
+              <button
+                onClick={() => setActiveTab('coordination')}
+                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
+                  activeTab === 'coordination'
+                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <GitPullRequest className="w-4 h-4 text-rose-400" /> Coordination & Delegations
+                </span>
+              </button>
             </div>
 
             {/* Section 2: Citizen Report Queues */}
@@ -890,6 +926,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
                     'situations',
                     'announcements',
                     'desks',
+                    'coordination',
                     'new_awareness',
                     'urgent',
                     'trending',
@@ -1056,6 +1093,15 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
             onTransitionState={handleTransitionInboxItem}
             onSelectPost={(post) => setSelectedReportPost(post)}
             onOpenSituationDossier={handleOpenSituationDossier}
+            desks={desks}
+            team={team}
+            onAssign={handleAssignInboxItem}
+            onHandoff={handleHandoffInboxItem}
+            onEscalate={handleEscalateInboxItem}
+            onRespondToItem={(item) => {
+              const post = posts.find(p => p.id === item.postId);
+              if (post) onOpenResponseModal(post);
+            }}
           />
         )}
 
@@ -1089,6 +1135,18 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
             team={team}
             currentInstitution={currentInstitution}
             loading={false}
+          />
+        )}
+
+        {activeTab === 'coordination' && (
+          <CoordinationDeskView
+            currentInstitution={currentInstitution}
+            institutions={institutions}
+            currentUser={currentUser}
+            onSelectPost={(postId) => {
+              const post = posts.find(p => p.id === postId);
+              if (post) onSelectPost?.(post);
+            }}
           />
         )}
 

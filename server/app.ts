@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from './config';
 import { db } from './database/db';
-import { authMiddleware, requireAuth, requireRole, AuthenticatedRequest } from './middleware/auth.middleware';
+import { authMiddleware, requireAuth, requireRole, requireInstitutionScope, AuthenticatedRequest } from './middleware/auth.middleware';
 import { authLimiter, createPostLimiter, commentLimiter, draftLimiter, abuseReportLimiter, apiLimiter } from './middleware/rateLimiters';
 import { sanitizeText, sanitizePlainText } from './shared/sanitize';
 import { logger } from './shared/logger';
@@ -46,6 +46,8 @@ import { OfficialResponseService } from './modules/institutional-response/Offici
 import { InstitutionalAnnouncementService } from './modules/announcements/InstitutionalAnnouncementService';
 import { AlertStateMachine } from './modules/alerting/AlertStateMachine';
 import { PrivacyProjectionService } from './modules/privacy/PrivacyProjectionService';
+import { CoordinationService } from './modules/coordination/CoordinationService';
+import { NotificationService } from './modules/notifications/NotificationService';
 
 export function createApp() {
   const app = express();
@@ -1932,6 +1934,26 @@ export function createApp() {
         logger.warn(`Signal engine calculation warning: ${sigErr.message}`);
       }
 
+      // Workflow ownership: the first tagged institution becomes the accountable owner
+      // and the most specific regional/MMDA desk is resolved as the receiving sub-unit.
+      let ownerInstitutionId: string | null = null;
+      let ownerDeskId: string | null = null;
+      if (Array.isArray(institutionTags) && institutionTags.length > 0) {
+        const primaryTag = institutionTags[0];
+        ownerInstitutionId = primaryTag.institutionId || primaryTag.id || null;
+        if (ownerInstitutionId) {
+          try {
+            const desk = CoordinationService.resolveDeskForLocation(ownerInstitutionId, {
+              region: safeRegion,
+              district: safeDistrict
+            });
+            ownerDeskId = desk?.id || null;
+          } catch (deskErr: any) {
+            logger.warn(`Desk resolution warning: ${deskErr.message}`);
+          }
+        }
+      }
+
       // Civic Situation Domain: Match or establish situation
       let matchedSituationId: string | null = null;
       try {
@@ -1945,7 +1967,8 @@ export function createApp() {
         for (const tag of institutionTags) {
           const instId = tag.institutionId || tag.id;
           try {
-            InstitutionalInboxService.createInboxItem({
+            const desk = CoordinationService.resolveDeskForLocation(instId, { region: safeRegion, district: safeDistrict });
+            const inboxItemId = InstitutionalInboxService.createInboxItem({
               institutionId: instId,
               itemType: 'REPORT',
               itemPriority: (urgency === 'CRITICAL' || severity === 'EMERGENCY') ? 'EMERGENCY' :
@@ -1959,9 +1982,40 @@ export function createApp() {
               district: safeDistrict,
               signalSummary: calculatedPriority?.components || {}
             });
+
+            if (desk) {
+              const slaMinutes = (urgency === 'CRITICAL' || severity === 'EMERGENCY') ? 30 : urgency === 'HIGH' ? 120 : 1440;
+              const dueAt = new Date(Date.now() + slaMinutes * 60 * 1000).toISOString();
+              db.prepare('UPDATE institutional_inbox_items SET desk_id = ?, due_at = ?, updated_at = ? WHERE id = ?')
+                .run(desk.id, dueAt, now, inboxItemId);
+              db.prepare(`
+                INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
+                VALUES (?, ?, ?, ?, 'PRIMARY', ?)
+              `).run(`rt-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`, inboxItemId, instId, desk.id, now);
+            }
           } catch (inbErr: any) {
             logger.warn(`Institutional inbox population warning: ${inbErr.message}`);
           }
+        }
+      }
+
+      // Persist work-item ownership resolved from the primary tag
+      if (ownerInstitutionId) {
+        db.prepare(`
+          UPDATE posts
+          SET owner_institution_id = ?, owner_desk_id = ?, workflow_stage = 'ROUTED', updated_at = ?
+          WHERE id = ?
+        `).run(ownerInstitutionId, ownerDeskId, now, postId);
+
+        try {
+          NotificationService.notifyInstitution(ownerInstitutionId, {
+            type: 'REPORT_ROUTED',
+            title: 'New civic report routed to your desk',
+            message: `${finalTitle} — ${safeDistrict}, ${safeRegion} (${urgency || 'NORMAL'}).`,
+            postId
+          }, ownerDeskId || undefined);
+        } catch (notifyErr: any) {
+          logger.warn(`Institution notification warning: ${notifyErr.message}`);
         }
       }
 
@@ -2054,6 +2108,20 @@ export function createApp() {
         institutionId: instId,
         metadata: { officerName: user.name || 'Duty Officer', time: now }
       });
+
+      // Close the loop back to the reporting citizen
+      const ackPost = db.prepare('SELECT author_id, title FROM posts WHERE id = ?').get(postId) as any;
+      const ackInst = db.prepare('SELECT official_name FROM institutions WHERE id = ?').get(instId) as any;
+      if (ackPost?.author_id && !String(ackPost.author_id).startsWith('anon-actor-')) {
+        NotificationService.notify({
+          userId: ackPost.author_id,
+          type: 'INSTITUTION_ACKNOWLEDGED',
+          title: 'Your report was acknowledged',
+          message: `${ackInst?.official_name || 'An institution'} acknowledged your report "${ackPost.title}".`,
+          postId,
+          institutionName: ackInst?.official_name
+        });
+      }
 
       res.json({ success: true, status: 'ACKNOWLEDGED', time: now });
     } catch (err: any) {
@@ -2172,7 +2240,7 @@ export function createApp() {
       // Check if post belongs to a situation if situationId not explicitly provided
       let linkedSituationId = situationId;
       if (!linkedSituationId) {
-        const sitRel = db.prepare('SELECT situation_id FROM situation_reports WHERE post_id = ?').get(postId) as any;
+        const sitRel = db.prepare('SELECT situation_id FROM situation_reports WHERE report_id = ?').get(postId) as any;
         if (sitRel) linkedSituationId = sitRel.situation_id;
       }
 
@@ -2192,6 +2260,31 @@ export function createApp() {
         documents: documents && Array.isArray(documents) ? documents : [],
         hotlines: hotlines && Array.isArray(hotlines) ? hotlines : []
       });
+
+      // Advance the work item: a public response moves the report to RESPONDED/RESOLVED
+      const isResolution = mappedType === 'RESOLUTION' || resolutionStatus === 'RESOLVED';
+      const nowResp = new Date().toISOString();
+      db.prepare(`
+        UPDATE posts
+        SET owner_institution_id = COALESCE(owner_institution_id, ?),
+            workflow_stage = ?,
+            resolved_at = CASE WHEN ? = 1 THEN ? ELSE resolved_at END,
+            updated_at = ?
+        WHERE id = ?
+      `).run(instRow.id, isResolution ? 'RESOLVED' : 'RESPONDED', isResolution ? 1 : 0, nowResp, nowResp, postId);
+
+      // Notify the reporting citizen that an official response was published
+      const respPost = db.prepare('SELECT author_id, title FROM posts WHERE id = ?').get(postId) as any;
+      if (respPost?.author_id && !String(respPost.author_id).startsWith('anon-actor-')) {
+        NotificationService.notify({
+          userId: respPost.author_id,
+          type: 'OFFICIAL_RESPONSE',
+          title: isResolution ? 'Your report was resolved' : 'New official response on your report',
+          message: `${instRow.official_name} published an official ${isResolution ? 'resolution' : 'response'} on "${respPost.title}".`,
+          postId,
+          institutionName: instRow.official_name
+        });
+      }
 
       res.status(201).json({ success: true, responseId: respResult.id });
     } catch (err: any) {
@@ -2713,21 +2806,261 @@ export function createApp() {
     }
   });
 
+  // HIERARCHICAL DESKS (data-backed operational sub-units)
   app.get('/api/institutions/:id/desks', (req, res) => {
     try {
-      const { category, region, district } = req.query;
-      const desks = InstitutionRegistryService.routeIssueDesks(
-        (category as string) || 'General',
-        (region as string) || 'Greater Accra',
-        (district as string) || undefined
-      );
+      const { level, region, district } = req.query;
+      let desks = CoordinationService.listDesks(req.params.id);
+      if (level) desks = desks.filter((d: any) => d.level === level);
+      if (region) desks = desks.filter((d: any) => !d.region || d.region === region);
+      if (district) desks = desks.filter((d: any) => !d.district || d.district === district);
       res.json(desks);
     } catch (err: any) {
+      logger.error(`Desks fetch error: ${err.message}`);
       res.status(500).json({ error: 'Failed to fetch hierarchical desks' });
     }
   });
 
-  app.get('/api/institutions/:id/team', requireAuth, (req: AuthenticatedRequest, res) => {
+  app.post('/api/institutions/:id/desks', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { name, code, level, parentDeskId, region, district, specialization, contactEmail, contactPhone, leadOfficerName } = req.body;
+      if (!name || !code) return res.status(400).json({ error: 'Desk name and code are required' });
+
+      const deskId = CoordinationService.createDesk({
+        institutionId: req.params.id,
+        name: sanitizePlainText(name),
+        code: sanitizePlainText(code),
+        level,
+        parentDeskId,
+        region: region ? sanitizePlainText(region) : undefined,
+        district: district ? sanitizePlainText(district) : undefined,
+        specialization: specialization ? sanitizePlainText(specialization) : undefined,
+        contactEmail: contactEmail ? sanitizePlainText(contactEmail) : undefined,
+        contactPhone: contactPhone ? sanitizePlainText(contactPhone) : undefined,
+        leadOfficerName: leadOfficerName ? sanitizePlainText(leadOfficerName) : undefined
+      });
+
+      res.status(201).json({ success: true, deskId, createdBy: user.name });
+    } catch (err: any) {
+      logger.error(`Desk creation error: ${err.message}`);
+      res.status(500).json({ error: err.message || 'Failed to create desk' });
+    }
+  });
+
+  app.post('/api/institutions/:id/desks/:deskId/officers', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { userId, role, isPrimary } = req.body;
+      if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+      const desk = db.prepare('SELECT * FROM institution_desks WHERE id = ? AND institution_id = ?')
+        .get(req.params.deskId, req.params.id) as any;
+      if (!desk) return res.status(404).json({ error: 'Desk not found for this institution' });
+
+      const officerId = CoordinationService.assignDeskOfficer({
+        deskId: req.params.deskId,
+        userId,
+        role,
+        isPrimary: Boolean(isPrimary),
+        actor: { id: user.id, name: user.name, role: user.role, institutionId: req.params.id }
+      });
+
+      res.status(201).json({ success: true, officerId, deskId: req.params.deskId });
+    } catch (err: any) {
+      logger.error(`Desk officer assignment error: ${err.message}`);
+      res.status(500).json({ error: err.message || 'Failed to assign desk officer' });
+    }
+  });
+
+  app.get('/api/institutions/:id/desks/:deskId/officers', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      res.json(CoordinationService.listDeskOfficers(req.params.deskId));
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch desk officers' });
+    }
+  });
+
+  // COORDINATION: INTRA-INSTITUTION HANDOFF (desk to desk within one institution)
+  app.post('/api/institutions/:id/desks/handoff', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { toDeskId, fromDeskId, postId, inboxItemId, reason, instructions, priority, ccDeskIds, parentDelegationId } = req.body;
+      if (!toDeskId) return res.status(400).json({ error: 'toDeskId is required' });
+      if (!reason || String(reason).trim().length < 3) return res.status(400).json({ error: 'A reason is required' });
+
+      const result = CoordinationService.handoffToDesk({
+        institutionId: req.params.id,
+        toDeskId,
+        fromDeskId,
+        postId,
+        inboxItemId,
+        reason: sanitizePlainText(reason),
+        instructions: instructions ? sanitizeText(instructions) : undefined,
+        priority,
+        ccDeskIds: Array.isArray(ccDeskIds) ? ccDeskIds : undefined,
+        parentDelegationId,
+        actor: { id: user.id, name: user.name, role: user.role, institutionId: req.params.id }
+      });
+
+      res.status(201).json({ success: true, handoff: result });
+    } catch (err: any) {
+      logger.error(`Desk handoff error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to hand off work item' });
+    }
+  });
+
+  // COORDINATION: ASSIGN AN OFFICIAL TO A WORK ITEM
+  app.post('/api/institutions/:id/inbox/:itemId/assign', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { officerUserId, deskId, notes } = req.body;
+      if (!officerUserId && !deskId) return res.status(400).json({ error: 'officerUserId or deskId is required' });
+
+      const item = db.prepare('SELECT * FROM institutional_inbox_items WHERE id = ? AND institution_id = ?')
+        .get(req.params.itemId, req.params.id) as any;
+      if (!item) return res.status(404).json({ error: 'Inbox item not found for this institution' });
+
+      const result = CoordinationService.assignInboxItem({
+        inboxItemId: req.params.itemId,
+        officerUserId,
+        deskId,
+        notes: notes ? sanitizePlainText(notes) : undefined,
+        actor: { id: user.id, name: user.name, role: user.role, institutionId: req.params.id }
+      });
+
+      res.json({ success: true, assignment: result });
+    } catch (err: any) {
+      logger.error(`Inbox assignment error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to assign work item' });
+    }
+  });
+
+  // COORDINATION: ESCALATE A WORK ITEM UP THE DESK LADDER
+  app.post('/api/institutions/:id/inbox/:itemId/escalate', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { reason, toDeskId } = req.body;
+
+      const item = db.prepare('SELECT * FROM institutional_inbox_items WHERE id = ? AND institution_id = ?')
+        .get(req.params.itemId, req.params.id) as any;
+      if (!item) return res.status(404).json({ error: 'Inbox item not found for this institution' });
+
+      const result = CoordinationService.escalateInboxItem({
+        inboxItemId: req.params.itemId,
+        reason: reason ? sanitizePlainText(reason) : undefined,
+        toDeskId,
+        actor: { id: user.id, name: user.name, role: user.role, institutionId: req.params.id }
+      });
+
+      res.json({ success: true, escalation: result });
+    } catch (err: any) {
+      logger.error(`Inbox escalation error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to escalate work item' });
+    }
+  });
+
+  // COORDINATION: DELEGATION, TRANSFER & ESCALATION
+  app.get('/api/institutions/:id/delegations', requireAuth, requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const { direction, status, limit } = req.query;
+      const delegations = CoordinationService.listDelegations({
+        institutionId: req.params.id,
+        direction: (direction as any) || 'ALL',
+        status: status as string,
+        limit: limit ? parseInt(limit as string, 10) : 50
+      });
+      res.json({ items: delegations, totalCount: delegations.length });
+    } catch (err: any) {
+      logger.error(`Delegations fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch delegations' });
+    }
+  });
+
+  app.post('/api/institutions/:id/delegations', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { postId, situationId, toInstitutionId, toDeskId, delegationType, actionRequired, priority, reason, instructions, dueAt, fromDeskId } = req.body;
+      if (!toInstitutionId || !reason) {
+        return res.status(400).json({ error: 'Target institution and reason are required' });
+      }
+
+      const result = CoordinationService.createDelegation({
+        postId,
+        situationId,
+        fromInstitutionId: req.params.id,
+        fromDeskId,
+        toInstitutionId,
+        toDeskId,
+        delegationType,
+        actionRequired,
+        priority,
+        reason: sanitizePlainText(reason),
+        instructions: instructions ? sanitizeText(instructions) : undefined,
+        dueAt
+      }, { id: user.id, name: user.name, role: user.role, institutionId: req.params.id });
+
+      res.status(201).json({ success: true, delegation: result });
+    } catch (err: any) {
+      logger.error(`Delegation creation error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to create delegation' });
+    }
+  });
+
+  app.post('/api/delegations/:id/transition', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { status, note } = req.body;
+      const validStatuses = ['ACCEPTED', 'DECLINED', 'COMPLETED', 'CANCELLED'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      }
+
+      const delegation = db.prepare('SELECT * FROM coordination_delegations WHERE id = ?').get(req.params.id) as any;
+      if (!delegation) return res.status(404).json({ error: 'Delegation not found' });
+
+      // Only the sending or receiving institution (or oversight roles) may act on a delegation
+      const isOversight = ['ADMIN', 'MODERATOR'].includes(user.role);
+      const inScope = user.institutionId === delegation.to_institution_id || user.institutionId === delegation.from_institution_id;
+      if (!isOversight && !inScope) {
+        return res.status(403).json({ error: 'Access denied: delegation belongs to another institution' });
+      }
+
+      const result = CoordinationService.transitionDelegation(
+        req.params.id,
+        status,
+        { id: user.id, name: user.name, role: user.role, institutionId: user.institutionId },
+        note ? sanitizePlainText(note) : undefined
+      );
+
+      res.json({ success: true, delegation: result });
+    } catch (err: any) {
+      logger.error(`Delegation transition error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to transition delegation' });
+    }
+  });
+
+  // COORDINATION: WORKLOAD & ASSIGNED REPORTS
+  app.get('/api/institutions/:id/workload', requireAuth, requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      res.json(CoordinationService.getWorkload(req.params.id));
+    } catch (err: any) {
+      logger.error(`Workload fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch workload' });
+    }
+  });
+
+  app.get('/api/institutions/:id/assigned-reports', requireAuth, requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const officerUserId = req.query.officerUserId as string | undefined;
+      res.json(CoordinationService.listAssignedReports(req.params.id, officerUserId));
+    } catch (err: any) {
+      logger.error(`Assigned reports fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch assigned reports' });
+    }
+  });
+
+  app.get('/api/institutions/:id/team', requireAuth, requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
     try {
       const team = InstitutionRegistryService.getTeamMembers(req.params.id);
       res.json(team);
@@ -3113,6 +3446,7 @@ export function createApp() {
         title: n.title,
         message: n.message,
         postId: n.post_id,
+        institutionName: n.institution_name,
         read: Boolean(n.read),
         createdAt: n.created_at
       })));
@@ -3317,6 +3651,13 @@ export function createApp() {
       const failedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'FAILED'").get() as any)?.c || 0;
       const activeInstitutions = (db.prepare('SELECT COUNT(*) as c FROM institutions').get() as any)?.c || 0;
       const pendingPrivacy = (db.prepare("SELECT COUNT(*) as c FROM submissions WHERE privacy_status = 'PRIVACY_PROCESSING'").get() as any)?.c || 0;
+      const openReports = (db.prepare("SELECT COUNT(*) as c FROM posts WHERE workflow_stage IS NULL OR workflow_stage NOT IN ('RESOLVED')").get() as any)?.c || 0;
+      const pendingDelegations = (db.prepare("SELECT COUNT(*) as c FROM coordination_delegations WHERE status = 'PENDING'").get() as any)?.c || 0;
+      const totalDesks = (db.prepare("SELECT COUNT(*) as c FROM institution_desks WHERE status = 'ACTIVE'").get() as any)?.c || 0;
+      const overdueItems = (db.prepare(`
+        SELECT COUNT(*) as c FROM institutional_inbox_items
+        WHERE due_at IS NOT NULL AND due_at < ? AND action_state NOT IN ('RESOLVED', 'CITIZEN_FOLLOW_UP')
+      `).get(new Date().toISOString()) as any)?.c || 0;
 
       res.json({
         totalUsers,
@@ -3326,6 +3667,10 @@ export function createApp() {
         failedJobs,
         activeInstitutions,
         pendingPrivacy,
+        openReports,
+        pendingDelegations,
+        totalDesks,
+        overdueItems,
         systemHealth: 'HEALTHY',
         databaseStatus: 'CONNECTED'
       });
@@ -3483,7 +3828,8 @@ export function createApp() {
 
   app.post('/api/admin/institutions', requireRole(['ADMIN']), (req, res) => {
     try {
-      const { id, officialName, shortName, acronym, mandate, category, jurisdiction, alertMethod } = req.body;
+      const { id, officialName, shortName, acronym, mandate, category, jurisdiction, alertMethod,
+              deskLevel, parentInstitutionId, regionalLevel, districtLevel } = req.body;
       if (!officialName || !shortName || !acronym) {
         return res.status(400).json({ error: 'Official name, short name, and acronym are required' });
       }
@@ -3492,8 +3838,11 @@ export function createApp() {
       const now = new Date().toISOString();
 
       db.prepare(`
-        INSERT INTO institutions (id, official_name, short_name, acronym, mandate, category, jurisdiction, alert_method, verification_status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?)
+        INSERT INTO institutions (
+          id, official_name, short_name, acronym, mandate, category, jurisdiction, alert_method,
+          desk_level, parent_institution_id, regional_level, district_level, verification_status, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?)
         ON CONFLICT(id) DO UPDATE SET
           official_name = excluded.official_name,
           short_name = excluded.short_name,
@@ -3501,13 +3850,136 @@ export function createApp() {
           mandate = excluded.mandate,
           category = excluded.category,
           jurisdiction = excluded.jurisdiction,
-          alert_method = excluded.alert_method
-      `).run(instId, officialName, shortName, acronym, mandate || '', category || 'GOVERNMENT', jurisdiction || 'NATIONAL', alertMethod || 'OFFICIAL_EMAIL', now);
+          alert_method = excluded.alert_method,
+          desk_level = COALESCE(excluded.desk_level, institutions.desk_level),
+          parent_institution_id = COALESCE(excluded.parent_institution_id, institutions.parent_institution_id),
+          regional_level = COALESCE(excluded.regional_level, institutions.regional_level),
+          district_level = COALESCE(excluded.district_level, institutions.district_level)
+      `).run(
+        instId, officialName, shortName, acronym, mandate || '', category || 'GOVERNMENT',
+        jurisdiction || 'NATIONAL', alertMethod || 'OFFICIAL_EMAIL',
+        deskLevel || 'NATIONAL_DESK', parentInstitutionId || null, regionalLevel || null, districtLevel || null, now
+      );
+
+      AuditService.log({
+        eventType: 'INSTITUTION_UPSERTED',
+        userId: (req as AuthenticatedRequest).user?.id,
+        actorType: 'ADMIN',
+        targetType: 'INSTITUTION',
+        targetId: instId,
+        afterState: { officialName, shortName, acronym, jurisdiction, deskLevel }
+      });
 
       res.status(201).json({ success: true, id: instId });
     } catch (err: any) {
       logger.error(`Admin create/update institution error: ${err.message}`);
       res.status(500).json({ error: 'Failed to manage institution' });
+    }
+  });
+
+  // ADMIN COORDINATION OVERSIGHT: hierarchy, desks and officers for any institution
+  app.get('/api/admin/institutions/:id/hierarchy', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const institution = db.prepare('SELECT * FROM institutions WHERE id = ?').get(req.params.id) as any;
+      if (!institution) return res.status(404).json({ error: 'Institution not found' });
+
+      const desks = CoordinationService.listDesks(req.params.id);
+      const desksWithOfficers = desks.map((desk: any) => ({
+        ...desk,
+        officers: CoordinationService.listDeskOfficers(desk.id)
+      }));
+
+      const team = InstitutionRegistryService.getTeamMembers(req.params.id);
+      const workload = CoordinationService.getWorkload(req.params.id);
+
+      res.json({
+        institution: {
+          id: institution.id,
+          officialName: institution.official_name,
+          acronym: institution.acronym,
+          deskLevel: institution.desk_level,
+          parentInstitutionId: institution.parent_institution_id,
+          regionalLevel: institution.regional_level,
+          districtLevel: institution.district_level,
+          jurisdiction: institution.jurisdiction
+        },
+        desks: desksWithOfficers,
+        team,
+        workload
+      });
+    } catch (err: any) {
+      logger.error(`Admin hierarchy fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch institution hierarchy' });
+    }
+  });
+
+  // ADMIN COORDINATION OVERSIGHT: platform-wide delegation & SLA monitoring
+  app.get('/api/admin/coordination', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const nowIso = new Date().toISOString();
+
+      const pendingDelegations = db.prepare(`
+        SELECT d.*, ti.official_name AS to_institution_name, fi.official_name AS from_institution_name,
+               p.title AS post_title
+        FROM coordination_delegations d
+        LEFT JOIN institutions ti ON ti.id = d.to_institution_id
+        LEFT JOIN institutions fi ON fi.id = d.from_institution_id
+        LEFT JOIN posts p ON p.id = d.post_id
+        WHERE d.status = 'PENDING'
+        ORDER BY d.created_at ASC
+        LIMIT 100
+      `).all() as any[];
+
+      const overdueItems = db.prepare(`
+        SELECT i.*, inst.official_name AS institution_name, d.name AS desk_name
+        FROM institutional_inbox_items i
+        LEFT JOIN institutions inst ON inst.id = i.institution_id
+        LEFT JOIN institution_desks d ON d.id = i.desk_id
+        WHERE i.due_at IS NOT NULL AND i.due_at < ?
+          AND i.action_state NOT IN ('RESOLVED', 'CITIZEN_FOLLOW_UP')
+        ORDER BY i.due_at ASC
+        LIMIT 100
+      `).all(nowIso) as any[];
+
+      const byInstitution = db.prepare(`
+        SELECT p.owner_institution_id AS institution_id, inst.official_name AS institution_name,
+               COUNT(*) AS open_reports
+        FROM posts p
+        LEFT JOIN institutions inst ON inst.id = p.owner_institution_id
+        WHERE p.owner_institution_id IS NOT NULL
+          AND (p.workflow_stage IS NULL OR p.workflow_stage NOT IN ('RESOLVED'))
+        GROUP BY p.owner_institution_id
+        ORDER BY open_reports DESC
+        LIMIT 50
+      `).all() as any[];
+
+      const slaBreaches = overdueItems.length;
+      const totalPending = pendingDelegations.length;
+
+      res.json({
+        summary: {
+          pendingDelegations: totalPending,
+          overdueItems: slaBreaches,
+          institutionsWithOpenWork: byInstitution.length
+        },
+        pendingDelegations,
+        overdueItems,
+        byInstitution
+      });
+    } catch (err: any) {
+      logger.error(`Admin coordination fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch coordination oversight' });
+    }
+  });
+
+  // ADMIN COORDINATION OVERSIGHT: run SLA sweep on demand
+  app.post('/api/admin/coordination/run-sla-sweep', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const result = CoordinationService.runSlaSweep();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      logger.error(`SLA sweep error: ${err.message}`);
+      res.status(500).json({ error: 'SLA sweep failed' });
     }
   });
 

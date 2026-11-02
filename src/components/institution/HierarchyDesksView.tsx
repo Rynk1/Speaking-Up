@@ -22,6 +22,13 @@ interface HierarchyDesksViewProps {
   loading: boolean;
 }
 
+const LEVEL_STYLES: Record<string, string> = {
+  NATIONAL: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+  REGIONAL: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  DISTRICT: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  SPECIALIST: 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+};
+
 export const HierarchyDesksView: React.FC<HierarchyDesksViewProps> = ({
   desks,
   team,
@@ -47,7 +54,7 @@ export const HierarchyDesksView: React.FC<HierarchyDesksViewProps> = ({
             {currentInstitution.officialName} — Dispatch Hierarchy
           </h2>
           <p className="text-xs text-slate-300 max-w-xl">
-            Jurisdictional routing divides incident intake between National Command, Regional Response Desks, and Specialist Intervention Units.
+            Jurisdictional routing divides incident intake between National Command, Regional Response Desks, and Specialist Intervention Units. District and MMDA desks are resolved first when a report names their area.
           </p>
         </div>
 
@@ -88,7 +95,7 @@ export const HierarchyDesksView: React.FC<HierarchyDesksViewProps> = ({
               <div className="flex items-start justify-between gap-2">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${LEVEL_STYLES[desk.level] || LEVEL_STYLES.NATIONAL}`}>
                       {desk.level}
                     </span>
                     <span className="text-xs font-mono text-slate-400 font-bold">
@@ -98,6 +105,12 @@ export const HierarchyDesksView: React.FC<HierarchyDesksViewProps> = ({
                   <h3 className="text-sm sm:text-base font-bold text-white">
                     {desk.name}
                   </h3>
+                  {(desk.region || desk.district) && (
+                    <p className="text-[11px] text-slate-400 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {[desk.district, desk.region].filter(Boolean).join(', ')}
+                    </p>
+                  )}
                 </div>
 
                 <div className="p-2 rounded-xl bg-slate-800 border border-slate-700 text-amber-400">
@@ -112,6 +125,12 @@ export const HierarchyDesksView: React.FC<HierarchyDesksViewProps> = ({
               )}
 
               <div className="space-y-1.5 pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+                {desk.leadOfficerName && (
+                  <div className="flex items-center gap-2">
+                    <Users className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="text-slate-300">Lead: {desk.leadOfficerName}</span>
+                  </div>
+                )}
                 {desk.contactEmail && (
                   <div className="flex items-center gap-2">
                     <Mail className="w-3.5 h-3.5 text-slate-500" />
@@ -126,7 +145,7 @@ export const HierarchyDesksView: React.FC<HierarchyDesksViewProps> = ({
                 )}
                 <div className="flex items-center gap-2 text-emerald-400 font-semibold pt-1">
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Authorized for automated incident dispatch routing</span>
+                  <span>{desk.officerCount ?? 0} officer(s) • authorized for automated dispatch routing</span>
                 </div>
               </div>
             </div>
@@ -152,7 +171,12 @@ export const HierarchyDesksView: React.FC<HierarchyDesksViewProps> = ({
                     {member.role}
                   </span>
                 </div>
-                <p className="text-xs text-amber-400 font-medium">{member.title}</p>
+                <p className="text-xs text-amber-400 font-medium">{member.title || member.department || member.role}</p>
+                {member.deskName && (
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <Layers className="w-3 h-3" /> {member.deskName}
+                  </p>
+                )}
                 <div className="text-[11px] text-slate-400 font-mono pt-1">
                   {member.email}
                 </div>

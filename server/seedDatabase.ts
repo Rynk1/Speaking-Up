@@ -9,6 +9,249 @@ import {
 import { CivicSituationService } from './modules/civic-situations/CivicSituationService';
 import { InstitutionalInboxService } from './modules/institutional-inbox/InstitutionalInboxService';
 import { InstitutionalAnnouncementService } from './modules/announcements/InstitutionalAnnouncementService';
+import { CoordinationService } from './modules/coordination/CoordinationService';
+
+// Desk topology per institution: [name, code, level, region?, district?, specialization?]
+const DESK_TOPOLOGY: Record<string, { name: string; code: string; level: 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST'; region?: string; district?: string; specialization?: string }[]> = {
+  'ghana-police-service': [
+    { name: 'National Command & Operations Desk', code: 'GPS-NAT', level: 'NATIONAL', specialization: 'National command, oversight and major incident coordination' },
+    { name: 'Greater Accra Regional Police Command', code: 'GPS-ACC', level: 'REGIONAL', region: 'Greater Accra', specialization: 'Regional patrol, rapid response and traffic enforcement' },
+    { name: 'Accra Metropolitan Divisional Desk', code: 'GPS-AMA', level: 'DISTRICT', region: 'Greater Accra', district: 'Accra Metropolitan', specialization: 'Metropolitan divisional policing' },
+    { name: 'Cybercrime & Digital Forensics Unit', code: 'GPS-CYBER', level: 'SPECIALIST', specialization: 'Online fraud, cybercrime and digital evidence' }
+  ],
+  'nadmo-ghana': [
+    { name: 'National Disaster Coordination Centre', code: 'NADMO-NAT', level: 'NATIONAL', specialization: 'National emergency coordination and relief logistics' },
+    { name: 'Greater Accra Regional NADMO', code: 'NADMO-ACC', level: 'REGIONAL', region: 'Greater Accra', specialization: 'Regional flood and disaster preparedness' },
+    { name: 'Accra Metropolitan NADMO Desk', code: 'NADMO-AMA', level: 'DISTRICT', region: 'Greater Accra', district: 'Accra Metropolitan', specialization: 'Metropolitan disaster response' }
+  ],
+  'ecg-ghana': [
+    { name: 'National Grid Control Desk', code: 'ECG-NAT', level: 'NATIONAL', specialization: 'National grid reliability and load management' },
+    { name: 'Ashanti Regional Operations Desk', code: 'ECG-ASH', level: 'REGIONAL', region: 'Ashanti', specialization: 'Regional distribution and substation operations' },
+    { name: 'Kumasi Metropolitan Fault Desk', code: 'ECG-KMA', level: 'DISTRICT', region: 'Ashanti', district: 'Kumasi Metropolitan', specialization: 'Metropolitan fault response and repairs' }
+  ],
+  'gwcl-ghana': [
+    { name: 'National Water Supply Control Desk', code: 'GWCL-NAT', level: 'NATIONAL', specialization: 'National water production and supply oversight' },
+    { name: 'Greater Accra Regional Supply Desk', code: 'GWCL-ACC', level: 'REGIONAL', region: 'Greater Accra', specialization: 'Regional water distribution' }
+  ],
+  'gha-roads': [
+    { name: 'National Roads Engineering Desk', code: 'GHA-NAT', level: 'NATIONAL', specialization: 'Trunk road design and maintenance' },
+    { name: 'Greater Accra Regional Highways Desk', code: 'GHA-ACC', level: 'REGIONAL', region: 'Greater Accra', specialization: 'Regional highways maintenance' },
+    { name: 'Urban Roads Maintenance Unit', code: 'GHA-URB', level: 'SPECIALIST', specialization: 'Urban road and drainage maintenance' }
+  ],
+  'ama-accra': [
+    { name: 'Accra Metropolitan Coordination Desk', code: 'AMA-NAT', level: 'NATIONAL', specialization: 'Metropolitan assembly coordination' },
+    { name: 'Waste & Sanitation District Desk', code: 'AMA-WASTE', level: 'DISTRICT', region: 'Greater Accra', district: 'Accra Metropolitan', specialization: 'Waste management and sanitation' }
+  ],
+  'ghs-health': [
+    { name: 'National Public Health Desk', code: 'GHS-NAT', level: 'NATIONAL', specialization: 'Public health surveillance and response' },
+    { name: 'National Ambulance Dispatch Desk', code: 'GHS-AMB', level: 'SPECIALIST', specialization: 'Emergency medical dispatch' }
+  ],
+  'gnfs-fire': [
+    { name: 'National Fire Operations Desk', code: 'GNFS-NAT', level: 'NATIONAL', specialization: 'Fire and rescue operations' },
+    { name: 'Greater Accra Fire Command', code: 'GNFS-ACC', level: 'REGIONAL', region: 'Greater Accra', specialization: 'Regional fire suppression' }
+  ],
+  'csa-ghana': [
+    { name: 'National Incident Response Desk', code: 'CSA-NAT', level: 'NATIONAL', specialization: 'National cybersecurity incident response' }
+  ],
+  'chraj-ghana': [
+    { name: 'National Complaints & Investigations Desk', code: 'CHRAJ-NAT', level: 'NATIONAL', specialization: 'Human rights complaints and investigations' }
+  ],
+  'epa-ghana': [
+    { name: 'National Environmental Compliance Desk', code: 'EPA-NAT', level: 'NATIONAL', specialization: 'Environmental compliance and enforcement' }
+  ],
+  'purc-ghana': [
+    { name: 'National Consumer Protection Desk', code: 'PURC-NAT', level: 'NATIONAL', specialization: 'Utility consumer complaints and regulation' }
+  ]
+};
+
+const INSTITUTION_REP_OFFICERS: {
+  userId: string;
+  institutionId: string;
+  role: string;
+  department: string;
+  title: string;
+  deskCode?: string;
+}[] = [
+  { userId: 'user-inst-police', institutionId: 'ghana-police-service', role: 'ADMIN', department: 'Public Affairs & Operations', title: 'Director of Public Affairs', deskCode: 'GPS-NAT' },
+  { userId: 'user-inst-nadmo', institutionId: 'nadmo-ghana', role: 'ADMIN', department: 'Operations & Emergency Coordination', title: 'National Operations Coordinator', deskCode: 'NADMO-NAT' },
+  { userId: 'user-inst-ecg', institutionId: 'ecg-ghana', role: 'ADMIN', department: 'Grid Control & Faults', title: 'National Grid Control Officer', deskCode: 'ECG-NAT' },
+  { userId: 'user-inst-gwcl', institutionId: 'gwcl-ghana', role: 'ADMIN', department: 'Production & Supply', title: 'National Supply Coordinator', deskCode: 'GWCL-NAT' },
+  { userId: 'user-inst-gha', institutionId: 'gha-roads', role: 'ADMIN', department: 'Roads Engineering', title: 'Director of Roads Engineering', deskCode: 'GHA-NAT' },
+  { userId: 'user-inst-ama', institutionId: 'ama-accra', role: 'ADMIN', department: 'Metropolitan Coordination', title: 'Metropolitan Coordinating Director', deskCode: 'AMA-NAT' },
+  { userId: 'user-inst-ghs', institutionId: 'ghs-health', role: 'ADMIN', department: 'Public Health', title: 'National Public Health Officer' },
+  { userId: 'user-inst-gnfs', institutionId: 'gnfs-fire', role: 'ADMIN', department: 'Fire & Rescue Operations', title: 'National Operations Officer' },
+  { userId: 'user-inst-csa', institutionId: 'csa-ghana', role: 'ADMIN', department: 'Incident Response', title: 'Incident Response Lead' },
+  { userId: 'user-inst-chraj', institutionId: 'chraj-ghana', role: 'ADMIN', department: 'Complaints & Investigations', title: 'Complaints Intake Officer' },
+  { userId: 'user-inst-epa', institutionId: 'epa-ghana', role: 'ADMIN', department: 'Environmental Compliance', title: 'Compliance Enforcement Officer' },
+  { userId: 'user-inst-purc', institutionId: 'purc-ghana', role: 'ADMIN', department: 'Consumer Affairs', title: 'Consumer Affairs Officer' }
+];
+
+/**
+ * Links the parent_desk_id chain for an institution's desks by level:
+ * DISTRICT -> REGIONAL -> NATIONAL. NATIONAL and SPECIALIST desks keep no parent.
+ * Idempotent: only writes when the parent is missing or wrong.
+ */
+function linkDeskHierarchy(institutionId: string): void {
+  const desks = db.prepare(`
+    SELECT id, code, level FROM institution_desks
+    WHERE institution_id = ? AND status = 'ACTIVE'
+  `).all(institutionId) as any[];
+  if (desks.length === 0) return;
+
+  const byLevel = (level: string) => desks.find((d) => d.level === level);
+  const national = byLevel('NATIONAL');
+  const regional = byLevel('REGIONAL');
+
+  const now = new Date().toISOString();
+  const setParent = db.prepare('UPDATE institution_desks SET parent_desk_id = ?, updated_at = ? WHERE id = ? AND (parent_desk_id IS NULL OR parent_desk_id != ?)');
+
+  for (const desk of desks) {
+    let parentId: string | null = null;
+    if (desk.level === 'DISTRICT') parentId = regional?.id || national?.id || null;
+    else if (desk.level === 'REGIONAL') parentId = national?.id || null;
+    if (parentId && parentId !== desk.id) {
+      try {
+        setParent.run(parentId, now, desk.id, parentId);
+      } catch (e) {
+        console.error('Error linking desk hierarchy:', institutionId, desk.code, e);
+      }
+    }
+  }
+}
+
+export function seedCoordinationHierarchy(): void {
+  const now = new Date().toISOString();
+
+  // 1. Seed desks for each institution that has a topology and no desks yet
+  for (const [institutionId, desks] of Object.entries(DESK_TOPOLOGY)) {
+    const instExists = db.prepare('SELECT id FROM institutions WHERE id = ?').get(institutionId);
+    if (!instExists) continue;
+    const existing = (db.prepare('SELECT COUNT(*) as c FROM institution_desks WHERE institution_id = ?').get(institutionId) as any)?.c || 0;
+    if (existing > 0) continue;
+    for (const desk of desks) {
+      try {
+        CoordinationService.createDesk({ institutionId, ...desk });
+      } catch (e) {
+        console.error('Error seeding desk:', institutionId, desk.code, e);
+      }
+    }
+  }
+
+  // 1b. Link desk parents (national <- regional <- district) so the escalation
+  // ladder has a supervisory chain to climb. Repairs existing databases too.
+  for (const institutionId of Object.keys(DESK_TOPOLOGY)) {
+    linkDeskHierarchy(institutionId);
+  }
+
+  // 2. Ensure institution representative verifications, roster entries and desk officers
+  const repPasswordHash = bcrypt.hashSync('Password123!', 10);
+  const repUserExists = db.prepare('SELECT id FROM users WHERE id = ?');
+  const insertRepUser = db.prepare(`
+    INSERT INTO users (id, email, password_hash, name, handle, role, is_verified, followers_count, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'INSTITUTION_REP', 1, 0, ?, ?)
+  `);
+
+  for (const officer of INSTITUTION_REP_OFFICERS) {
+    try {
+      if (!repUserExists.get(officer.userId)) {
+        insertRepUser.run(
+          officer.userId,
+          `desk.${officer.institutionId}@speakup.gov.gh`,
+          repPasswordHash,
+          `${officer.institutionId} Duty Desk`,
+          `desk_${officer.institutionId.replace(/[^a-z0-9]/gi, '_')}`,
+          now,
+          now
+        );
+      }
+
+      const verExists = db.prepare('SELECT id FROM institution_verifications WHERE user_id = ? AND institution_id = ?')
+        .get(officer.userId, officer.institutionId);
+      if (!verExists) {
+        db.prepare(`
+          INSERT INTO institution_verifications (id, user_id, institution_id, department, verification_status, verified_by, verified_at, created_at)
+          VALUES (?, ?, ?, ?, 'VERIFIED', 'Civic Verification Desk', ?, ?)
+        `).run(`iv-${officer.userId}`, officer.userId, officer.institutionId, officer.department, now, now);
+      }
+
+      const rosterExists = db.prepare('SELECT id FROM institution_users WHERE user_id = ? AND institution_id = ?')
+        .get(officer.userId, officer.institutionId);
+      if (!rosterExists) {
+        db.prepare(`
+          INSERT INTO institution_users (id, user_id, institution_id, role, department, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?)
+        `).run(`iu-${officer.userId}`, officer.userId, officer.institutionId, officer.role, officer.department, officer.title, now, now);
+      }
+
+      if (officer.deskCode) {
+        const desk = db.prepare('SELECT id FROM institution_desks WHERE code = ? AND institution_id = ?')
+          .get(officer.deskCode, officer.institutionId) as any;
+        if (desk) {
+          CoordinationService.assignDeskOfficer({
+            deskId: desk.id,
+            userId: officer.userId,
+            role: 'DESK_LEAD',
+            isPrimary: true,
+            actor: { id: 'system', name: 'Civic Coordination Seeder', role: 'ADMIN' }
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Error seeding institution officer:', officer.userId, e);
+    }
+  }
+
+  // 3. Retrofit existing awareness inbox items with a resolved desk, SLA due date and routing
+  const unassignedItems = db.prepare(`
+    SELECT * FROM institutional_inbox_items WHERE desk_id IS NULL LIMIT 500
+  `).all() as any[];
+
+  for (const item of unassignedItems) {
+    try {
+      const desk = CoordinationService.resolveDeskForLocation(item.institution_id, {
+        region: item.region,
+        district: item.district
+      });
+      if (!desk) continue;
+
+      const priority = item.item_priority || 'ELEVATED';
+      const slaMinutes = priority === 'EMERGENCY' ? 30 : priority === 'URGENT' ? 120 : 1440;
+      const dueAt = new Date(Date.now() + slaMinutes * 60 * 1000).toISOString();
+
+      db.prepare('UPDATE institutional_inbox_items SET desk_id = ?, due_at = ?, updated_at = ? WHERE id = ?')
+        .run(desk.id, dueAt, now, item.id);
+      db.prepare(`
+        INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
+        VALUES (?, ?, ?, ?, 'PRIMARY', ?)
+      `).run(`rt-${item.id}`, item.id, item.institution_id, desk.id, now);
+    } catch (e) {
+      console.error('Error routing inbox item:', item.id, e);
+    }
+  }
+
+  // 4. Backfill workflow ownership for tagged reports that predate the coordination domain
+  const taggedPosts = db.prepare(`
+    SELECT p.id, p.situation_id, pit.institution_id
+    FROM posts p
+    JOIN post_institution_tags pit ON pit.post_id = p.id
+    WHERE p.owner_institution_id IS NULL
+    GROUP BY p.id
+    LIMIT 500
+  `).all() as any[];
+
+  for (const row of taggedPosts) {
+    try {
+      const desk = CoordinationService.resolveDeskForLocation(row.institution_id, {});
+      db.prepare(`
+        UPDATE posts SET owner_institution_id = ?, owner_desk_id = ?, workflow_stage = 'ROUTED', updated_at = ?
+        WHERE id = ?
+      `).run(row.institution_id, desk?.id || null, now, row.id);
+    } catch (e) {
+      console.error('Error backfilling report ownership:', row.id, e);
+    }
+  }
+}
+
 
 export function syncSituationsAndInstitutionalInbox() {
   const now = new Date().toISOString();
@@ -379,6 +622,7 @@ export async function seedDatabaseIfEmpty() {
       }
     }
     syncSituationsAndInstitutionalInbox();
+    seedCoordinationHierarchy();
     return;
   }
 
@@ -497,8 +741,10 @@ export async function seedDatabaseIfEmpty() {
   }
 
   // Institutions
+  // The registry is already synced with INSERT OR IGNORE above; keep this
+  // idempotent so a first-run seed never collides with the registry sync.
   const insertInstitution = db.prepare(`
-    INSERT INTO institutions (
+    INSERT OR IGNORE INTO institutions (
       id, official_name, short_name, acronym, mandate, category, jurisdiction, logo, official_website,
       official_contacts_json, social_accounts_json, email_channels_json, whatsapp_channels_json,
       alert_method, active_mentions_count, unanswered_mentions_count, official_responses_count,
@@ -706,9 +952,9 @@ export async function seedDatabaseIfEmpty() {
 
     const insertComment = db.prepare(`
       INSERT OR REPLACE INTO comments (
-        id, post_id, parent_comment_id, evidence_id, evidence_author_name, evidence_text_preview, user_id, user_name, user_handle, user_avatar, is_verified, content, likes_count, created_at
+        id, post_id, parent_comment_id, evidence_id, evidence_author_name, evidence_text_preview, user_id, user_name, user_handle, is_verified, content, likes_count, created_at
       ) VALUES (
-        @id, @post_id, @parent_comment_id, @evidence_id, @evidence_author_name, @evidence_text_preview, @user_id, @user_name, @user_handle, @user_avatar, @is_verified, @content, @likes_count, @created_at
+        @id, @post_id, @parent_comment_id, @evidence_id, @evidence_author_name, @evidence_text_preview, @user_id, @user_name, @user_handle, @is_verified, @content, @likes_count, @created_at
       )
     `);
 
@@ -723,7 +969,6 @@ export async function seedDatabaseIfEmpty() {
         user_id: c.userId,
         user_name: c.userName,
         user_handle: c.userHandle,
-        user_avatar: c.userAvatar || null,
         is_verified: c.isVerified ? 1 : 0,
         content: c.content,
         likes_count: c.likesCount || 0,
@@ -806,5 +1051,6 @@ export async function seedDatabaseIfEmpty() {
   }
 
   syncSituationsAndInstitutionalInbox();
+  seedCoordinationHierarchy();
   console.log('Database successfully seeded with persistent initial data!');
 }

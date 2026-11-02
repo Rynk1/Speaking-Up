@@ -108,9 +108,12 @@ export class InstitutionRegistryService {
   public static getTeamMembers(institutionId: string): any[] {
     return db.prepare(`
       SELECT iu.id, iu.user_id, iu.role, iu.department, iu.regional_scope, iu.district_scope,
-             u.name, u.email, u.handle, u.avatar, iu.created_at
+             iu.desk_id, iu.title, COALESCE(iu.status, 'ACTIVE') AS status,
+             u.name, u.email, u.handle, u.avatar, iu.created_at,
+             d.name AS desk_name, d.level AS desk_level
       FROM institution_users iu
       JOIN users u ON u.id = iu.user_id
+      LEFT JOIN institution_desks d ON d.id = iu.desk_id
       WHERE iu.institution_id = ?
       ORDER BY iu.created_at ASC
     `).all(institutionId) as any[];

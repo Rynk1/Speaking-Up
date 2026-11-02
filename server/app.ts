@@ -47,7 +47,10 @@ import { InstitutionalAnnouncementService } from './modules/announcements/Instit
 import { AlertStateMachine } from './modules/alerting/AlertStateMachine';
 import { PrivacyProjectionService } from './modules/privacy/PrivacyProjectionService';
 import { CoordinationService } from './modules/coordination/CoordinationService';
+import { JointCaseService } from './modules/coordination/JointCaseService';
+import { CoordinationQueueService } from './modules/coordination/CoordinationQueueService';
 import { NotificationService } from './modules/notifications/NotificationService';
+import { CitizenNotificationService } from './modules/notifications/CitizenNotificationService';
 
 // Anonymous reports are attributed to a shared sentinel author. They have no
 // account to notify, so citizen-facing notifications must skip them.
@@ -115,7 +118,9 @@ export function createApp() {
       // Readiness reflects whether the service can serve traffic. Delivery
       // failures to downstream agencies are surfaced as counters for operators
       // but must not pull the instance out of rotation.
-      const failedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'FAILED'").get() as any)?.c || 0;
+      // JobQueue marks permanently failed work as DEAD_LETTER (never 'FAILED'),
+      // so the honest failure count includes both states.
+      const failedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status IN ('FAILED', 'DEAD_LETTER')").get() as any)?.c || 0;
       const failedAlerts = (db.prepare("SELECT COUNT(*) as c FROM post_institution_tags WHERE alert_status = 'FAILED'").get() as any)?.c || 0;
       res.json({ status: 'READY', database: 'HEALTHY', failedJobs, failedAlerts });
     } catch (err: any) {
@@ -677,20 +682,39 @@ export function createApp() {
 
     if (!token) return res.status(403).json({ error: 'Access token required for protected evidence' });
 
+    // Least privilege: protected evidence is never readable by an unauthenticated
+    // or plain citizen session. Only institution representatives (within scope),
+    // platform oversight, or the original requester may view it.
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required to view protected evidence' });
+    }
+
     const verified = verifySignedAccessToken(token);
     if (!verified) return res.status(403).json({ error: 'Invalid or expired evidence access token' });
 
-    const protectedFilePath = path.join(STORAGE_ZONES.PROTECTED, filename);
+    const role = req.user.role;
+    const isOversight = ['ADMIN', 'MODERATOR', 'EXECUTIVE_OBSERVER'].includes(role);
+    const isInstitutionActor = role === 'INSTITUTION_REP' && !!req.user.institutionId;
+    const isTokenOwner = verified.actorId === req.user.id;
+    if (!isOversight && !isInstitutionActor && !isTokenOwner) {
+      return res.status(403).json({ error: 'Access denied: insufficient privileges for protected evidence' });
+    }
+
+    // Defence-in-depth against path traversal: only a bare filename is allowed.
+    const safeFilename = path.basename(filename);
+    if (safeFilename !== filename || filename.includes('..')) {
+      return res.status(400).json({ error: 'Invalid evidence object reference' });
+    }
+
+    const protectedFilePath = path.join(STORAGE_ZONES.PROTECTED, safeFilename);
     if (!fs.existsSync(protectedFilePath)) {
       return res.status(404).json({ error: 'Protected evidence object not found' });
     }
 
-    if (req.user) {
-      db.prepare(`
-        INSERT INTO evidence_access_logs (id, submission_id, actor_id, institution_id, action, timestamp, ip, reason, result)
-        VALUES (?, ?, ?, ?, 'VIEW_PROTECTED', ?, ?, 'INVESTIGATION', 'ALLOWED')
-      `).run(`log-${Date.now()}`, verified.submissionId, req.user.id, req.user.institutionId || null, new Date().toISOString(), req.ip || '127.0.0.1');
-    }
+    db.prepare(`
+      INSERT INTO evidence_access_logs (id, submission_id, actor_id, institution_id, action, timestamp, ip, reason, result)
+      VALUES (?, ?, ?, ?, 'VIEW_PROTECTED', ?, ?, 'INVESTIGATION', 'ALLOWED')
+    `).run(`log-${Date.now()}`, verified.submissionId, req.user.id, req.user.institutionId || null, new Date().toISOString(), req.ip || '127.0.0.1');
 
     res.sendFile(protectedFilePath);
   });
@@ -2064,6 +2088,13 @@ export function createApp() {
         } catch (notifyErr: any) {
           logger.warn(`Institution notification warning: ${notifyErr.message}`);
         }
+
+        // Close the loop with the reporter so they see their report was routed.
+        try {
+          CitizenNotificationService.notifyRouted(postId, ownerInstitutionId);
+        } catch (citizenErr: any) {
+          logger.warn(`Citizen routing notification warning: ${citizenErr.message}`);
+        }
       }
 
       // Outbox event queuing
@@ -3017,6 +3048,147 @@ export function createApp() {
     }
   });
 
+  // JOINT COORDINATION CASES: multi-institution response to a single civic issue
+  app.get('/api/institutions/:id/joint-cases', requireAuth, requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const { status, limit, postId } = req.query;
+      const cases = JointCaseService.listCases({
+        institutionId: req.params.id,
+        status: status as string,
+        limit: limit ? parseInt(limit as string, 10) : 50,
+        postId: postId as string
+      });
+      res.json({ items: cases, totalCount: cases.length });
+    } catch (err: any) {
+      logger.error(`Joint cases fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch joint cases' });
+    }
+  });
+
+  app.post('/api/institutions/:id/joint-cases', requireRole(['INSTITUTION_REP', 'ADMIN']), requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { postId, situationId, title, category, region, district, summary, priority, participants } = req.body;
+      if (!title) return res.status(400).json({ error: 'A case title is required' });
+
+      const result = JointCaseService.createCase({
+        postId,
+        situationId,
+        title: sanitizePlainText(title),
+        category,
+        region,
+        district,
+        summary: summary ? sanitizeText(summary) : undefined,
+        priority,
+        leadInstitutionId: req.params.id,
+        participants: Array.isArray(participants) ? participants : []
+      }, { id: user.id, name: user.name, role: user.role, institutionId: req.params.id });
+
+      res.status(201).json({ success: true, case: result });
+    } catch (err: any) {
+      logger.error(`Joint case creation error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to create joint case' });
+    }
+  });
+
+  app.get('/api/joint-cases/:caseId', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const caseRow = JointCaseService.getCase(req.params.caseId);
+      if (!caseRow) return res.status(404).json({ error: 'Joint case not found' });
+
+      const isOversight = ['ADMIN', 'MODERATOR', 'EXECUTIVE_OBSERVER'].includes(user.role);
+      const isParticipant = user.institutionId
+        && caseRow.participants.some((p: any) => p.institution_id === user.institutionId);
+      if (!isOversight && !isParticipant) {
+        return res.status(403).json({ error: 'Access denied: you are not a participant on this case' });
+      }
+
+      res.json(caseRow);
+    } catch (err: any) {
+      logger.error(`Joint case fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch joint case' });
+    }
+  });
+
+  app.post('/api/joint-cases/:caseId/respond', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { status, institutionId, note } = req.body;
+      const validStatuses = ['ACCEPTED', 'DECLINED', 'COMPLETED'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      }
+
+      // An institution rep may only respond for their own institution; oversight
+      // may respond on behalf of any participant by naming the institution.
+      const targetInstitutionId = institutionId || user.institutionId;
+      if (!targetInstitutionId) return res.status(400).json({ error: 'Institution is required' });
+      const isOversight = ['ADMIN', 'MODERATOR'].includes(user.role);
+      if (!isOversight && targetInstitutionId !== user.institutionId) {
+        return res.status(403).json({ error: 'Access denied: outside your institution scope' });
+      }
+
+      const result = JointCaseService.respondToCase(
+        req.params.caseId,
+        targetInstitutionId,
+        status,
+        { id: user.id, name: user.name, role: user.role, institutionId: targetInstitutionId },
+        note ? sanitizePlainText(note) : undefined
+      );
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      logger.error(`Joint case response error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to respond to joint case' });
+    }
+  });
+
+  app.post('/api/joint-cases/:caseId/participants', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const caseRow = JointCaseService.getCase(req.params.caseId);
+      if (!caseRow) return res.status(404).json({ error: 'Joint case not found' });
+
+      const isOversight = ['ADMIN', 'MODERATOR'].includes(user.role);
+      const isLead = user.institutionId && user.institutionId === caseRow.lead_institution_id;
+      if (!isOversight && !isLead) {
+        return res.status(403).json({ error: 'Only the lead institution or oversight may add participants' });
+      }
+
+      const { institutionId, deskId, role, responsibility } = req.body;
+      if (!institutionId) return res.status(400).json({ error: 'Institution is required' });
+
+      const result = JointCaseService.addParticipant(
+        req.params.caseId,
+        { institutionId, deskId, role, responsibility: responsibility ? sanitizePlainText(responsibility) : undefined },
+        { id: user.id, name: user.name, role: user.role, institutionId: user.institutionId }
+      );
+      res.status(201).json({ success: true, case: result });
+    } catch (err: any) {
+      logger.error(`Joint case participant add error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to add participant' });
+    }
+  });
+
+  app.post('/api/joint-cases/:caseId/resolve', requireRole(['INSTITUTION_REP', 'ADMIN']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { resolutionSummary, close } = req.body;
+      if (!resolutionSummary) return res.status(400).json({ error: 'A resolution summary is required' });
+
+      const result = JointCaseService.resolveCase(
+        req.params.caseId,
+        { id: user.id, name: user.name, role: user.role, institutionId: user.institutionId },
+        sanitizeText(resolutionSummary),
+        !!close
+      );
+      res.json({ success: true, case: result });
+    } catch (err: any) {
+      logger.error(`Joint case resolve error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to resolve joint case' });
+    }
+  });
+
   // COORDINATION: DELEGATION, TRANSFER & ESCALATION
   app.get('/api/institutions/:id/delegations', requireAuth, requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
     try {
@@ -3705,7 +3877,8 @@ export function createApp() {
       const totalPosts = (db.prepare('SELECT COUNT(*) as c FROM posts').get() as any)?.c || 0;
       const pendingAbuse = (db.prepare("SELECT COUNT(*) as c FROM abuse_reports WHERE status = 'PENDING'").get() as any)?.c || 0;
       const queuedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'QUEUED'").get() as any)?.c || 0;
-      const failedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'FAILED'").get() as any)?.c || 0;
+      const failedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status IN ('FAILED', 'DEAD_LETTER')").get() as any)?.c || 0;
+      const failedAlerts = (db.prepare("SELECT COUNT(*) as c FROM post_institution_tags WHERE alert_status = 'FAILED'").get() as any)?.c || 0;
       const totalInstitutions = (db.prepare('SELECT COUNT(*) as c FROM institutions').get() as any)?.c || 0;
       const pendingPrivacy = (db.prepare("SELECT COUNT(*) as c FROM submissions WHERE privacy_status = 'PRIVACY_PROCESSING'").get() as any)?.c || 0;
       const openReports = (db.prepare("SELECT COUNT(*) as c FROM posts WHERE workflow_stage IS NULL OR workflow_stage NOT IN ('RESOLVED')").get() as any)?.c || 0;
@@ -3759,7 +3932,9 @@ export function createApp() {
         totalDesks,
         regionsRepresented,
         overdueItems,
+        failedAlerts,
         alertsByStatus,
+        coordinationQueue: CoordinationQueueService.buildQueue({ limit: 1 }).summary,
         systemHealth,
         databaseStatus: databaseHealthy ? 'CONNECTED' : 'UNAVAILABLE'
       });
@@ -4133,6 +4308,36 @@ export function createApp() {
     }
   });
 
+  // ADMIN COORDINATION QUEUE: one severity-ranked triage feed merging routed
+  // inbox items, pending delegations, joint cases, failed alerts, abuse
+  // complaints and moderation holds.
+  app.get('/api/admin/coordination/queue', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const limit = parseInt((req.query.limit as string) || '100', 10) || 100;
+      const sourceParam = (req.query.sources as string) || '';
+      const sources = sourceParam ? (sourceParam.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) as any[]) : undefined;
+      const severity = (req.query.severity as string) || 'ALL';
+      const source = (req.query.source as string) || 'ALL';
+
+      const { items, summary } = CoordinationQueueService.buildQueue({ limit: limit * 2, sources });
+
+      const filtered = items.filter((item) => {
+        if (severity !== 'ALL' && item.severity !== severity) return false;
+        if (source !== 'ALL' && item.source !== source) return false;
+        return true;
+      });
+
+      res.json({
+        items: filtered.slice(0, limit),
+        summary,
+        totalCount: filtered.length
+      });
+    } catch (err: any) {
+      logger.error(`Admin coordination queue error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to build coordination queue' });
+    }
+  });
+
   // ADMIN COORDINATION OVERSIGHT: platform-wide delegation & SLA monitoring
   app.get('/api/admin/coordination', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
     try {
@@ -4203,6 +4408,119 @@ export function createApp() {
     }
   });
 
+  // ADMIN COORDINATION OVERSIGHT: create a delegation/escalation/transfer on
+  // behalf of any institution to unblock stuck work.
+  app.post('/api/admin/coordination/delegations', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const {
+        postId, situationId, fromInstitutionId, fromDeskId,
+        toInstitutionId, toDeskId, delegationType, actionRequired, priority, reason, instructions, dueAt
+      } = req.body;
+
+      if (!toInstitutionId || !reason) {
+        return res.status(400).json({ error: 'Target institution and reason are required' });
+      }
+      const target = db.prepare('SELECT id FROM institutions WHERE id = ?').get(toInstitutionId);
+      if (!target) return res.status(404).json({ error: 'Target institution not found' });
+
+      const result = CoordinationService.createDelegation({
+        postId,
+        situationId,
+        fromInstitutionId: fromInstitutionId || null,
+        fromDeskId,
+        toInstitutionId,
+        toDeskId,
+        delegationType: delegationType || 'ESCALATION',
+        actionRequired: actionRequired || 'ACTION',
+        priority: priority || 'URGENT',
+        reason: sanitizePlainText(reason),
+        instructions: instructions ? sanitizeText(instructions) : undefined,
+        dueAt
+      }, { id: user.id, name: user.name, role: user.role, institutionId: fromInstitutionId || undefined });
+
+      AuditService.log({
+        eventType: 'ADMIN_COORDINATION_DELEGATION',
+        userId: user.id,
+        actorType: user.role === 'ADMIN' ? 'ADMIN' : 'MODERATOR',
+        institutionId: fromInstitutionId || null,
+        targetType: 'DELEGATION',
+        targetId: result.id,
+        afterState: { toInstitutionId, delegationType: delegationType || 'ESCALATION', status: 'PENDING' },
+        reason: sanitizePlainText(reason),
+        metadata: { postId: postId || null, oversight: true }
+      });
+
+      res.status(201).json({ success: true, delegation: result });
+    } catch (err: any) {
+      logger.error(`Admin coordination delegation error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to create coordination action' });
+    }
+  });
+
+  // ADMIN COORDINATION OVERSIGHT: joint multi-institution cases
+  app.get('/api/admin/coordination/cases', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const { status, limit, postId } = req.query;
+      const cases = JointCaseService.listCases({
+        status: status as string,
+        limit: limit ? parseInt(limit as string, 10) : 100,
+        postId: postId as string
+      });
+      res.json({ items: cases, totalCount: cases.length });
+    } catch (err: any) {
+      logger.error(`Admin joint cases fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch joint cases' });
+    }
+  });
+
+  app.post('/api/admin/coordination/cases', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { postId, situationId, title, category, region, district, summary, priority, leadInstitutionId, participants } = req.body;
+      if (!title || !leadInstitutionId) {
+        return res.status(400).json({ error: 'A case title and lead institution are required' });
+      }
+
+      const result = JointCaseService.createCase({
+        postId,
+        situationId,
+        title: sanitizePlainText(title),
+        category,
+        region,
+        district,
+        summary: summary ? sanitizeText(summary) : undefined,
+        priority,
+        leadInstitutionId,
+        participants: Array.isArray(participants) ? participants : []
+      }, { id: user.id, name: user.name, role: user.role });
+
+      res.status(201).json({ success: true, case: result });
+    } catch (err: any) {
+      logger.error(`Admin joint case creation error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to create joint case' });
+    }
+  });
+
+  app.post('/api/admin/coordination/cases/:caseId/resolve', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { resolutionSummary, close } = req.body;
+      if (!resolutionSummary) return res.status(400).json({ error: 'A resolution summary is required' });
+
+      const result = JointCaseService.resolveCase(
+        req.params.caseId,
+        { id: user.id, name: user.name, role: user.role },
+        sanitizeText(resolutionSummary),
+        !!close
+      );
+      res.json({ success: true, case: result });
+    } catch (err: any) {
+      logger.error(`Admin joint case resolve error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to resolve joint case' });
+    }
+  });
+
   app.get('/api/admin/jobs', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
     try {
       const { status } = req.query;
@@ -4238,6 +4556,69 @@ export function createApp() {
     }
   });
 
+  // ADMIN ALERT DELIVERY OVERSIGHT: list undelivered / failed alerts
+  app.get('/api/admin/alerts/failed', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
+    try {
+      const rows = db.prepare(`
+        SELECT t.id AS tag_id, t.post_id, t.institution_id, t.institution_name, t.short_name,
+               t.alert_status, t.alert_method_used, t.delivery_timestamp,
+               p.title AS post_title, p.urgency, p.region, p.district,
+               a.error_message, a.retry_count, a.channel_type, a.recipient, a.updated_at AS last_attempt_at
+        FROM post_institution_tags t
+        LEFT JOIN posts p ON p.id = t.post_id
+        LEFT JOIN alert_attempts a ON a.idempotency_key = 'alert-' || t.post_id || '-' || t.institution_id
+        WHERE t.alert_status IN ('FAILED', 'NOT_CONFIGURED')
+        ORDER BY t.delivery_timestamp DESC
+        LIMIT 200
+      `).all() as any[];
+
+      const failed = rows.filter(r => r.alert_status === 'FAILED').length;
+      const notConfigured = rows.filter(r => r.alert_status === 'NOT_CONFIGURED').length;
+
+      res.json({ items: rows, summary: { failed, notConfigured, total: rows.length } });
+    } catch (err: any) {
+      logger.error(`Admin failed alerts fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch failed alert deliveries' });
+    }
+  });
+
+  // ADMIN ALERT DELIVERY OVERSIGHT: re-run a failed/undelivered alert delivery
+  app.post('/api/admin/alerts/:tagId/redispatch', requireRole(['ADMIN']), async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const tag = db.prepare('SELECT * FROM post_institution_tags WHERE id = ?').get(req.params.tagId) as any;
+      if (!tag) return res.status(404).json({ error: 'Alert tag not found' });
+
+      const previousStatus = tag.alert_status;
+      const result = await AlertOrchestrator.orchestrateAlert(tag.post_id, tag.institution_id, { force: true });
+
+      AuditService.log({
+        eventType: 'ALERT_REDISPATCHED',
+        userId: user.id,
+        actorType: user.role === 'ADMIN' ? 'ADMIN' : 'MODERATOR',
+        institutionId: tag.institution_id,
+        targetType: 'ALERT',
+        targetId: tag.id,
+        beforeState: { alertStatus: previousStatus },
+        afterState: { alertStatus: result.status },
+        reason: `Manual re-dispatch of ${previousStatus} alert`,
+        metadata: { postId: tag.post_id, institutionId: tag.institution_id, result: result.status }
+      });
+
+      res.json({
+        success: true,
+        tagId: tag.id,
+        previousStatus,
+        status: result.status,
+        errorMessage: result.errorMessage || null,
+        deliveryId: result.deliveryId || null
+      });
+    } catch (err: any) {
+      logger.error(`Admin alert redispatch error: ${err.message}`);
+      res.status(400).json({ error: err.message || 'Failed to re-dispatch alert' });
+    }
+  });
+
   app.get('/api/admin/posts/:id/trace', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
     try {
       const postId = req.params.id;
@@ -4257,6 +4638,37 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Admin get audit logs error: ${err.message}`);
       res.status(500).json({ error: 'Failed to fetch audit logs' });
+    }
+  });
+
+  // Immutable administrative audit trail: privileged and workflow actions
+  // (role changes, moderation, delegations, joint cases, alert re-dispatch).
+  app.get('/api/admin/audit-trail', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const limit = Math.min(parseInt((req.query.limit as string) || '100', 10) || 100, 500);
+      const eventType = req.query.eventType as string | undefined;
+      let sql = `
+        SELECT a.id, a.event_type, a.actor_type, a.user_id, a.target_type, a.target_id,
+               a.reason, a.details_json, a.ip_address, a.created_at, u.name AS actor_name
+        FROM audit_logs a
+        LEFT JOIN users u ON u.id = a.user_id
+      `;
+      const params: any[] = [];
+      if (eventType && eventType !== 'ALL') {
+        sql += ' WHERE a.event_type = ?';
+        params.push(eventType);
+      }
+      sql += ' ORDER BY a.created_at DESC LIMIT ?';
+      params.push(limit);
+
+      const rows = db.prepare(sql).all(...params) as any[];
+      const eventTypes = (db.prepare('SELECT DISTINCT event_type FROM audit_logs ORDER BY event_type').all() as any[])
+        .map((r) => r.event_type);
+
+      res.json({ items: rows, eventTypes });
+    } catch (err: any) {
+      logger.error(`Admin audit trail error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch audit trail' });
     }
   });
 

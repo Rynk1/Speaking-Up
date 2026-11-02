@@ -34,20 +34,24 @@ import {
   DataTable,
   EmptyState,
   Field,
+  InlineAlert,
   Input,
   Modal,
+  QueueItemCard,
   SearchInput,
   SectionHeader,
+  SegmentedControl,
   Select,
   StatCard,
   StatusBadge,
   TableRow,
   TableSkeleton,
   Td,
+  Textarea,
   Th,
   Tile,
   useToast,
-  type ConsoleNavItem
+  type ConsoleNavSection
 } from './ui';
 import {
   getAbuseReportMeta,
@@ -56,6 +60,7 @@ import {
   getPriorityMeta,
   getRoleMeta
 } from '../utils/status';
+import type { CoordinationQueueItem } from '../types';
 
 type AdminTab = 'overview' | 'content' | 'reports' | 'users' | 'institutions' | 'coordination' | 'privacy' | 'system';
 
@@ -71,19 +76,21 @@ interface PendingAction {
 }
 
 const TAB_META: Record<AdminTab, { title: string; subtitle: string }> = {
-  overview: { title: 'System Performance & Platform Overview', subtitle: 'Live platform health, workload and subsystem readiness.' },
+  overview: { title: 'Command Center', subtitle: 'Live platform health, triage backlog and subsystem readiness at a glance.' },
   content: { title: 'Civic Content & Report Moderation', subtitle: 'Review, approve, hold or remove citizen submissions.' },
   reports: { title: 'Citizen Abuse & Flagging Review Queue', subtitle: 'Triage abuse complaints raised against content and users.' },
   users: { title: 'User Accounts & Access Management', subtitle: 'Elevate roles, verify identities and control platform access.' },
-  institutions: { title: 'State Agencies & Alert Channel Configuration', subtitle: 'Register agencies and configure dispatch channels.' },
-  coordination: { title: 'Inter-Institutional Coordination & SLA Oversight', subtitle: 'Oversee transfers, delegations, escalations and SLA compliance.' },
+  institutions: { title: 'State Agencies & Alert Channel Configuration', subtitle: 'Register agencies, inspect desks and configure dispatch channels.' },
+  coordination: { title: 'Operations Queue', subtitle: 'One severity-ranked triage feed across every institution, desk and case.' },
   privacy: { title: 'P³RE Privacy Engine Policy & Audit', subtitle: 'Privacy-preserving representation policy and storage posture.' },
-  system: { title: 'Durable Job Queue & Event Timeline Audit', subtitle: 'Retry background jobs and inspect the immutable event trail.' }
+  system: { title: 'Job Queue, Alerts & Audit', subtitle: 'Retry background jobs, re-dispatch failed alerts and inspect the audit trail.' }
 };
 
 export const AdminDashboardView: React.FC = () => {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  // Oversight lands on the triage feed: the first question an operator answers is
+  // "what needs attention now?", not "what is the platform posture?".
+  const [activeTab, setActiveTab] = useState<AdminTab>('coordination');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -104,15 +111,47 @@ export const AdminDashboardView: React.FC = () => {
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobStatusFilter, setJobStatusFilter] = useState('ALL');
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditTrail, setAuditTrail] = useState<any[]>([]);
+  const [auditTrailTypes, setAuditTrailTypes] = useState<string[]>([]);
+  const [auditEventFilter, setAuditEventFilter] = useState('ALL');
 
   const [coordination, setCoordination] = useState<any>(null);
+  const [queue, setQueue] = useState<{ items: CoordinationQueueItem[]; summary: any; totalCount: number } | null>(null);
+  const [queueSeverity, setQueueSeverity] = useState('ALL');
+  const [queueSource, setQueueSource] = useState('ALL');
   const [institutions, setInstitutions] = useState<any[]>([]);
   const [privacy, setPrivacy] = useState<any>(null);
+  const [failedAlerts, setFailedAlerts] = useState<{ items: any[]; summary: { failed: number; notConfigured: number; total: number } } | null>(null);
+  const [jointCases, setJointCases] = useState<any[]>([]);
   const [hierarchy, setHierarchy] = useState<any>(null);
   const [hierarchyInst, setHierarchyInst] = useState<any>(null);
   const [hierarchyLoading, setHierarchyLoading] = useState(false);
 
   const [showInstModal, setShowInstModal] = useState(false);
+  const [showCoordModal, setShowCoordModal] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<CoordinationQueueItem | null>(null);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignForm, setAssignForm] = useState({ officerUserId: '', deskId: '', notes: '' });
+  const [coordForm, setCoordForm] = useState({
+    toInstitutionId: '',
+    delegationType: 'ESCALATION',
+    priority: 'URGENT',
+    reason: '',
+    instructions: '',
+    postId: ''
+  });
+  const [showCaseModal, setShowCaseModal] = useState(false);
+  const [caseForm, setCaseForm] = useState({
+    title: '',
+    leadInstitutionId: '',
+    summary: '',
+    priority: 'ELEVATED',
+    region: '',
+    district: '',
+    postId: '',
+    participants: [] as string[]
+  });
   const [instForm, setInstForm] = useState({
     id: '',
     officialName: '',
@@ -139,7 +178,12 @@ export const AdminDashboardView: React.FC = () => {
     setLoading(true);
     try {
       if (activeTab === 'overview') {
-        await loadOverview();
+        const [ov, q] = await Promise.all([
+          api.getAdminOverview(),
+          api.getAdminCoordinationQueue({ limit: 6 })
+        ]);
+        setOverview(ov);
+        setQueue(q);
       } else if (activeTab === 'users') {
         setUsers(await api.getAdminUsers({ search: userSearch, role: userRoleFilter }));
       } else if (activeTab === 'content') {
@@ -147,15 +191,30 @@ export const AdminDashboardView: React.FC = () => {
       } else if (activeTab === 'reports') {
         setAbuseReports(await api.getAdminAbuseReports(reportStatusFilter));
       } else if (activeTab === 'coordination') {
-        setCoordination(await api.getAdminCoordination());
+        const [coord, cases, q] = await Promise.all([
+          api.getAdminCoordination(),
+          api.getAdminJointCases({ limit: 50 }),
+          api.getAdminCoordinationQueue({ severity: queueSeverity, source: queueSource, limit: 100 })
+        ]);
+        setCoordination(coord);
+        setJointCases(cases.items || []);
+        setQueue(q);
       } else if (activeTab === 'institutions') {
         setInstitutions(await api.getInstitutions());
       } else if (activeTab === 'privacy') {
         setPrivacy(await api.getAdminPrivacy());
       } else if (activeTab === 'system') {
-        const [j, logs] = await Promise.all([api.getAdminJobs(jobStatusFilter), api.getAdminAuditLogs()]);
+        const [j, logs, alerts, trail] = await Promise.all([
+          api.getAdminJobs(jobStatusFilter),
+          api.getAdminAuditLogs(),
+          api.getAdminFailedAlerts(),
+          api.getAdminAuditTrail({ limit: 150, eventType: auditEventFilter })
+        ]);
         setJobs(j);
         setAuditLogs(logs);
+        setFailedAlerts(alerts);
+        setAuditTrail(trail.items || []);
+        setAuditTrailTypes(trail.eventTypes || []);
       }
     } catch (err: any) {
       console.error(`Failed to load tab data for ${activeTab}:`, err);
@@ -163,7 +222,7 @@ export const AdminDashboardView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, userSearch, userRoleFilter, postSearch, moderationFilter, reportStatusFilter, jobStatusFilter, loadOverview, toast]);
+  }, [activeTab, userSearch, userRoleFilter, postSearch, moderationFilter, reportStatusFilter, jobStatusFilter, auditEventFilter, queueSeverity, queueSource, loadOverview, toast]);
 
   useEffect(() => {
     loadTabData();
@@ -358,6 +417,222 @@ export const AdminDashboardView: React.FC = () => {
     }
   };
 
+  const handleRedispatchAlert = async (tagId: string) => {
+    setActionLoading(`alert-${tagId}`);
+    try {
+      const res = await api.redispatchAdminAlert(tagId);
+      const delivered = res.status === 'DELIVERED' || res.status === 'SENT';
+      if (delivered) {
+        toast.success('Alert re-dispatched', `Delivery status is now ${res.status}.`);
+      } else {
+        toast.error('Re-dispatch did not succeed', res.errorMessage || `Delivery status is ${res.status}.`);
+      }
+      const alerts = await api.getAdminFailedAlerts();
+      setFailedAlerts(alerts);
+      if (activeTab === 'overview') await loadOverview();
+    } catch (err: any) {
+      toast.error('Failed to re-dispatch alert', err?.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResolveJointCase = (caseRow: any) => {
+    setPending({
+      title: 'Resolve joint case',
+      tone: 'success',
+      confirmLabel: 'Record resolution',
+      reasonLabel: 'Resolution summary (visible to all participants and the reporter)',
+      reasonRequired: true,
+      message: (
+        <>
+          Record the outcome for the joint case{' '}
+          <span className="font-semibold text-white">{caseRow.title}</span>. All participants and the original reporter
+          will be notified, and the linked report will be marked resolved.
+        </>
+      ),
+      run: async (reason) => {
+        setActionLoading(`case-${caseRow.id}`);
+        try {
+          await api.resolveAdminJointCase(caseRow.id, reason || 'Resolved', false);
+          toast.success('Joint case resolved', 'Participants and the reporter have been notified.');
+          await loadTabData();
+        } catch (err: any) {
+          toast.error('Failed to resolve joint case', err?.message);
+        } finally {
+          setActionLoading(null);
+        }
+      }
+    });
+  };
+
+  const handleCreateCoordinationAction = async () => {
+    if (!coordForm.toInstitutionId || !coordForm.reason.trim()) {
+      toast.error('Missing information', 'A target institution and reason are required.');
+      return;
+    }
+    setActionLoading('coord-create');
+    try {
+      await api.createAdminCoordinationAction({
+        toInstitutionId: coordForm.toInstitutionId,
+        delegationType: coordForm.delegationType,
+        priority: coordForm.priority,
+        reason: coordForm.reason.trim(),
+        instructions: coordForm.instructions.trim() || undefined,
+        postId: coordForm.postId.trim() || undefined
+      });
+      toast.success('Coordination action created', 'The receiving institution has been alerted.');
+      setShowCoordModal(false);
+      setCoordForm({ toInstitutionId: '', delegationType: 'ESCALATION', priority: 'URGENT', reason: '', instructions: '', postId: '' });
+      await loadTabData();
+    } catch (err: any) {
+      toast.error('Failed to create coordination action', err?.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCreateJointCase = async () => {
+    if (!caseForm.title.trim() || !caseForm.leadInstitutionId) {
+      toast.error('Missing information', 'A case title and lead institution are required.');
+      return;
+    }
+    setActionLoading('case-create');
+    try {
+      await api.createAdminJointCase({
+        title: caseForm.title.trim(),
+        leadInstitutionId: caseForm.leadInstitutionId,
+        summary: caseForm.summary.trim() || undefined,
+        priority: caseForm.priority,
+        region: caseForm.region.trim() || undefined,
+        district: caseForm.district.trim() || undefined,
+        postId: caseForm.postId.trim() || undefined,
+        participants: caseForm.participants.map((institutionId) => ({ institutionId, role: 'SUPPORTING' }))
+      });
+      toast.success('Joint case opened', 'All participating institutions have been notified and assigned an action.');
+      setShowCaseModal(false);
+      setCaseForm({ title: '', leadInstitutionId: '', summary: '', priority: 'ELEVATED', region: '', district: '', postId: '', participants: [] });
+      await loadTabData();
+    } catch (err: any) {
+      toast.error('Failed to open joint case', err?.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  /* ------------------- unified operations queue actions ------------------- */
+
+  const refreshQueue = async () => {
+    try {
+      const q = await api.getAdminCoordinationQueue({ severity: queueSeverity, source: queueSource, limit: 100 });
+      setQueue(q);
+    } catch (err: any) {
+      toast.error('Failed to refresh queue', err?.message);
+    }
+  };
+
+  const handleQueueAccept = (item: CoordinationQueueItem) => {
+    if (item.source !== 'DELEGATION') return;
+    const delegationId = item.id.replace('delegation:', '');
+    handleDelegationAction(
+      { id: delegationId, postTitle: item.title, toInstitutionName: item.institutionName, fromInstitutionName: item.meta?.fromInstitutionName },
+      'ACCEPTED'
+    );
+  };
+
+  const handleQueueDecline = (item: CoordinationQueueItem) => {
+    if (item.source !== 'DELEGATION') return;
+    const delegationId = item.id.replace('delegation:', '');
+    handleDelegationAction(
+      { id: delegationId, postTitle: item.title, toInstitutionName: item.institutionName, fromInstitutionName: item.meta?.fromInstitutionName },
+      'DECLINED'
+    );
+  };
+
+  const handleQueueResolve = (item: CoordinationQueueItem) => {
+    if (item.source === 'JOINT_CASE' && item.caseId) {
+      handleResolveJointCase({ id: item.caseId, title: item.title });
+    } else if (item.source === 'INBOX_ITEM') {
+      toast.info('Resolve from the institution desk', 'Open the agency structure to close this work item with a recorded outcome.');
+    }
+  };
+
+  const handleQueueRedispatch = (item: CoordinationQueueItem) => {
+    const tagId = item.meta?.tagId || item.id.replace('alert:', '');
+    handleRedispatchAlert(tagId);
+  };
+
+  const handleQueueReview = (item: CoordinationQueueItem) => {
+    if (item.source === 'ABUSE_REPORT') setActiveTab('reports');
+    else if (item.source === 'MODERATION') setActiveTab('content');
+  };
+
+  const handleQueueEscalate = (item: CoordinationQueueItem) => {
+    setCoordForm({
+      toInstitutionId: '',
+      delegationType: 'ESCALATION',
+      priority: item.severity === 'BREACHED' ? 'EMERGENCY' : 'URGENT',
+      reason: '',
+      instructions: `Escalated from operations queue: ${item.title}`,
+      postId: item.postId || ''
+    });
+    setShowCoordModal(true);
+  };
+
+  const openAssignModal = async (item: CoordinationQueueItem) => {
+    if (!item.institutionId) return;
+    setAssignTarget(item);
+    setAssignError(null);
+    setAssignForm({ officerUserId: item.assignedOfficerId || '', deskId: item.deskId || '', notes: '' });
+    // Reuse the institution hierarchy to list real desks and officials, so the
+    // operator picks from the same roster the agency itself sees.
+    setHierarchy(null);
+    setHierarchyLoading(true);
+    try {
+      setHierarchy(await api.getAdminInstitutionHierarchy(item.institutionId));
+    } catch (err: any) {
+      setAssignError(err?.message || 'Could not load this agency roster');
+    } finally {
+      setHierarchyLoading(false);
+    }
+  };
+
+  const closeAssignModal = () => {
+    setAssignTarget(null);
+    setAssignError(null);
+    setAssignForm({ officerUserId: '', deskId: '', notes: '' });
+  };
+
+  const submitAssign = async () => {
+    if (!assignTarget?.institutionId) return;
+    const itemId = assignTarget.id.replace('inbox:', '');
+    if (!assignForm.officerUserId && !assignForm.deskId) {
+      setAssignError('Choose an official, a desk, or both.');
+      return;
+    }
+    setAssignLoading(true);
+    setAssignError(null);
+    try {
+      await api.assignInboxItem(assignTarget.institutionId, itemId, {
+        officerUserId: assignForm.officerUserId || undefined,
+        deskId: assignForm.deskId || undefined,
+        notes: assignForm.notes.trim() || undefined
+      });
+      const officerName = (hierarchy?.team || []).find((m: any) => m.userId === assignForm.officerUserId)?.name;
+      closeAssignModal();
+      await refreshQueue();
+      await loadOverview();
+      toast.success(
+        'Work item assigned',
+        officerName ? `${officerName} is now accountable for this item.` : 'The owning desk has been updated.'
+      );
+    } catch (err: any) {
+      setAssignError(err?.message || 'Failed to assign this work item');
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
   const resetInstForm = () => setInstForm({
     id: '', officialName: '', shortName: '', acronym: '', mandate: '',
     category: 'GOVERNMENT', jurisdiction: 'NATIONAL', alertMethod: 'OFFICIAL_EMAIL',
@@ -430,18 +705,43 @@ export const AdminDashboardView: React.FC = () => {
 
   /* ----------------------------- nav ----------------------------- */
 
-  const navItems: ConsoleNavItem<AdminTab>[] = useMemo(
+  const queueBacklog = overview?.coordinationQueue
+    ? (overview.coordinationQueue.BREACHED || 0) + (overview.coordinationQueue.URGENT || 0)
+    : undefined;
+
+  const navSections: ConsoleNavSection<AdminTab>[] = useMemo(
     () => [
-      { id: 'overview', label: 'System Overview', icon: <Activity className="w-4 h-4" />, alert: true },
-      { id: 'content', label: 'Content Moderation', icon: <FileText className="w-4 h-4" />, badge: overview?.pendingAbuse },
-      { id: 'reports', label: 'Abuse Flag Queue', icon: <AlertTriangle className="w-4 h-4" /> },
-      { id: 'users', label: 'User Management', icon: <Users className="w-4 h-4" /> },
-      { id: 'institutions', label: 'State Institutions', icon: <Building2 className="w-4 h-4" /> },
-      { id: 'coordination', label: 'Coordination Oversight', icon: <GitPullRequest className="w-4 h-4" />, badge: coordination?.summary?.overdueItems },
-      { id: 'privacy', label: 'P³RE Privacy Engine', icon: <Lock className="w-4 h-4" /> },
-      { id: 'system', label: 'Job Queue & Audit', icon: <Cpu className="w-4 h-4" /> }
+      {
+        label: 'Operations',
+        items: [
+          { id: 'overview', label: 'Command Center', icon: <Activity className="w-4 h-4" /> },
+          {
+            id: 'coordination',
+            label: 'Operations Queue',
+            icon: <GitPullRequest className="w-4 h-4" />,
+            badge: queueBacklog || undefined,
+            alert: !queueBacklog
+          },
+          { id: 'institutions', label: 'State Agencies', icon: <Building2 className="w-4 h-4" /> }
+        ]
+      },
+      {
+        label: 'Trust & Safety',
+        items: [
+          { id: 'content', label: 'Content Moderation', icon: <FileText className="w-4 h-4" />, badge: overview?.pendingAbuse },
+          { id: 'reports', label: 'Abuse Complaints', icon: <AlertTriangle className="w-4 h-4" /> }
+        ]
+      },
+      {
+        label: 'Governance',
+        items: [
+          { id: 'users', label: 'Users & Access', icon: <Users className="w-4 h-4" /> },
+          { id: 'privacy', label: 'P³RE Privacy Engine', icon: <Lock className="w-4 h-4" /> },
+          { id: 'system', label: 'Jobs, Alerts & Audit', icon: <Cpu className="w-4 h-4" />, badge: overview?.failedAlerts }
+        ]
+      }
     ],
-    [overview, coordination]
+    [overview, queueBacklog]
   );
 
   const meta = TAB_META[activeTab];
@@ -453,12 +753,30 @@ export const AdminDashboardView: React.FC = () => {
         brandSubtitle="Ghana Civic Control Center"
         brandIcon={<ShieldAlert className="w-4 h-4 text-white" />}
         accent="purple"
-        items={navItems}
+        sections={navSections}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         headerTitle={meta.title}
         headerSubtitle={meta.subtitle}
         footerNote="Speak Up Web v1.0 Production"
+        headerContent={
+          overview?.systemHealth && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800 w-fit">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  overview.systemHealth === 'HEALTHY'
+                    ? 'bg-emerald-400 animate-pulse'
+                    : overview.systemHealth === 'DEGRADED'
+                    ? 'bg-red-400 animate-pulse'
+                    : 'bg-amber-400 animate-pulse'
+                }`}
+              />
+              <span className="text-[11px] font-semibold text-slate-300 whitespace-nowrap">
+                {overview.systemHealth === 'HEALTHY' ? 'All systems nominal' : overview.systemHealth === 'DEGRADED' ? 'System degraded' : 'Attention required'}
+              </span>
+            </div>
+          )
+        }
         headerActions={
           <Button variant="secondary" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3.5 h-3.5" />}>
             Refresh
@@ -467,43 +785,159 @@ export const AdminDashboardView: React.FC = () => {
       >
         {activeTab === 'overview' && (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard label="Registered Users" value={overview?.totalUsers || 0} hint="Citizens & officials" icon={<Users className="w-4 h-4" />} />
-              <StatCard label="Total Civic Reports" value={overview?.totalPosts || 0} hint={`Across ${overview?.regionsRepresented ?? 0} regions`} icon={<FileText className="w-4 h-4" />} />
+            {/* Triage backlog — the operational headline */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               <StatCard
-                label="Pending Abuse Flags"
-                value={overview?.pendingAbuse || 0}
-                hint="Requires review"
-                tone="warning"
+                label="Breached"
+                value={overview?.coordinationQueue?.BREACHED || 0}
+                hint="Past deadline"
+                tone={(overview?.coordinationQueue?.BREACHED || 0) > 0 ? 'critical' : 'neutral'}
                 icon={<AlertTriangle className="w-4 h-4" />}
-                onClick={() => setActiveTab('reports')}
+                onClick={() => setActiveTab('coordination')}
               />
-              <StatCard label="Active State Agencies" value={overview?.activeInstitutions || 0} hint={overview?.unreachableInstitutions ? `${overview.unreachableInstitutions} without a dispatch endpoint` : 'Alert routing configured'} tone={overview?.unreachableInstitutions ? 'warning' : 'neutral'} icon={<Building2 className="w-4 h-4" />} onClick={() => setActiveTab('institutions')} />
+              <StatCard
+                label="Urgent"
+                value={overview?.coordinationQueue?.URGENT || 0}
+                hint="Needs action now"
+                tone={(overview?.coordinationQueue?.URGENT || 0) > 0 ? 'danger' : 'neutral'}
+                icon={<ShieldAlert className="w-4 h-4" />}
+                onClick={() => setActiveTab('coordination')}
+              />
+              <StatCard
+                label="Due Soon"
+                value={overview?.coordinationQueue?.DUE_SOON || 0}
+                hint="Approaching deadline"
+                tone={(overview?.coordinationQueue?.DUE_SOON || 0) > 0 ? 'warning' : 'neutral'}
+                icon={<Clock className="w-4 h-4" />}
+                onClick={() => setActiveTab('coordination')}
+              />
+              <StatCard
+                label="Open Reports"
+                value={overview?.openReports || 0}
+                hint={`Across ${overview?.regionsRepresented ?? 0} regions`}
+                icon={<FileText className="w-4 h-4" />}
+              />
+              <StatCard
+                label="Active Agencies"
+                value={overview?.activeInstitutions || 0}
+                hint={overview?.unreachableInstitutions ? `${overview.unreachableInstitutions} without a channel` : 'Alert routing configured'}
+                tone={overview?.unreachableInstitutions ? 'warning' : 'neutral'}
+                icon={<Building2 className="w-4 h-4" />}
+                onClick={() => setActiveTab('institutions')}
+              />
             </div>
 
-            <Card>
-              <SectionHeader title="Infrastructure & Subsystem Readiness" icon={<Activity className="w-4 h-4 text-purple-400" />} className="mb-3" />
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Tile
-                  label="Platform Health"
-                  value={overview?.systemHealth === 'HEALTHY' ? 'All systems nominal' : overview?.systemHealth === 'ATTENTION_REQUIRED' ? 'Attention required' : 'Degraded'}
-                  tone={overview?.systemHealth === 'HEALTHY' ? 'success' : overview?.systemHealth === 'DEGRADED' ? 'critical' : 'warning'}
-                  icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+            {/* Two-column: queue preview + platform posture */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <Card className="xl:col-span-2 space-y-3">
+                <SectionHeader
+                  title="Needs Attention Now"
+                  description="The highest-severity items across every institution, desk and case."
+                  icon={<AlertTriangle className="w-4 h-4 text-amber-400" />}
+                  actions={
+                    <Button variant="ghost" size="xs" onClick={() => setActiveTab('coordination')} iconRight={<ArrowRight className="w-3 h-3" />}>
+                      Open queue
+                    </Button>
+                  }
                 />
-                <Tile
-                  label="Database"
-                  value={overview?.databaseStatus === 'CONNECTED' ? 'Connected' : 'Unavailable'}
-                  tone={overview?.databaseStatus === 'CONNECTED' ? 'success' : 'critical'}
-                  icon={<ShieldCheck className="w-3.5 h-3.5" />}
-                />
-                <Tile
-                  label="Alert Delivery"
-                  value={`${overview?.alertsByStatus?.DELIVERED || 0} delivered · ${overview?.alertsByStatus?.SENT || 0} sent · ${overview?.alertsByStatus?.FAILED || 0} failed · ${overview?.alertsByStatus?.NOT_CONFIGURED || 0} unconfigured`}
-                  tone={(overview?.alertsByStatus?.FAILED || 0) > 0 ? 'warning' : 'neutral'}
-                  icon={<Mail className="w-3.5 h-3.5" />}
-                />
+                {loading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="h-20 rounded-xl bg-slate-800/60 animate-pulse" />
+                    ))}
+                  </div>
+                ) : !queue?.items?.length ? (
+                  <EmptyState icon={<CheckCircle2 className="w-5 h-5" />} title="Nothing needs attention" description="No breached, urgent or due-soon work across the platform." />
+                ) : (
+                  <div className="space-y-2">
+                    {queue.items.map((item) => (
+                      <QueueItemCard
+                        key={item.id}
+                        item={item}
+                        onAccept={handleQueueAccept}
+                        onDecline={handleQueueDecline}
+                        onResolve={handleQueueResolve}
+                        onRedispatch={handleQueueRedispatch}
+                        onReview={handleQueueReview}
+                        onEscalate={handleQueueEscalate}
+                        onAssign={openAssignModal}
+                      />
+                    ))}
+                  </div>
+                )}
+              </Card>
+
+              <div className="space-y-4">
+                <Card className="space-y-3">
+                  <SectionHeader title="Platform Posture" icon={<Activity className="w-4 h-4 text-purple-400" />} />
+                  <div className="space-y-2">
+                    <Tile
+                      label="Platform Health"
+                      value={overview?.systemHealth === 'HEALTHY' ? 'All systems nominal' : overview?.systemHealth === 'DEGRADED' ? 'Degraded' : 'Attention required'}
+                      tone={overview?.systemHealth === 'HEALTHY' ? 'success' : overview?.systemHealth === 'DEGRADED' ? 'critical' : 'warning'}
+                      icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                    />
+                    <Tile
+                      label="Database"
+                      value={overview?.databaseStatus === 'CONNECTED' ? 'Connected' : 'Unavailable'}
+                      tone={overview?.databaseStatus === 'CONNECTED' ? 'success' : 'critical'}
+                      icon={<ShieldCheck className="w-3.5 h-3.5" />}
+                    />
+                    <Tile
+                      label="Registered Users"
+                      value={String(overview?.totalUsers ?? 0)}
+                      icon={<Users className="w-3.5 h-3.5" />}
+                    />
+                    <Tile
+                      label="Institutions"
+                      value={String(overview?.totalInstitutions ?? 0)}
+                      icon={<Building2 className="w-3.5 h-3.5" />}
+                    />
+                    <Tile
+                      label="Desks Configured"
+                      value={String(overview?.totalDesks ?? 0)}
+                      icon={<GitPullRequest className="w-3.5 h-3.5" />}
+                    />
+                  </div>
+                </Card>
+
+                <Card className="space-y-3">
+                  <SectionHeader title="Alert Delivery" icon={<Mail className="w-4 h-4 text-sky-400" />} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Tile label="Delivered" value={String(overview?.alertsByStatus?.DELIVERED || 0)} tone="success" />
+                    <Tile label="Sent" value={String(overview?.alertsByStatus?.SENT || 0)} tone="info" />
+                    <Tile label="Failed" value={String(overview?.alertsByStatus?.FAILED || 0)} tone={(overview?.alertsByStatus?.FAILED || 0) > 0 ? 'critical' : 'neutral'} />
+                    <Tile label="No Channel" value={String(overview?.alertsByStatus?.NOT_CONFIGURED || 0)} tone={(overview?.alertsByStatus?.NOT_CONFIGURED || 0) > 0 ? 'warning' : 'neutral'} />
+                  </div>
+                  {(overview?.failedAlerts || 0) > 0 && (
+                    <Button variant="warning" size="xs" onClick={() => setActiveTab('system')} iconRight={<ArrowRight className="w-3 h-3" />}>
+                      Re-dispatch {overview.failedAlerts} failed alert{overview.failedAlerts === 1 ? '' : 's'}
+                    </Button>
+                  )}
+                </Card>
               </div>
-            </Card>
+            </div>
+
+            {overview?.pendingAbuse > 0 && (
+              <Card className="border-amber-800/50">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
+                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">
+                        {overview.pendingAbuse} abuse complaint{overview.pendingAbuse === 1 ? '' : 's'} awaiting review
+                      </div>
+                      <div className="text-[11px] text-slate-400">Citizens have flagged content that may need removal or action.</div>
+                    </div>
+                  </div>
+                  <Button variant="warning" size="sm" onClick={() => setActiveTab('reports')} iconRight={<ArrowRight className="w-3.5 h-3.5" />}>
+                    Review complaints
+                  </Button>
+                </div>
+              </Card>
+            )}
           </div>
         )}
 
@@ -930,77 +1364,198 @@ export const AdminDashboardView: React.FC = () => {
         {activeTab === 'coordination' && (
           <div className="space-y-4">
             <SectionHeader
-              title="Cross-Institution Coordination"
-              description="Oversight of transfers, delegations, escalations and SLA compliance across all desks."
+              title="Operations Queue"
+              description="Every open coordination item across institutions, desks and joint cases, ranked by severity. Nothing here is synthesised — each row is a live record."
               icon={<GitPullRequest className="w-4 h-4 text-amber-400" />}
               actions={
-                <Button variant="warning" loading={actionLoading === 'sla-sweep'} onClick={handleRunSlaSweep} icon={<RefreshCw className="w-3.5 h-3.5" />}>
-                  Run SLA Sweep Now
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="ghost" onClick={() => setShowCaseModal(true)} icon={<Plus className="w-3.5 h-3.5" />}>
+                    Open Joint Case
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowCoordModal(true)} icon={<GitPullRequest className="w-3.5 h-3.5" />}>
+                    Escalate / Transfer
+                  </Button>
+                  <Button variant="warning" loading={actionLoading === 'sla-sweep'} onClick={handleRunSlaSweep} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+                    Run SLA Sweep
+                  </Button>
+                </div>
               }
             />
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <StatCard label="Pending Delegations" value={coordination?.summary?.pendingDelegations ?? 0} hint="Transfers awaiting acceptance" tone="warning" icon={<GitPullRequest className="w-4 h-4" />} />
-              <StatCard label="SLA Breaches" value={coordination?.summary?.overdueItems ?? 0} hint="Past their response deadline" tone="critical" icon={<AlertTriangle className="w-4 h-4" />} />
-              <StatCard label="Agencies With Open Work" value={coordination?.summary?.institutionsWithOpenWork ?? 0} hint="Holding unresolved reports" icon={<Building2 className="w-4 h-4" />} />
+            {/* Severity backlog tiles double as filters */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <StatCard
+                label="Breached"
+                value={queue?.summary?.BREACHED ?? 0}
+                hint="Past deadline"
+                tone="critical"
+                icon={<AlertTriangle className="w-4 h-4" />}
+                active={queueSeverity === 'BREACHED'}
+                onClick={() => setQueueSeverity(queueSeverity === 'BREACHED' ? 'ALL' : 'BREACHED')}
+              />
+              <StatCard
+                label="Urgent"
+                value={queue?.summary?.URGENT ?? 0}
+                hint="Action required now"
+                tone="danger"
+                icon={<ShieldAlert className="w-4 h-4" />}
+                active={queueSeverity === 'URGENT'}
+                onClick={() => setQueueSeverity(queueSeverity === 'URGENT' ? 'ALL' : 'URGENT')}
+              />
+              <StatCard
+                label="Due Soon"
+                value={queue?.summary?.DUE_SOON ?? 0}
+                hint="Approaching deadline"
+                tone="warning"
+                icon={<Clock className="w-4 h-4" />}
+                active={queueSeverity === 'DUE_SOON'}
+                onClick={() => setQueueSeverity(queueSeverity === 'DUE_SOON' ? 'ALL' : 'DUE_SOON')}
+              />
+              <StatCard
+                label="On Track"
+                value={queue?.summary?.ON_TRACK ?? 0}
+                hint="Within window"
+                icon={<CheckCircle2 className="w-4 h-4" />}
+                active={queueSeverity === 'ON_TRACK'}
+                onClick={() => setQueueSeverity(queueSeverity === 'ON_TRACK' ? 'ALL' : 'ON_TRACK')}
+              />
+              <StatCard
+                label="Total Open"
+                value={queue?.summary?.total ?? 0}
+                hint="All active work"
+                icon={<Inbox className="w-4 h-4" />}
+                active={queueSeverity === 'ALL'}
+                onClick={() => setQueueSeverity('ALL')}
+              />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Filter bar */}
+            <Card padded={false} className="p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <SegmentedControl
+                  ariaLabel="Filter by severity"
+                  value={queueSeverity}
+                  onChange={setQueueSeverity}
+                  options={[
+                    { value: 'ALL', label: 'All', count: queue?.summary?.total },
+                    { value: 'BREACHED', label: 'Breached', count: queue?.summary?.BREACHED, tone: 'critical' },
+                    { value: 'URGENT', label: 'Urgent', count: queue?.summary?.URGENT, tone: 'danger' },
+                    { value: 'DUE_SOON', label: 'Due Soon', count: queue?.summary?.DUE_SOON, tone: 'warning' },
+                    { value: 'ON_TRACK', label: 'On Track', count: queue?.summary?.ON_TRACK, tone: 'info' },
+                    { value: 'INFO', label: 'Info', count: queue?.summary?.INFO, tone: 'neutral' }
+                  ]}
+                />
+                <div className="flex items-center gap-2">
+                  <Select value={queueSource} onChange={(e) => setQueueSource(e.target.value)} className="!w-auto">
+                    <option value="ALL">All sources</option>
+                    <option value="INBOX_ITEM">Routed work items</option>
+                    <option value="DELEGATION">Delegations / transfers</option>
+                    <option value="JOINT_CASE">Joint cases</option>
+                    <option value="ALERT">Undelivered alerts</option>
+                    <option value="ABUSE_REPORT">Abuse complaints</option>
+                    <option value="MODERATION">Moderation holds</option>
+                  </Select>
+                  <Button variant="ghost" size="sm" onClick={refreshQueue} loading={loading} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* The queue itself */}
+            {loading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-24 rounded-xl bg-slate-800/60 animate-pulse" />
+                ))}
+              </div>
+            ) : !queue?.items?.length ? (
+              <EmptyState
+                icon={<CheckCircle2 className="w-5 h-5" />}
+                title={queueSeverity === 'ALL' && queueSource === 'ALL' ? 'Queue is clear' : 'No items match this filter'}
+                description={
+                  queueSeverity === 'ALL' && queueSource === 'ALL'
+                    ? 'Every routed report, delegation and case is within SLA.'
+                    : 'Widen the severity or source filter to see more work.'
+                }
+                action={
+                  (queueSeverity !== 'ALL' || queueSource !== 'ALL') && (
+                    <Button variant="ghost" size="sm" onClick={() => { setQueueSeverity('ALL'); setQueueSource('ALL'); }}>
+                      Clear filters
+                    </Button>
+                  )
+                }
+              />
+            ) : (
+              <div className="space-y-2">
+                {queue.items.map((item) => (
+                  <QueueItemCard
+                    key={item.id}
+                    item={item}
+                    busy={actionLoading === `delegation-${item.id.replace('delegation:', '')}` || actionLoading === `alert-${item.meta?.tagId}` || actionLoading === `case-${item.caseId}`}
+                    onAccept={handleQueueAccept}
+                    onDecline={handleQueueDecline}
+                    onResolve={handleQueueResolve}
+                    onRedispatch={handleQueueRedispatch}
+                    onReview={handleQueueReview}
+                    onEscalate={handleQueueEscalate}
+                    onAssign={openAssignModal}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Supporting detail: joint cases + workload, collapsed into a grid */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <Card className="space-y-3">
                 <SectionHeader
-                  title="Pending Delegations"
-                  icon={<GitPullRequest className="w-4 h-4 text-amber-400" />}
-                  actions={<Button variant="ghost" size="xs" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3 h-3" />}>Refresh</Button>}
+                  title="Joint Multi-Institution Cases"
+                  description="One civic issue, several agencies, a single shared record."
+                  icon={<Building2 className="w-4 h-4 text-cyan-400" />}
                 />
                 {loading ? (
                   <div className="space-y-2">
                     <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
                     <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
                   </div>
-                ) : !coordination?.pendingDelegations?.length ? (
-                  <EmptyState icon={<GitPullRequest className="w-5 h-5" />} title="No pending delegations" description="Every inter-institution transfer has been actioned." />
+                ) : !jointCases.length ? (
+                  <EmptyState
+                    icon={<Inbox className="w-5 h-5" />}
+                    title="No joint cases"
+                    description="Open a joint case when an issue needs coordinated action from more than one institution."
+                  />
                 ) : (
                   <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-                    {coordination.pendingDelegations.map((d: any) => (
-                      <div key={d.id} className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs space-y-1">
+                    {jointCases.map((c: any) => (
+                      <div key={c.id} className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs space-y-1.5">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-bold text-white truncate">{d.postTitle || 'Linked report'}</span>
-                          <Badge tone="warning" uppercase>{d.delegationType}</Badge>
+                          <span className="font-bold text-white truncate">{c.title}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <StatusBadge meta={getPriorityMeta(c.priority)} />
+                            <Badge tone={c.status === 'RESOLVED' || c.status === 'CLOSED' ? 'success' : c.status === 'ACTIVE' ? 'progress' : 'warning'} uppercase size="sm">
+                              {c.status}
+                            </Badge>
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                          <span>{d.fromInstitutionName || 'External'}</span>
-                          <ArrowRight className="w-3 h-3" />
-                          <span className="text-slate-200">{d.toInstitutionName}</span>
+                        <div className="text-[11px] text-slate-400">
+                          Lead: <span className="text-slate-200">{c.leadInstitutionName || c.leadInstitutionId}</span>
+                          {c.region ? ` • ${c.district || ''} ${c.region}` : ''}
                         </div>
-                        <p className="text-[11px] text-slate-500 line-clamp-2">{d.reason}</p>
-                        <div className="flex items-center gap-2 pt-1">
-                          <Button
-                            size="xs"
-                            variant="success"
-                            loading={actionLoading === `delegation-${d.id}`}
-                            onClick={() => handleDelegationAction(d, 'ACCEPTED')}
-                            icon={<Check className="w-3 h-3" />}
-                          >
-                            Accept
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="danger"
-                            loading={actionLoading === `delegation-${d.id}`}
-                            onClick={() => handleDelegationAction(d, 'DECLINED')}
-                            icon={<X className="w-3 h-3" />}
-                          >
-                            Decline
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            loading={actionLoading === `delegation-${d.id}`}
-                            onClick={() => handleDelegationAction(d, 'CANCELLED')}
-                          >
-                            Cancel
-                          </Button>
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <span className="text-[10px] text-slate-500">
+                            {c.completedCount ?? 0}/{c.participantCount ?? 0} participants complete
+                          </span>
+                          {c.status !== 'RESOLVED' && c.status !== 'CLOSED' && (
+                            <Button
+                              size="xs"
+                              variant="success"
+                              loading={actionLoading === `case-${c.id}`}
+                              onClick={() => handleResolveJointCase(c)}
+                              icon={<CheckCircle2 className="w-3 h-3" />}
+                            >
+                              Record Resolution
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1009,62 +1564,30 @@ export const AdminDashboardView: React.FC = () => {
               </Card>
 
               <Card className="space-y-3">
-                <SectionHeader title="SLA Overdue Inbox Items" icon={<AlertTriangle className="w-4 h-4 text-red-400" />} />
+                <SectionHeader title="Open Workload by Institution" icon={<Building2 className="w-4 h-4 text-purple-400" />} />
                 {loading ? (
-                  <div className="space-y-2">
-                    <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
-                    <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-12 rounded-xl bg-slate-800/60 animate-pulse" />
+                    ))}
                   </div>
-                ) : !coordination?.overdueItems?.length ? (
-                  <EmptyState icon={<CheckCircle2 className="w-5 h-5" />} title="All desks within SLA" description="No overdue work items across the platform." />
+                ) : !coordination?.byInstitution?.length ? (
+                  <EmptyState icon={<Inbox className="w-5 h-5" />} title="No open institutional work" description="All routed reports have been resolved." />
                 ) : (
-                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-                    {coordination.overdueItems.map((item: any) => (
-                      <div key={item.id} className="p-3 bg-slate-900 border border-red-900/40 rounded-xl text-xs space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-bold text-white truncate">{item.title}</span>
-                          <StatusBadge meta={getPriorityMeta(item.itemPriority)} />
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          {item.institutionName}
-                          {item.deskName ? ` • ${item.deskName}` : ''}
-                        </div>
-                        {item.dueAt && (
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-3 h-3 text-red-400" />
-                            <span className="text-[10px] text-red-400 font-semibold">Due {new Date(item.dueAt).toLocaleString()}</span>
-                          </div>
-                        )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {coordination.byInstitution.map((row: any) => (
+                      <div key={row.institutionId} className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between gap-2">
+                        <span className="text-xs text-slate-200 truncate">{row.institutionName || row.institutionId}</span>
+                        <Badge tone={row.openReports > 5 ? 'warning' : 'progress'} size="sm">{row.openReports}</Badge>
                       </div>
                     ))}
                   </div>
                 )}
               </Card>
             </div>
-
-            <Card className="space-y-3">
-              <SectionHeader title="Open Workload by Institution" icon={<Building2 className="w-4 h-4 text-purple-400" />} />
-              {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="h-12 rounded-xl bg-slate-800/60 animate-pulse" />
-                  ))}
-                </div>
-              ) : !coordination?.byInstitution?.length ? (
-                <EmptyState icon={<Inbox className="w-5 h-5" />} title="No open institutional work" description="All routed reports have been resolved." />
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {coordination.byInstitution.map((row: any) => (
-                    <div key={row.institutionId} className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-200 truncate">{row.institutionName || row.institutionId}</span>
-                      <Badge tone="progress" size="sm">{row.openReports}</Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
           </div>
         )}
+
 
         {activeTab === 'privacy' && (
           <div className="space-y-4">
@@ -1181,6 +1704,104 @@ export const AdminDashboardView: React.FC = () => {
             </div>
 
             <div className="space-y-3">
+              <SectionHeader
+                title="Failed Alert Deliveries"
+                description="Alerts to state agencies that failed or had no configured channel. Re-dispatch re-runs the delivery."
+                icon={<ShieldAlert className="w-4 h-4 text-red-400" />}
+                actions={<Button variant="ghost" size="xs" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3 h-3" />}>Refresh</Button>}
+              />
+              {loading ? (
+                <div className="space-y-2">
+                  <div className="h-14 rounded-xl bg-slate-800/60 animate-pulse" />
+                  <div className="h-14 rounded-xl bg-slate-800/60 animate-pulse" />
+                </div>
+              ) : !failedAlerts?.items?.length ? (
+                <EmptyState icon={<CheckCircle2 className="w-5 h-5" />} title="No failed deliveries" description="Every routed alert reached a configured institution channel." />
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <StatCard label="Failed" value={failedAlerts.summary.failed} hint="Delivery attempt errored" tone="critical" icon={<AlertTriangle className="w-4 h-4" />} />
+                    <StatCard label="Not Configured" value={failedAlerts.summary.notConfigured} hint="No channel set for agency" tone="warning" icon={<ShieldAlert className="w-4 h-4" />} />
+                    <StatCard label="Total Undelivered" value={failedAlerts.summary.total} hint="Awaiting operator action" icon={<Inbox className="w-4 h-4" />} />
+                  </div>
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                    {failedAlerts.items.map((a: any) => (
+                      <div key={a.tag_id} className="p-3 bg-slate-900 border border-red-900/40 rounded-xl text-xs space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-white truncate">{a.post_title || a.post_id}</span>
+                          <Badge tone={a.alert_status === 'FAILED' ? 'critical' : 'warning'} uppercase size="sm">{a.alert_status}</Badge>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {a.institution_name}{a.recipient ? ` • ${a.recipient}` : ''}{a.channel_type ? ` (${a.channel_type})` : ''}
+                        </div>
+                        {a.error_message && <p className="text-[11px] text-red-400 line-clamp-2">{a.error_message}</p>}
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <span className="text-[10px] text-slate-500">
+                            {a.retry_count ? `${a.retry_count} retr${a.retry_count === 1 ? 'y' : 'ies'} · ` : ''}
+                            {a.last_attempt_at ? `last attempt ${new Date(a.last_attempt_at).toLocaleString()}` : 'no delivery attempt recorded'}
+                          </span>
+                          <Button
+                            size="xs"
+                            variant="primary"
+                            loading={actionLoading === `alert-${a.tag_id}`}
+                            onClick={() => handleRedispatchAlert(a.tag_id)}
+                            icon={<RotateCcw className="w-3 h-3" />}
+                          >
+                            Re-dispatch
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <SectionHeader
+                title="Administrative Audit Trail"
+                description="Immutable record of privileged and workflow actions: role changes, moderation, delegations, joint cases and alert re-dispatch."
+                icon={<ShieldCheck className="w-4 h-4 text-amber-400" />}
+                actions={
+                  <div className="flex items-center gap-2">
+                    <Select value={auditEventFilter} onChange={(e) => setAuditEventFilter(e.target.value)} className="text-xs">
+                      <option value="ALL">All events</option>
+                      {auditTrailTypes.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </Select>
+                    <Button variant="ghost" size="xs" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3 h-3" />}>Refresh</Button>
+                  </div>
+                }
+              />
+              <Card padded={false} className="p-3 space-y-2 max-h-72 overflow-y-auto">
+                {loading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-8 rounded-lg bg-slate-800/60 animate-pulse" />
+                    ))}
+                  </div>
+                ) : auditTrail.length === 0 ? (
+                  <EmptyState icon={<ShieldCheck className="w-5 h-5" />} title="No administrative actions recorded" description="Privileged and workflow actions will appear here." />
+                ) : (
+                  auditTrail.map((log) => (
+                    <div key={log.id} className="p-2.5 bg-slate-900/80 rounded-lg border border-slate-800 space-y-1 text-[11px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-amber-400 font-bold truncate">[{log.event_type}]</span>
+                        <span className="text-[10px] text-slate-500 shrink-0">{new Date(log.created_at).toLocaleString()}</span>
+                      </div>
+                      <div className="text-slate-400 truncate">
+                        {log.actor_type} · {log.actor_name || log.user_id || 'System'}
+                        {log.target_type ? ` → ${log.target_type} ${log.target_id || ''}` : ''}
+                      </div>
+                      {log.reason && <div className="text-slate-300 line-clamp-2">{log.reason}</div>}
+                    </div>
+                  ))
+                )}
+              </Card>
+            </div>
+
+            <div className="space-y-3">
               <SectionHeader title="Immutable Event Audit Timeline" icon={<Clock className="w-4 h-4 text-emerald-400" />} />
               <Card padded={false} className="p-3 space-y-2 max-h-60 overflow-y-auto">
                 {loading ? (
@@ -1207,6 +1828,220 @@ export const AdminDashboardView: React.FC = () => {
           </div>
         )}
       </ConsoleLayout>
+
+      <Modal
+        open={!!assignTarget}
+        onClose={closeAssignModal}
+        title="Assign an accountable official"
+        description="Give this routed report a named owner without leaving the triage feed."
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeAssignModal} disabled={assignLoading}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={assignLoading} onClick={submitAssign} icon={<UserCheck className="w-3.5 h-3.5" />}>
+              {assignForm.officerUserId ? 'Assign official' : 'Set owning desk'}
+            </Button>
+          </>
+        }
+      >
+        {assignError && <InlineAlert tone="danger" title="Cannot assign">{assignError}</InlineAlert>}
+
+        {assignTarget && (
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
+            <div className="font-bold text-white">{assignTarget.title}</div>
+            <div className="text-slate-400">
+              {assignTarget.institutionName}
+              {assignTarget.deskName ? ` · ${assignTarget.deskName}` : ''}
+            </div>
+          </div>
+        )}
+
+        {hierarchyLoading ? (
+          <div className="space-y-2">
+            <div className="h-10 rounded-lg bg-slate-800/60 animate-pulse" />
+            <div className="h-10 rounded-lg bg-slate-800/60 animate-pulse" />
+          </div>
+        ) : (
+          <>
+            <Field label="Official" hint="The officer is notified the moment you assign the item.">
+              <Select
+                value={assignForm.officerUserId}
+                onChange={(e) => setAssignForm((f) => ({ ...f, officerUserId: e.target.value }))}
+              >
+                <option value="">Unassigned</option>
+                {(hierarchy?.team || [])
+                  .filter((m: any) => m.userId && m.status !== 'SUSPENDED')
+                  .map((m: any) => (
+                    <option key={m.userId} value={m.userId}>
+                      {m.name}
+                      {m.title ? ` — ${m.title}` : ''}
+                      {m.deskName ? ` (${m.deskName})` : ''}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+
+            <Field label="Owning desk" hint="Leave as-is to keep the current desk.">
+              <Select
+                value={assignForm.deskId}
+                onChange={(e) => setAssignForm((f) => ({ ...f, deskId: e.target.value }))}
+              >
+                <option value="">Keep current desk</option>
+                {(hierarchy?.desks || []).map((d: any) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.level})
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Notes" hint="Optional context recorded for the assigned official.">
+              <Textarea
+                rows={2}
+                value={assignForm.notes}
+                onChange={(e) => setAssignForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </Field>
+
+            {!hierarchyLoading && !(hierarchy?.team || []).some((m: any) => m.userId) && (
+              <InlineAlert tone="warning" title="No officials on the roster">
+                This agency has no attached officials yet. Set the owning desk, or add officers under State Agencies first.
+              </InlineAlert>
+            )}
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        open={showCoordModal}
+        onClose={() => setShowCoordModal(false)}
+        title="Escalate or transfer work"
+        description="Oversight action: push a report or stuck work item to another institution's desk."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowCoordModal(false)} disabled={actionLoading === 'coord-create'}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={actionLoading === 'coord-create'} onClick={handleCreateCoordinationAction}>
+              Create Action
+            </Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Target Institution" required>
+            <Select value={coordForm.toInstitutionId} onChange={(e) => setCoordForm({ ...coordForm, toInstitutionId: e.target.value })}>
+              <option value="">Select institution…</option>
+              {institutions.map((inst: any) => (
+                <option key={inst.id} value={inst.id}>{inst.shortName || inst.officialName}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Action Type">
+            <Select value={coordForm.delegationType} onChange={(e) => setCoordForm({ ...coordForm, delegationType: e.target.value })}>
+              <option value="ESCALATION">Escalation</option>
+              <option value="TRANSFER">Transfer</option>
+              <option value="DELEGATION">Delegation</option>
+              <option value="INFORMATION">Information only</option>
+            </Select>
+          </Field>
+          <Field label="Priority">
+            <Select value={coordForm.priority} onChange={(e) => setCoordForm({ ...coordForm, priority: e.target.value })}>
+              <option value="ROUTINE">Routine</option>
+              <option value="ELEVATED">Elevated</option>
+              <option value="URGENT">Urgent</option>
+              <option value="EMERGENCY">Emergency</option>
+            </Select>
+          </Field>
+          <Field label="Report ID" hint="Optional. Links the action to a specific report.">
+            <Input placeholder="post-…" value={coordForm.postId} onChange={(e) => setCoordForm({ ...coordForm, postId: e.target.value })} />
+          </Field>
+          <Field label="Reason" required className="sm:col-span-2">
+            <Input placeholder="Why is this being escalated or transferred?" value={coordForm.reason} onChange={(e) => setCoordForm({ ...coordForm, reason: e.target.value })} />
+          </Field>
+          <Field label="Instructions" className="sm:col-span-2">
+            <Input placeholder="What the receiving desk should do" value={coordForm.instructions} onChange={(e) => setCoordForm({ ...coordForm, instructions: e.target.value })} />
+          </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showCaseModal}
+        onClose={() => setShowCaseModal(false)}
+        title="Open a joint coordination case"
+        description="Bind several institutions to one civic issue with a lead and supporting participants."
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowCaseModal(false)} disabled={actionLoading === 'case-create'}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={actionLoading === 'case-create'} onClick={handleCreateJointCase}>
+              Open Case
+            </Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Case Title" required className="sm:col-span-2">
+            <Input placeholder="Flooding at Odawna — coordinated response" value={caseForm.title} onChange={(e) => setCaseForm({ ...caseForm, title: e.target.value })} />
+          </Field>
+          <Field label="Lead Institution" required>
+            <Select value={caseForm.leadInstitutionId} onChange={(e) => setCaseForm({ ...caseForm, leadInstitutionId: e.target.value, participants: caseForm.participants.filter((p) => p !== e.target.value) })}>
+              <option value="">Select lead…</option>
+              {institutions.map((inst: any) => (
+                <option key={inst.id} value={inst.id}>{inst.shortName || inst.officialName}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Priority">
+            <Select value={caseForm.priority} onChange={(e) => setCaseForm({ ...caseForm, priority: e.target.value })}>
+              <option value="ROUTINE">Routine</option>
+              <option value="ELEVATED">Elevated</option>
+              <option value="URGENT">Urgent</option>
+              <option value="EMERGENCY">Emergency</option>
+            </Select>
+          </Field>
+          <Field label="Region">
+            <Input placeholder="Greater Accra" value={caseForm.region} onChange={(e) => setCaseForm({ ...caseForm, region: e.target.value })} />
+          </Field>
+          <Field label="District">
+            <Input placeholder="Accra Metropolitan" value={caseForm.district} onChange={(e) => setCaseForm({ ...caseForm, district: e.target.value })} />
+          </Field>
+          <Field label="Report ID" hint="Optional. Links the case to a citizen report." className="sm:col-span-2">
+            <Input placeholder="post-…" value={caseForm.postId} onChange={(e) => setCaseForm({ ...caseForm, postId: e.target.value })} />
+          </Field>
+          <Field label="Summary" className="sm:col-span-2">
+            <Input placeholder="What is the shared problem and why does it need multiple agencies?" value={caseForm.summary} onChange={(e) => setCaseForm({ ...caseForm, summary: e.target.value })} />
+          </Field>
+          <Field label="Supporting Institutions" hint="Select every other agency that must act. The lead is added automatically." className="sm:col-span-2">
+            <div className="max-h-48 overflow-y-auto border border-slate-800 rounded-xl divide-y divide-slate-800">
+              {institutions.filter((inst: any) => inst.id !== caseForm.leadInstitutionId).map((inst: any) => {
+                const checked = caseForm.participants.includes(inst.id);
+                return (
+                  <label key={inst.id} className="flex items-center gap-2 px-3 py-2 text-xs text-slate-200 cursor-pointer hover:bg-slate-900">
+                    <input
+                      type="checkbox"
+                      className="accent-cyan-500"
+                      checked={checked}
+                      onChange={(e) =>
+                        setCaseForm({
+                          ...caseForm,
+                          participants: e.target.checked
+                            ? [...caseForm.participants, inst.id]
+                            : caseForm.participants.filter((p) => p !== inst.id)
+                        })
+                      }
+                    />
+                    <span className="truncate">{inst.shortName || inst.officialName}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </Field>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(pending)}

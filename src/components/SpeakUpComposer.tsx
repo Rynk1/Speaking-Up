@@ -122,6 +122,9 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const recordIntervalRef = useRef<any>(null);
+  // One key per publish attempt so a retry of the same submission cannot create
+  // duplicate reports on the server.
+  const publishIdempotencyKeyRef = useRef<string | null>(null);
 
   // Institution Search & Dropdown
   const [institutionSearch, setInstitutionSearch] = useState('');
@@ -483,6 +486,12 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
     setIsSubmitting(true);
     setSubmitError(null);
 
+    // Generate the key once per composition so retries after a network error
+    // reuse it and cannot create a duplicate report.
+    if (!publishIdempotencyKeyRef.current) {
+      publishIdempotencyKeyRef.current = `post-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    }
+
     try {
       const finalContent = content.trim() || title.trim() || 'Civic Observation Report';
       const finalTitle = title.trim() || finalContent.slice(0, 65) + (finalContent.length > 65 ? '...' : '');
@@ -520,8 +529,9 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
         }))
       };
 
-      const res = await api.createPost(payload);
+      const res = await api.createPost(payload, publishIdempotencyKeyRef.current || undefined);
       clearPostDraft();
+      publishIdempotencyKeyRef.current = null;
       setIsSubmitting(false);
 
       if (res && res.id) {

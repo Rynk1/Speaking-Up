@@ -23,13 +23,14 @@ export class AlertOrchestrator {
   /**
    * Main entry point to orchestrate alert dispatch for a post or civic issue cluster
    */
-  public static async orchestrateAlert(postId: string, institutionId: string): Promise<AlertDeliveryResult> {
+  public static async orchestrateAlert(postId: string, institutionId: string, options: { force?: boolean } = {}): Promise<AlertDeliveryResult> {
     const now = new Date().toISOString();
     const idempotencyKey = `alert-${postId}-${institutionId}`;
 
-    // 1. Idempotency Check
+    // 1. Idempotency Check — unless the caller explicitly forces a re-dispatch
+    // (operator-driven retry of a FAILED delivery).
     const existingAttempt = db.prepare('SELECT * FROM alert_attempts WHERE idempotency_key = ?').get(idempotencyKey) as any;
-    if (existingAttempt && (existingAttempt.status === 'DELIVERED' || existingAttempt.status === 'SENT')) {
+    if (!options.force && existingAttempt && (existingAttempt.status === 'DELIVERED' || existingAttempt.status === 'SENT')) {
       logger.info(`[AlertOrchestrator] Alert already delivered for ${idempotencyKey}`);
       return {
         status: existingAttempt.status as any,
@@ -37,6 +38,10 @@ export class AlertOrchestrator {
         responsePayload: existingAttempt.response_payload
       };
     }
+
+    // A forced retry records the attempt so operators can audit how many times a
+    // delivery was pushed.
+    const retryCount = options.force ? (existingAttempt?.retry_count || 0) + 1 : 0;
 
     // 2. Fetch Post & Institution Records
     const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(postId) as any;
@@ -129,10 +134,10 @@ export class AlertOrchestrator {
     // 6. Execute Dispatch with Provider
     const attemptId = `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     db.prepare(`
-      INSERT INTO alert_attempts (id, idempotency_key, post_id, institution_id, channel_id, channel_type, recipient, status, attempt_number, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'ATTEMPTING', 1, ?, ?)
-      ON CONFLICT(idempotency_key) DO UPDATE SET status = 'ATTEMPTING', updated_at = excluded.updated_at
-    `).run(attemptId, idempotencyKey, postId, inst.id, channel?.id || null, channelType, endpoint, now, now);
+      INSERT INTO alert_attempts (id, idempotency_key, post_id, institution_id, channel_id, channel_type, recipient, status, attempt_number, retry_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'ATTEMPTING', ?, ?, ?, ?)
+      ON CONFLICT(idempotency_key) DO UPDATE SET status = 'ATTEMPTING', retry_count = excluded.retry_count, updated_at = excluded.updated_at
+    `).run(attemptId, idempotencyKey, postId, inst.id, channel?.id || null, channelType, endpoint, (existingAttempt?.attempt_number || 0) + 1, retryCount, now, now);
 
     const provider = this.providers[channelType] || this.providers.EMAIL;
     const result = await provider.sendAlert(payload);

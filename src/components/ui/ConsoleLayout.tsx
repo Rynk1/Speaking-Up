@@ -184,6 +184,12 @@ export function ConsoleLayout<T extends string>({
             <span>Menu</span>
           </button>
         </div>
+        {(headerContent || headerActions) && (
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">{headerContent}</div>
+            {headerActions && <div className="flex items-center gap-2 shrink-0">{headerActions}</div>}
+          </div>
+        )}
       </div>
 
       {/* Mobile drawer */}
@@ -216,15 +222,15 @@ export function ConsoleLayout<T extends string>({
       )}
 
       {/* Main content */}
-      <main className="flex-1 p-4 sm:p-6 bg-slate-900/60 overflow-y-auto space-y-5">
-        <div className="hidden md:flex items-start justify-between gap-4 pb-4 border-b border-slate-800">
+      <main className="flex-1 bg-slate-900/60 overflow-y-auto">
+        <div className="sticky top-0 z-30 hidden md:flex items-start justify-between gap-4 px-4 sm:px-6 py-4 border-b border-slate-800 bg-slate-900/85 backdrop-blur supports-[backdrop-filter]:bg-slate-900/70">
           <div className="min-w-0">
             <div className={`flex items-center gap-1.5 text-xs font-semibold mb-1 ${colors.text}`}>
               <span>Console</span>
               <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
               <span className="text-slate-200">{activeItem?.label}</span>
             </div>
-            <h1 className="text-lg font-bold text-white">{headerTitle}</h1>
+            <h1 className="text-base sm:text-lg font-bold text-white truncate">{headerTitle}</h1>
             {headerSubtitle && <p className="text-xs text-slate-400 mt-0.5">{headerSubtitle}</p>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -232,7 +238,7 @@ export function ConsoleLayout<T extends string>({
             {headerActions}
           </div>
         </div>
-        {children}
+        <div className="p-4 sm:p-6 space-y-5">{children}</div>
       </main>
     </div>
   );

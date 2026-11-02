@@ -219,3 +219,43 @@ export function evaluateSla(dueAt?: string | null, createdAt?: string | null): S
   if (percentRemaining <= 45) return { state: 'at-risk', label, tone: 'progress', percentRemaining, msRemaining };
   return { state: 'on-track', label, tone: 'success', percentRemaining, msRemaining };
 }
+
+/* ------------------------------------------------------------------ */
+/* Coordination queue                                                  */
+/* ------------------------------------------------------------------ */
+
+export type QueueSeverity = 'BREACHED' | 'URGENT' | 'DUE_SOON' | 'ON_TRACK' | 'INFO';
+
+export const QUEUE_SEVERITY_META: Record<QueueSeverity, StatusMeta> = {
+  BREACHED: { label: 'Breached', tone: 'critical', rank: 0, description: 'Past its response deadline' },
+  URGENT: { label: 'Urgent', tone: 'danger', rank: 1, description: 'Emergency/urgent or undelivered' },
+  DUE_SOON: { label: 'Due Soon', tone: 'warning', rank: 2, description: 'Deadline approaching or elevated' },
+  ON_TRACK: { label: 'On Track', tone: 'info', rank: 3, description: 'Within its window' },
+  INFO: { label: 'Info', tone: 'neutral', rank: 4, description: 'No deadline pressure' }
+};
+
+export const getQueueSeverityMeta = (severity?: string): StatusMeta =>
+  (severity && QUEUE_SEVERITY_META[severity as QueueSeverity]) ||
+  { label: severity ? titleCase(severity) : 'Unknown', tone: 'neutral' };
+
+export const QUEUE_SOURCE_META: Record<string, { label: string; short: string }> = {
+  INBOX_ITEM: { label: 'Routed work item', short: 'Inbox' },
+  DELEGATION: { label: 'Delegation / transfer', short: 'Delegation' },
+  JOINT_CASE: { label: 'Joint multi-agency case', short: 'Joint Case' },
+  ALERT: { label: 'Undelivered alert', short: 'Alert' },
+  ABUSE_REPORT: { label: 'Abuse complaint', short: 'Complaint' },
+  MODERATION: { label: 'Moderation hold', short: 'Moderation' }
+};
+
+export const getQueueSourceMeta = (source?: string): { label: string; short: string } =>
+  (source && QUEUE_SOURCE_META[source]) || { label: source || 'Work item', short: source || 'Work' };
+
+/** Human-readable age, e.g. "3d", "5h", "12m". */
+export function formatAge(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'now';
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${Math.max(1, minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}

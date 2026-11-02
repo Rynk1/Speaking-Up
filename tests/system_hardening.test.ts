@@ -78,4 +78,78 @@ describe('System Hardening & Production Architecture Test Suite', () => {
     expect(jobRow).toBeDefined();
     expect(['QUEUED', 'COMPLETED']).toContain(jobRow.status);
   });
+
+  it('6. Job Recovery: interrupted and dead-lettered jobs are requeued on startup', () => {
+    const now = new Date().toISOString();
+    const insert = (id: string, status: string, attempts: number) => {
+      db.prepare(`
+        INSERT INTO jobs (id, type, payload_json, status, priority, attempts, max_attempts, available_at, created_at, updated_at)
+        VALUES (?, 'TEST_HARDENING_JOB', '{}', ?, 1, ?, 5, ?, ?, ?)
+      `).run(id, status, attempts, now, now, now);
+    };
+    insert('job-stuck-processing', 'PROCESSING', 1);
+    insert('job-dead-letter', 'DEAD_LETTER', 5);
+
+    const summary = jobQueue.recoverInterruptedJobs();
+    expect(summary.requeuedProcessing).toBeGreaterThanOrEqual(1);
+    expect(summary.requeuedDeadLetter).toBeGreaterThanOrEqual(1);
+
+    const processing = db.prepare('SELECT status FROM jobs WHERE id = ?').get('job-stuck-processing') as any;
+    expect(processing.status).toBe('QUEUED');
+
+    const dead = db.prepare('SELECT status, attempts FROM jobs WHERE id = ?').get('job-dead-letter') as any;
+    expect(dead.status).toBe('QUEUED');
+    expect(dead.attempts).toBe(0);
+  });
+
+  it('7. Idempotent Report Creation: a repeated publish key returns the original report', async () => {
+    const user = db.prepare('SELECT id, name, handle, role FROM users WHERE role = ? LIMIT 1').get('CITIZEN') as any;
+    expect(user).toBeDefined();
+    const jwt = (await import('jsonwebtoken')).default;
+    const { config } = await import('../server/config');
+    const token = jwt.sign(
+      { id: user.id, email: 'citizen@speakup.gh', name: user.name, handle: user.handle, role: 'CITIZEN' },
+      config.jwtSecret,
+      { expiresIn: '1h' }
+    );
+
+    const key = `idem-${Date.now()}`;
+    const payload = {
+      title: `Idempotency report ${Date.now()}`,
+      content: 'This report is submitted twice with the same idempotency key.',
+      category: 'Sanitation & Waste',
+      urgency: 'LOW',
+      location: { region: 'Greater Accra', district: 'Accra Metropolitan' }
+    };
+
+    const first = await supertest(app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', key)
+      .send(payload);
+    expect(first.status).toBe(201);
+
+    const second = await supertest(app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', key)
+      .send(payload);
+    expect(second.status).toBe(201);
+    expect(second.body.id).toBe(first.body.id);
+
+    const count = (db.prepare('SELECT COUNT(*) as c FROM posts WHERE title = ?').get(payload.title) as any).c;
+    expect(count).toBe(1);
+  });
+
+  it('8. Protected Media: rejects unauthenticated access and path traversal', async () => {
+    // No token at all
+    const noToken = await supertest(app).get('/api/media/protected/evidence.jpg');
+    expect([401, 403]).toContain(noToken.status);
+
+    // Path traversal attempt is rejected before any file access
+    const traversal = await supertest(app)
+      .get('/api/media/protected/..%2f..%2fserver%2fapp.ts')
+      .query({ token: 'whatever' });
+    expect([400, 401, 403, 404]).toContain(traversal.status);
+  });
 });

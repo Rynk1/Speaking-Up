@@ -24,7 +24,9 @@ import {
   DelegationStatus,
   InstitutionWorkload,
   AssignedReport,
-  AdminCoordinationOverview
+  AdminCoordinationOverview,
+  CoordinationQueueResponse,
+  JointCase
 } from '../types';
 
 const TOKEN_KEY = 'speakup_jwt_token';
@@ -252,10 +254,13 @@ export const api = {
     return res.json();
   },
 
-  async createPost(data: Partial<CivicPost>): Promise<CivicPost> {
+  async createPost(data: Partial<CivicPost>, idempotencyKey?: string): Promise<CivicPost> {
+    // A stable idempotency key lets a retry (double-tap, flaky network, or an
+    // explicit resubmit) return the original report instead of duplicating it.
+    const key = idempotencyKey || `post-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
     const res = await fetch('/api/posts', {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: { ...getAuthHeaders(), 'X-Idempotency-Key': key },
       body: JSON.stringify(data)
     });
     if (!res.ok) {
@@ -768,6 +773,18 @@ export const api = {
     return camelize(await res.json());
   },
 
+  async getAdminCoordinationQueue(params?: { severity?: string; source?: string; limit?: number }): Promise<CoordinationQueueResponse> {
+    const query = new URLSearchParams();
+    if (params?.severity) query.append('severity', params.severity);
+    if (params?.source) query.append('source', params.source);
+    if (params?.limit) query.append('limit', params.limit.toString());
+    const res = await fetch(`/api/admin/coordination/queue?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch coordination queue');
+    return camelize(await res.json());
+  },
+
   async runSlaSweep(): Promise<{ success: boolean; overdueItems: number; warningItems: number; escalatedDelegations: number; ladderEscalations: number; notified: number }> {
     const res = await fetch('/api/admin/coordination/run-sla-sweep', {
       method: 'POST',
@@ -785,6 +802,172 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch institution hierarchy');
+    return camelize(await res.json());
+  },
+
+  // --- Joint multi-institution coordination cases ---
+
+  async getInstitutionJointCases(institutionId: string, params?: { status?: string; limit?: number; postId?: string }): Promise<{ items: JointCase[]; totalCount: number }> {
+    const query = new URLSearchParams();
+    if (params?.status) query.append('status', params.status);
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.postId) query.append('postId', params.postId);
+    const res = await fetch(`/api/institutions/${institutionId}/joint-cases?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch joint cases');
+    return camelize(await res.json());
+  },
+
+  async getJointCase(caseId: string): Promise<JointCase> {
+    const res = await fetch(`/api/joint-cases/${encodeURIComponent(caseId)}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch joint case');
+    return camelize(await res.json());
+  },
+
+  async createJointCase(institutionId: string, payload: {
+    postId?: string;
+    situationId?: string;
+    title: string;
+    category?: string;
+    region?: string;
+    district?: string;
+    summary?: string;
+    priority?: string;
+    participants?: { institutionId: string; deskId?: string; role?: string; responsibility?: string }[];
+  }): Promise<JointCase> {
+    const res = await fetch(`/api/institutions/${institutionId}/joint-cases`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create joint case');
+    }
+    const body = await res.json();
+    return camelize(body.case || body);
+  },
+
+  async respondToJointCase(caseId: string, status: string, note?: string, institutionId?: string): Promise<any> {
+    const res = await fetch(`/api/joint-cases/${encodeURIComponent(caseId)}/respond`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status, note, institutionId })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to respond to joint case');
+    }
+    return camelize(await res.json());
+  },
+
+  async addJointCaseParticipant(caseId: string, payload: { institutionId: string; deskId?: string; role?: string; responsibility?: string }): Promise<JointCase> {
+    const res = await fetch(`/api/joint-cases/${encodeURIComponent(caseId)}/participants`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to add participant');
+    }
+    const body = await res.json();
+    return camelize(body.case || body);
+  },
+
+  async resolveJointCase(caseId: string, resolutionSummary: string, close: boolean = false): Promise<JointCase> {
+    const res = await fetch(`/api/joint-cases/${encodeURIComponent(caseId)}/resolve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ resolutionSummary, close })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to resolve joint case');
+    }
+    const body = await res.json();
+    return camelize(body.case || body);
+  },
+
+  // --- Admin coordination oversight actions ---
+
+  async getAdminJointCases(params?: { status?: string; limit?: number; postId?: string }): Promise<{ items: JointCase[]; totalCount: number }> {
+    const query = new URLSearchParams();
+    if (params?.status) query.append('status', params.status);
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.postId) query.append('postId', params.postId);
+    const res = await fetch(`/api/admin/coordination/cases?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch joint cases');
+    return camelize(await res.json());
+  },
+
+  async createAdminJointCase(payload: {
+    postId?: string;
+    situationId?: string;
+    title: string;
+    category?: string;
+    region?: string;
+    district?: string;
+    summary?: string;
+    priority?: string;
+    leadInstitutionId: string;
+    participants?: { institutionId: string; deskId?: string; role?: string; responsibility?: string }[];
+  }): Promise<JointCase> {
+    const res = await fetch('/api/admin/coordination/cases', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create joint case');
+    }
+    const body = await res.json();
+    return camelize(body.case || body);
+  },
+
+  async resolveAdminJointCase(caseId: string, resolutionSummary: string, close: boolean = false): Promise<JointCase> {
+    const res = await fetch(`/api/admin/coordination/cases/${encodeURIComponent(caseId)}/resolve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ resolutionSummary, close })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to resolve joint case');
+    }
+    const body = await res.json();
+    return camelize(body.case || body);
+  },
+
+  async createAdminCoordinationAction(payload: {
+    postId?: string;
+    situationId?: string;
+    fromInstitutionId?: string;
+    fromDeskId?: string;
+    toInstitutionId: string;
+    toDeskId?: string;
+    delegationType?: string;
+    actionRequired?: string;
+    priority?: string;
+    reason: string;
+    instructions?: string;
+    dueAt?: string;
+  }): Promise<any> {
+    const res = await fetch('/api/admin/coordination/delegations', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create coordination action');
+    }
     return camelize(await res.json());
   },
 
@@ -1181,11 +1364,42 @@ export const api = {
     return res.json();
   },
 
+  async getAdminFailedAlerts(): Promise<{ items: any[]; summary: { failed: number; notConfigured: number; total: number } }> {
+    const res = await fetch('/api/admin/alerts/failed', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch failed alert deliveries');
+    return res.json();
+  },
+
+  async redispatchAdminAlert(tagId: string): Promise<any> {
+    const res = await fetch(`/api/admin/alerts/${encodeURIComponent(tagId)}/redispatch`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to re-dispatch alert');
+    }
+    return res.json();
+  },
+
   async getAdminAuditLogs(): Promise<any[]> {
     const res = await fetch('/api/admin/audit-logs', {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch audit logs');
+    return res.json();
+  },
+
+  async getAdminAuditTrail(params?: { limit?: number; eventType?: string }): Promise<{ items: any[]; eventTypes: string[] }> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.eventType) query.append('eventType', params.eventType);
+    const res = await fetch(`/api/admin/audit-trail?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch administrative audit trail');
     return res.json();
   }
 };

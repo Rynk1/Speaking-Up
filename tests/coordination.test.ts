@@ -553,4 +553,337 @@ describe('Inter-Institutional Coordination & Delegation Workflow', () => {
     const post = db.prepare('SELECT accountability_status FROM posts WHERE id = ?').get(postId) as any;
     expect(post.accountability_status).toBe('ACTION_IN_PROGRESS');
   });
+
+  const adminToken = jwt.sign(
+    { id: 'admin-1', email: 'admin@gov.gh', name: 'Admin', role: 'ADMIN' },
+    config.jwtSecret,
+    { expiresIn: '1h' }
+  );
+
+  it('24. Opening a joint case binds several institutions with a lead and notified participants', async () => {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT OR REPLACE INTO users (id, email, password_hash, name, handle, role, is_verified, followers_count, created_at, updated_at)
+      VALUES ('admin-1', 'admin@gov.gh', 'hash', 'Platform Admin', 'platform_admin', 'ADMIN', 1, 0, ?, ?)
+    `).run(now, now);
+
+    const res = await request(app)
+      .post('/api/admin/coordination/cases')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: 'Odawna flooding — coordinated multi-agency response',
+        summary: 'Drainage, policing and disaster response all have a role in clearing the corridor.',
+        priority: 'URGENT',
+        region: 'Greater Accra',
+        district: 'Accra Metropolitan',
+        leadInstitutionId: 'ghana-police-service',
+        participants: [{ institutionId: 'nadmo-ghana', role: 'SUPPORTING', responsibility: 'Deploy disaster response desk' }]
+      });
+
+    expect(res.status).toBe(201);
+    const caseRow = res.body.case;
+    expect(caseRow.id).toBeTruthy();
+    expect(caseRow.status).toBe('OPEN');
+    expect(caseRow.lead_institution_id).toBe('ghana-police-service');
+
+    // Both institutions are participants; the lead is marked LEAD
+    const participants = db.prepare('SELECT * FROM coordination_case_participants WHERE case_id = ?').all(caseRow.id) as any[];
+    expect(participants.length).toBe(2);
+    const lead = participants.find((p) => p.institution_id === 'ghana-police-service');
+    expect(lead.role).toBe('LEAD');
+    const supporting = participants.find((p) => p.institution_id === 'nadmo-ghana');
+    expect(supporting.role).toBe('SUPPORTING');
+    expect(supporting.status).toBe('INVITED');
+
+    // The lead is notified, and the event trail records creation
+    const events = db.prepare('SELECT * FROM coordination_case_events WHERE case_id = ?').all(caseRow.id) as any[];
+    expect(events.some((e) => e.event_type === 'CASE_CREATED')).toBe(true);
+  });
+
+  it('25. A participant accepts then completes its part; the case becomes ACTIVE', async () => {
+    const caseRow = db.prepare("SELECT * FROM coordination_cases WHERE title LIKE 'Odawna%' LIMIT 1").get() as any;
+    expect(caseRow).toBeTruthy();
+
+    const accept = await request(app)
+      .post(`/api/joint-cases/${caseRow.id}/respond`)
+      .set('Authorization', `Bearer ${nadmoToken}`)
+      .send({ status: 'ACCEPTED', note: 'NADMO taking the disaster response lead.' });
+    expect(accept.status).toBe(200);
+    expect(accept.body.status).toBe('ACCEPTED');
+
+    const afterAccept = db.prepare('SELECT status FROM coordination_cases WHERE id = ?').get(caseRow.id) as any;
+    expect(afterAccept.status).toBe('ACTIVE');
+
+    const complete = await request(app)
+      .post(`/api/joint-cases/${caseRow.id}/respond`)
+      .set('Authorization', `Bearer ${nadmoToken}`)
+      .send({ status: 'COMPLETED', note: 'Corridor cleared.' });
+    expect(complete.status).toBe(200);
+
+    const participant = db.prepare('SELECT * FROM coordination_case_participants WHERE case_id = ? AND institution_id = ?')
+      .get(caseRow.id, 'nadmo-ghana') as any;
+    expect(participant.status).toBe('COMPLETED');
+    expect(participant.completed_at).toBeTruthy();
+  });
+
+  it('26. A non-participant institution cannot read a joint case', async () => {
+    const caseRow = db.prepare("SELECT * FROM coordination_cases WHERE title LIKE 'Odawna%' LIMIT 1").get() as any;
+    const outsiderToken = jwt.sign(
+      { id: 'user-inst-outsider', email: 'outsider@agency.gov.gh', name: 'Outsider', role: 'INSTITUTION_REP', institutionId: 'ghana-water-company' },
+      config.jwtSecret,
+      { expiresIn: '1h' }
+    );
+
+    const denied = await request(app)
+      .get(`/api/joint-cases/${caseRow.id}`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect(denied.status).toBe(403);
+
+    const allowed = await request(app)
+      .get(`/api/joint-cases/${caseRow.id}`)
+      .set('Authorization', `Bearer ${nadmoToken}`);
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.participants.length).toBe(2);
+  });
+
+  it('27. Resolving a joint case notifies participants and the reporter, and marks the report resolved', async () => {
+    // Attach a fresh report to the case so the citizen notification has a target
+    const created = await request(app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${citizenToken}`)
+      .send({
+        title: `Joint case linked report ${Date.now()}`,
+        content: 'Standing water continues to threaten the Odawna corridor.',
+        category: 'Flooding & Drainage',
+        urgency: 'HIGH',
+        severity: 'SEVERE',
+        location: { region: 'Greater Accra', district: 'Accra Metropolitan' },
+        institutionTags: [{ institutionId: 'ghana-police-service' }]
+      });
+    const postId = created.body.id || created.body.post?.id;
+
+    const opened = await request(app)
+      .post('/api/admin/coordination/cases')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: `Joint resolve test ${Date.now()}`,
+        postId,
+        priority: 'URGENT',
+        region: 'Greater Accra',
+        district: 'Accra Metropolitan',
+        leadInstitutionId: 'ghana-police-service',
+        participants: [{ institutionId: 'nadmo-ghana' }]
+      });
+    const caseId = opened.body.case.id;
+
+    const resolved = await request(app)
+      .post(`/api/admin/coordination/cases/${caseId}/resolve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ resolutionSummary: 'Corridor drained and reopened by joint task force.' });
+
+    expect(resolved.status).toBe(200);
+    expect(resolved.body.case.status).toBe('RESOLVED');
+    expect(resolved.body.case.resolution_summary).toContain('reopened');
+
+    const post = db.prepare('SELECT workflow_stage, accountability_status FROM posts WHERE id = ?').get(postId) as any;
+    expect(post.workflow_stage).toBe('RESOLVED');
+    expect(post.accountability_status).toBe('RESOLVED');
+
+    // A citizen-facing notification was queued for the reporter
+    const citizenNotice = db.prepare(`
+      SELECT COUNT(*) as c FROM notifications WHERE post_id = ? AND type LIKE 'REPORT_%'
+    `).get(postId) as any;
+    expect(citizenNotice.c).toBeGreaterThanOrEqual(1);
+  });
+
+  it('28. Failed alert deliveries can be listed and re-dispatched by an administrator', async () => {
+    // Force a tag into a FAILED state with a matching attempt row
+    const tag = db.prepare('SELECT * FROM post_institution_tags LIMIT 1').get() as any;
+    expect(tag).toBeTruthy();
+    const key = `alert-${tag.post_id}-${tag.institution_id}`;
+    db.prepare("UPDATE post_institution_tags SET alert_status = 'FAILED' WHERE id = ?").run(tag.id);
+    db.prepare(`
+      INSERT INTO alert_attempts (id, idempotency_key, post_id, institution_id, channel_type, recipient, status, attempt_number, retry_count, error_message, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'EMAIL', 'desk@gov.gh', 'FAILED', 1, 0, 'SMTP timeout', ?, ?)
+      ON CONFLICT(idempotency_key) DO UPDATE SET status = 'FAILED', error_message = 'SMTP timeout', updated_at = excluded.updated_at
+    `).run(`att-test-${tag.id}`, key, tag.post_id, tag.institution_id, new Date().toISOString(), new Date().toISOString());
+
+    const listDenied = await request(app)
+      .get('/api/admin/alerts/failed')
+      .set('Authorization', `Bearer ${policeToken}`);
+    expect(listDenied.status).toBe(403);
+
+    const list = await request(app)
+      .get('/api/admin/alerts/failed')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(list.status).toBe(200);
+    expect(list.body.items.some((i: any) => i.tag_id === tag.id)).toBe(true);
+
+    const redispatchDenied = await request(app)
+      .post(`/api/admin/alerts/${tag.id}/redispatch`)
+      .set('Authorization', `Bearer ${policeToken}`);
+    expect(redispatchDenied.status).toBe(403);
+
+    const redispatch = await request(app)
+      .post(`/api/admin/alerts/${tag.id}/redispatch`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(redispatch.status).toBe(200);
+    expect(redispatch.body.previousStatus).toBe('FAILED');
+    expect(redispatch.body.status).toBeTruthy();
+
+    // The attempt records that a retry was pushed
+    const attempt = db.prepare('SELECT retry_count FROM alert_attempts WHERE idempotency_key = ?').get(key) as any;
+    expect(attempt.retry_count).toBeGreaterThanOrEqual(1);
+
+    // The action is captured in the immutable audit trail
+    const audit = db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE event_type = 'ALERT_REDISPATCHED' AND target_id = ?")
+      .get(tag.id) as any;
+    expect(audit.c).toBeGreaterThanOrEqual(1);
+
+    // The audit trail endpoint surfaces the privileged action to oversight
+    const trail = await request(app)
+      .get('/api/admin/audit-trail?eventType=ALERT_REDISPATCHED')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(trail.status).toBe(200);
+    expect(trail.body.items.some((e: any) => e.target_id === tag.id)).toBe(true);
+
+    const trailDenied = await request(app)
+      .get('/api/admin/audit-trail')
+      .set('Authorization', `Bearer ${citizenToken}`);
+    expect(trailDenied.status).toBe(403);
+  });
+
+  it('29. The unified operations queue merges live work from every source', async () => {
+    const res = await request(app)
+      .get('/api/admin/coordination/queue?limit=200')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+
+    // Every item is derived from a real record: its id is namespaced by source.
+    const prefixFor: Record<string, string> = {
+      INBOX_ITEM: 'inbox',
+      DELEGATION: 'delegation',
+      JOINT_CASE: 'case',
+      ALERT: 'alert',
+      ABUSE_REPORT: 'abuse',
+      MODERATION: 'moderation'
+    };
+    for (const item of res.body.items) {
+      expect(prefixFor[item.source]).toBeTruthy();
+      expect(item.id.startsWith(`${prefixFor[item.source]}:`)).toBe(true);
+      expect(typeof item.severity).toBe('string');
+      expect(['BREACHED', 'URGENT', 'DUE_SOON', 'ON_TRACK', 'INFO']).toContain(item.severity);
+    }
+
+    // The queue must be ordered by severity: no BREACHED item appears after a lower rank.
+    const rank: Record<string, number> = { BREACHED: 0, URGENT: 1, DUE_SOON: 2, ON_TRACK: 3, INFO: 4 };
+    const severities = res.body.items.map((i: any) => rank[i.severity]);
+    const sorted = [...severities].sort((a, b) => a - b);
+    expect(severities).toEqual(sorted);
+
+    // Summary counts must reconcile with the returned items.
+    const summary = res.body.summary;
+    expect(summary.total).toBeGreaterThanOrEqual(res.body.items.length);
+    const summed = ['BREACHED', 'URGENT', 'DUE_SOON', 'ON_TRACK', 'INFO'].reduce(
+      (acc, k) => acc + (summary[k] || 0),
+      0
+    );
+    expect(summed).toBe(summary.total);
+  });
+
+  it('30. The queue surfaces the routed inbox item created for the seeded report', async () => {
+    const res = await request(app)
+      .get('/api/admin/coordination/queue?source=INBOX_ITEM&limit=200')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items.every((i: any) => i.source === 'INBOX_ITEM')).toBe(true);
+
+    const item = res.body.items.find((i: any) => i.postId === reportId);
+    expect(item).toBeTruthy();
+    expect(item.institutionId).toBe('ghana-police-service');
+    expect(item.dueAt).toBeTruthy();
+  });
+
+  it('31. Queue severity filtering returns only the requested band', async () => {
+    const res = await request(app)
+      .get('/api/admin/coordination/queue?severity=URGENT&limit=200')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items.every((i: any) => i.severity === 'URGENT')).toBe(true);
+  });
+
+  it('32. The operations queue is denied to citizens and granted to moderators', async () => {
+    const denied = await request(app)
+      .get('/api/admin/coordination/queue')
+      .set('Authorization', `Bearer ${citizenToken}`);
+    expect(denied.status).toBe(403);
+
+    const moderatorToken = jwt.sign(
+      { id: 'mod-1', email: 'mod@gov.gh', name: 'Moderator', role: 'MODERATOR' },
+      config.jwtSecret,
+      { expiresIn: '1h' }
+    );
+    const allowed = await request(app)
+      .get('/api/admin/coordination/queue')
+      .set('Authorization', `Bearer ${moderatorToken}`);
+    expect(allowed.status).toBe(200);
+  });
+
+  it('33. Oversight can assign an accountable official straight from the queue', async () => {
+    const item = db.prepare(
+      'SELECT * FROM institutional_inbox_items WHERE post_id = ? AND mirror_of_item_id IS NULL'
+    ).get(reportId) as any;
+    expect(item).toBeTruthy();
+
+    // Clear any prior assignment so the assertion is unambiguous.
+    db.prepare('UPDATE institutional_inbox_items SET assigned_officer_user_id = NULL, assigned_at = NULL WHERE id = ?').run(item.id);
+
+    const res = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${item.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ officerUserId: 'user-inst-police', notes: 'Oversight triage: assign an owner.' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.assignment.officerUserId).toBe('user-inst-police');
+
+    const after = db.prepare('SELECT * FROM institutional_inbox_items WHERE id = ?').get(item.id) as any;
+    expect(after.assigned_officer_user_id).toBe('user-inst-police');
+    expect(after.action_state).not.toBe('NEW');
+
+    // The queue must now surface the new owner against the same routed item.
+    const queueRes = await request(app)
+      .get('/api/admin/coordination/queue?source=INBOX_ITEM&limit=200')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(queueRes.status).toBe(200);
+    const queued = queueRes.body.items.find((i: any) => i.id === `inbox:${item.id}`);
+    expect(queued).toBeTruthy();
+    expect(queued.assignedOfficerId).toBe('user-inst-police');
+    expect(queued.assignedOfficerName).toBeTruthy();
+
+    // An official from another institution still cannot be attached.
+    const foreign = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${item.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ officerUserId: 'user-inst-nadmo' });
+    expect(foreign.status).toBe(400);
+  });
+
+  it('34. Assigning a work item requires an owner and rejects an unknown desk', async () => {
+    const item = db.prepare(
+      'SELECT * FROM institutional_inbox_items WHERE post_id = ? AND mirror_of_item_id IS NULL'
+    ).get(reportId) as any;
+
+    const noOwner = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${item.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(noOwner.status).toBe(400);
+
+    const badDesk = await request(app)
+      .post(`/api/institutions/ghana-police-service/inbox/${item.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ deskId: 'desk-that-does-not-exist' });
+    expect(badDesk.status).toBe(400);
+  });
 });

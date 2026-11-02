@@ -133,9 +133,14 @@ never hard-code a level CASE elsewhere.
   **idempotent** — existing desks are reported as `skipped`, so a national admin
   can re-run it after adding a region without creating duplicates. The picker is
   built from the shared Ghana MMDA registry (`shared/ghanaMmda.ts`, exposed at
-  `GET /api/reference/mmda`); that registry is a seed-quality subset of the 261
-  assemblies (capitals + most-populated districts), and unlisted jurisdictions can
-  still be added with the single-desk `POST /desks` endpoint.
+  `GET /api/reference/mmda`), which holds the **complete 261-assembly register**
+  across all 16 regions, including all 13 metropolitan assemblies. The
+  registry is data-only: each region maps to `{ code, name, tier }[]` and codes
+  are the app's unique `<REGION>-<ABBR>` convention. `tier` is a display hint
+  transcribed from the source register, not a legal status. Tests assert the
+  totals and uniqueness (`tests/local_governance.test.ts`), so keep them in step
+  when editing. Agencies can still add a jurisdiction that is missing from the
+  register with the single-desk `POST /desks` endpoint.
 
 Schema: `institution_desks.mmda_code` (GSS-aligned code), `coverage_mode`,
 `mobile_ready`; `institutions.desk_fanout_enabled`; index

@@ -6,6 +6,7 @@ import { db, initDatabase } from '../server/database/db';
 import { seedDatabaseIfEmpty, seedCoordinationHierarchy } from '../server/seedDatabase';
 import { CoordinationService } from '../server/modules/coordination/CoordinationService';
 import { InstitutionalInboxService } from '../server/modules/institutional-inbox/InstitutionalInboxService';
+import { MMDA_REGIONS, GHANA_MMDA_BY_REGION } from '../shared/ghanaMmda';
 import { config } from '../server/config';
 
 const app = createApp();
@@ -285,5 +286,35 @@ describe('Local Governance: national → regional → MMDA desk elevation', () =
       .set('Authorization', `Bearer ${ghsToken}`)
       .send({ regions: [] });
     expect(empty.status).toBe(400);
+  });
+
+  it('13. The MMDA registry is the complete 261-assembly national register', () => {
+    expect(MMDA_REGIONS).toHaveLength(16);
+
+    const all = MMDA_REGIONS.flatMap((r) => GHANA_MMDA_BY_REGION[r]);
+    expect(all).toHaveLength(261);
+
+    // Codes are unique and non-empty across the whole register.
+    const codes = all.map((a) => a.code);
+    expect(new Set(codes).size).toBe(261);
+
+    // 13 metropolitan assemblies: the six original metros plus the 2024 upgrades.
+    const metros = all.filter((a) => a.tier === 'METROPOLITAN').map((a) => a.name);
+    expect(metros).toHaveLength(13);
+    for (const expected of [
+      'Accra Metropolitan', 'Tema Metropolitan', 'Kumasi Metropolitan',
+      'Tamale Metropolitan', 'Cape Coast Metropolitan', 'Sekondi Takoradi Metropolitan',
+      'Sunyani Metropolitan', 'Techiman Metropolitan', 'Gomoa East Metropolitan',
+      'Kpone-Katamanso Metropolitan', 'New Juaben South Metropolitan',
+      'Wa Metropolitan', 'Ho Metropolitan'
+    ]) {
+      expect(metros).toContain(expected);
+    }
+
+    // Every entry carries a usable name and a valid tier.
+    for (const a of all) {
+      expect(a.name.length).toBeGreaterThan(3);
+      expect(['METROPOLITAN', 'MUNICIPAL', 'DISTRICT']).toContain(a.tier);
+    }
   });
 });

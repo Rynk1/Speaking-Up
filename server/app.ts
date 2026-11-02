@@ -49,9 +49,15 @@ import { PrivacyProjectionService } from './modules/privacy/PrivacyProjectionSer
 import { CoordinationService } from './modules/coordination/CoordinationService';
 import { NotificationService } from './modules/notifications/NotificationService';
 
+// Anonymous reports are attributed to a shared sentinel author. They have no
+// account to notify, so citizen-facing notifications must skip them.
+const ANONYMOUS_AUTHOR_ID = 'user-anonymous-reporter';
+function isAnonymousAuthor(authorId: string | null | undefined): boolean {
+  return !authorId || authorId === ANONYMOUS_AUTHOR_ID || String(authorId).startsWith('anon-actor-');
+}
+
 export function createApp() {
   const app = express();
-
   // Trust reverse proxy (Cloud Run / Nginx) to accurately resolve client IP from X-Forwarded-For
   app.set('trust proxy', 1);
 
@@ -106,7 +112,12 @@ export function createApp() {
   app.get('/health/ready', (req, res) => {
     try {
       db.prepare('SELECT 1').get();
-      res.json({ status: 'READY', database: 'HEALTHY' });
+      // Readiness reflects whether the service can serve traffic. Delivery
+      // failures to downstream agencies are surfaced as counters for operators
+      // but must not pull the instance out of rotation.
+      const failedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'FAILED'").get() as any)?.c || 0;
+      const failedAlerts = (db.prepare("SELECT COUNT(*) as c FROM post_institution_tags WHERE alert_status = 'FAILED'").get() as any)?.c || 0;
+      res.json({ status: 'READY', database: 'HEALTHY', failedJobs, failedAlerts });
     } catch (err: any) {
       res.status(500).json({ status: 'UNHEALTHY', database: err.message });
     }
@@ -489,8 +500,17 @@ export function createApp() {
 
     const prefs = db.prepare('SELECT * FROM user_preferences WHERE user_id = ?').get(req.user.id) as any;
 
+    // Reps are bound to an institution; surface it so the console can scope itself correctly.
+    const affiliation = db.prepare(`
+      SELECT institution_id FROM institution_users
+      WHERE user_id = ? AND status = 'ACTIVE'
+      ORDER BY CASE WHEN role = 'ADMIN' THEN 0 ELSE 1 END, created_at ASC
+      LIMIT 1
+    `).get(req.user.id) as any;
+
     res.json({
       ...user,
+      institutionId: affiliation?.institution_id || null,
       preferences: prefs || {
         notificationEmail: true,
         notificationSms: true,
@@ -1803,11 +1823,13 @@ export function createApp() {
           authorAvatar = req.user.avatar || null;
         }
       } else {
-        // Guest session or anonymous reporter without logged in account
-        authorId = `anon-actor-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        // Guest session or anonymous reporter without a logged in account.
+        // Use the shared anonymous author row so the FK holds while the report
+        // remains attributable for follow-up.
+        authorId = 'user-anonymous-reporter';
         authorName = visibilityMode === 'anonymous' ? 'Anonymous Citizen' : sanitizePlainText(req.body.authorName || 'Citizen Observer');
-        authorHandle = visibilityMode === 'anonymous' ? 'citizen_confidential' : sanitizePlainText(req.body.authorHandle || `citizen_${Math.floor(100 + Math.random() * 900)}`);
-        authorAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(authorHandle)}`;
+        authorHandle = sanitizePlainText(req.body.authorHandle || `citizen_${Math.floor(100 + Math.random() * 900)}`);
+        authorAvatar = visibilityMode === 'anonymous' ? null : `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(authorHandle)}`;
       }
 
       // Location resolution & NULL GPS defaults when unavailable
@@ -1885,8 +1907,32 @@ export function createApp() {
       }
 
       // Tag persistence & alert queuing
-      if (Array.isArray(institutionTags)) {
-        for (const tag of institutionTags) {
+      // A report with no explicit tags must still be routed: fall back to the
+      // deterministic routing engine so no civic report is ever left unassigned.
+      let effectiveTags: any[] = Array.isArray(institutionTags) ? [...institutionTags] : [];
+      if (effectiveTags.length === 0) {
+        try {
+          const routed = InstitutionRoutingService.resolveResponsibleInstitutions(
+            inferredCategory,
+            safeRegion,
+            safeDistrict,
+            finalTitle,
+            finalContent
+          );
+          effectiveTags = routed
+            .filter(c => c.tier === 'PRIMARY' || c.tier === 'SECONDARY')
+            .slice(0, 3)
+            .map(c => ({ institutionId: c.id, source: 'AUTO_ROUTED' }));
+          if (effectiveTags.length > 0) {
+            logger.info(`Auto-routed untagged report ${postId} to ${effectiveTags.map(t => t.institutionId).join(', ')}`);
+          }
+        } catch (routeErr: any) {
+          logger.warn(`Auto-routing fallback failed for ${postId}: ${routeErr.message}`);
+        }
+      }
+
+      if (effectiveTags.length > 0) {
+        for (const tag of effectiveTags) {
           const instId = tag.institutionId || tag.id;
           const instRow = db.prepare('SELECT * FROM institutions WHERE id = ?').get(instId) as any;
           if (instRow) {
@@ -1895,7 +1941,7 @@ export function createApp() {
                 INSERT OR REPLACE INTO post_institution_tags (id, post_id, institution_id, institution_name, short_name, acronym, alert_requested, alert_status, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, 1, 'QUEUED', ?)
               `).run(
-                `tag-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+                `tag-${postId}-${instRow.id}`,
                 postId,
                 instRow.id,
                 instRow.official_name,
@@ -1938,8 +1984,8 @@ export function createApp() {
       // and the most specific regional/MMDA desk is resolved as the receiving sub-unit.
       let ownerInstitutionId: string | null = null;
       let ownerDeskId: string | null = null;
-      if (Array.isArray(institutionTags) && institutionTags.length > 0) {
-        const primaryTag = institutionTags[0];
+      if (effectiveTags.length > 0) {
+        const primaryTag = effectiveTags[0];
         ownerInstitutionId = primaryTag.institutionId || primaryTag.id || null;
         if (ownerInstitutionId) {
           try {
@@ -1962,9 +2008,9 @@ export function createApp() {
         logger.warn(`Situation service match warning: ${sitErr.message}`);
       }
 
-      // Awareness Inbox: Populate inbox for all tagged institutions
-      if (Array.isArray(institutionTags)) {
-        for (const tag of institutionTags) {
+      // Awareness Inbox: Populate inbox for all routed institutions
+      if (effectiveTags.length > 0) {
+        for (const tag of effectiveTags) {
           const instId = tag.institutionId || tag.id;
           try {
             const desk = CoordinationService.resolveDeskForLocation(instId, { region: safeRegion, district: safeDistrict });
@@ -2003,7 +2049,8 @@ export function createApp() {
       if (ownerInstitutionId) {
         db.prepare(`
           UPDATE posts
-          SET owner_institution_id = ?, owner_desk_id = ?, workflow_stage = 'ROUTED', updated_at = ?
+          SET owner_institution_id = ?, owner_desk_id = ?, workflow_stage = 'ROUTED',
+              accountability_status = 'ROUTED', updated_at = ?
           WHERE id = ?
         `).run(ownerInstitutionId, ownerDeskId, now, postId);
 
@@ -2056,7 +2103,12 @@ export function createApp() {
         location: { region: newPost?.region || safeRegion, district: newPost?.district || safeDistrict, landmark: newPost?.landmark || safeLandmark },
         createdAt: newPost?.created_at || now,
         reportLifecycleStatus: newPost?.report_lifecycle_status || 'PUBLISHED',
-        accountabilityStatus: newPost?.accountability_status || 'NOT_ROUTED'
+        accountabilityStatus: newPost?.accountability_status || 'NOT_ROUTED',
+        // Authorities the report was actually routed to (explicit tags or auto-routing).
+        routedInstitutions: effectiveTags.map(t => ({
+          institutionId: t.institutionId || t.id,
+          source: t.source || 'EXPLICIT_TAG'
+        }))
       });
     } catch (err: any) {
       logger.error(`Post creation failure: ${err.message}`);
@@ -2112,7 +2164,7 @@ export function createApp() {
       // Close the loop back to the reporting citizen
       const ackPost = db.prepare('SELECT author_id, title FROM posts WHERE id = ?').get(postId) as any;
       const ackInst = db.prepare('SELECT official_name FROM institutions WHERE id = ?').get(instId) as any;
-      if (ackPost?.author_id && !String(ackPost.author_id).startsWith('anon-actor-')) {
+      if (ackPost?.author_id && !isAnonymousAuthor(ackPost.author_id)) {
         NotificationService.notify({
           userId: ackPost.author_id,
           type: 'INSTITUTION_ACKNOWLEDGED',
@@ -2275,7 +2327,7 @@ export function createApp() {
 
       // Notify the reporting citizen that an official response was published
       const respPost = db.prepare('SELECT author_id, title FROM posts WHERE id = ?').get(postId) as any;
-      if (respPost?.author_id && !String(respPost.author_id).startsWith('anon-actor-')) {
+      if (respPost?.author_id && !isAnonymousAuthor(respPost.author_id)) {
         NotificationService.notify({
           userId: respPost.author_id,
           type: 'OFFICIAL_RESPONSE',
@@ -2762,11 +2814,13 @@ export function createApp() {
   // INSTITUTION DIRECTORY API
   app.get('/api/institutions/resolve', (req, res) => {
     try {
-      const { category, region, district } = req.query;
+      const { category, region, district, title, content } = req.query;
       const candidates = InstitutionRoutingService.resolveResponsibleInstitutions(
         (category as string) || '',
         (region as string) || undefined,
-        (district as string) || undefined
+        (district as string) || undefined,
+        (title as string) || undefined,
+        (content as string) || undefined
       );
       res.json(candidates);
     } catch (err: any) {
@@ -2785,6 +2839,9 @@ export function createApp() {
       category: i.category,
       jurisdiction: i.jurisdiction,
       logo: i.logo,
+      website: i.official_website,
+      emailChannels: JSON.parse(i.email_channels_json || '[]'),
+      whatsappChannels: JSON.parse(i.whatsapp_channels_json || '[]'),
       alertMethod: i.alert_method,
       activeMentionsCount: i.active_mentions_count,
       unansweredMentionsCount: i.unanswered_mentions_count,
@@ -3649,15 +3706,43 @@ export function createApp() {
       const pendingAbuse = (db.prepare("SELECT COUNT(*) as c FROM abuse_reports WHERE status = 'PENDING'").get() as any)?.c || 0;
       const queuedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'QUEUED'").get() as any)?.c || 0;
       const failedJobs = (db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'FAILED'").get() as any)?.c || 0;
-      const activeInstitutions = (db.prepare('SELECT COUNT(*) as c FROM institutions').get() as any)?.c || 0;
+      const totalInstitutions = (db.prepare('SELECT COUNT(*) as c FROM institutions').get() as any)?.c || 0;
       const pendingPrivacy = (db.prepare("SELECT COUNT(*) as c FROM submissions WHERE privacy_status = 'PRIVACY_PROCESSING'").get() as any)?.c || 0;
       const openReports = (db.prepare("SELECT COUNT(*) as c FROM posts WHERE workflow_stage IS NULL OR workflow_stage NOT IN ('RESOLVED')").get() as any)?.c || 0;
       const pendingDelegations = (db.prepare("SELECT COUNT(*) as c FROM coordination_delegations WHERE status = 'PENDING'").get() as any)?.c || 0;
       const totalDesks = (db.prepare("SELECT COUNT(*) as c FROM institution_desks WHERE status = 'ACTIVE'").get() as any)?.c || 0;
+      const regionsRepresented = (db.prepare(`
+        SELECT COUNT(DISTINCT region) as c FROM posts WHERE region IS NOT NULL AND region <> ''
+      `).get() as any)?.c || 0;
       const overdueItems = (db.prepare(`
         SELECT COUNT(*) as c FROM institutional_inbox_items
         WHERE due_at IS NOT NULL AND due_at < ? AND action_state NOT IN ('RESOLVED', 'CITIZEN_FOLLOW_UP')
       `).get(new Date().toISOString()) as any)?.c || 0;
+
+      // An agency is only "reachable" if its configured alert method resolves to
+      // a real endpoint. This is what determines whether an alert can be sent.
+      const institutions = db.prepare('SELECT alert_method, official_website, email_channels_json, whatsapp_channels_json FROM institutions').all() as any[];
+      const reachableInstitutions = institutions.filter((i) => {
+        if (i.alert_method === 'DIRECT_API') return !!i.official_website;
+        if (i.alert_method === 'OFFICIAL_EMAIL') return JSON.parse(i.email_channels_json || '[]').length > 0;
+        if (i.alert_method === 'WHATSAPP_LINE') return JSON.parse(i.whatsapp_channels_json || '[]').length > 0;
+        return false;
+      }).length;
+
+      const alertStatusCounts = db.prepare(`
+        SELECT alert_status AS status, COUNT(*) AS c FROM post_institution_tags GROUP BY alert_status
+      `).all() as any[];
+      const alertsByStatus: Record<string, number> = {};
+      for (const row of alertStatusCounts) alertsByStatus[row.status] = row.c;
+
+      const databaseHealthy = (() => {
+        try { db.prepare('SELECT 1').get(); return true; } catch { return false; }
+      })();
+
+      // systemHealth reflects infrastructure readiness only. Delivery failures
+      // to downstream agencies are reported separately via alertsByStatus and
+      // must not flip overall platform health.
+      const systemHealth = databaseHealthy ? 'HEALTHY' : 'DEGRADED';
 
       res.json({
         totalUsers,
@@ -3665,14 +3750,18 @@ export function createApp() {
         pendingAbuse,
         queuedJobs,
         failedJobs,
-        activeInstitutions,
+        totalInstitutions,
+        activeInstitutions: reachableInstitutions,
+        unreachableInstitutions: totalInstitutions - reachableInstitutions,
         pendingPrivacy,
         openReports,
         pendingDelegations,
         totalDesks,
+        regionsRepresented,
         overdueItems,
-        systemHealth: 'HEALTHY',
-        databaseStatus: 'CONNECTED'
+        alertsByStatus,
+        systemHealth,
+        databaseStatus: databaseHealthy ? 'CONNECTED' : 'UNAVAILABLE'
       });
     } catch (err: any) {
       logger.error(`Admin overview error: ${err.message}`);
@@ -3711,12 +3800,27 @@ export function createApp() {
 
   app.put('/api/admin/users/:id/role', requireRole(['ADMIN']), (req, res) => {
     try {
-      const { role } = req.body;
+      const { role, reason } = req.body;
       const userId = req.params.id;
       if (!role) return res.status(400).json({ error: 'Role is required' });
+      const actorId = (req as AuthenticatedRequest).user?.id;
+      const before = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
+      if (!before) return res.status(404).json({ error: 'User not found' });
 
       db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(role, new Date().toISOString(), userId);
-      res.json({ success: true, userId, role });
+
+      AuditService.log({
+        eventType: 'USER_ROLE_CHANGED',
+        userId: actorId,
+        actorType: 'ADMIN',
+        targetType: 'USER',
+        targetId: userId,
+        beforeState: { role: before.role },
+        afterState: { role },
+        reason: reason || undefined
+      });
+
+      res.json({ success: true, userId, role, reasonRecorded: Boolean(reason) });
     } catch (err: any) {
       logger.error(`Admin update role error: ${err.message}`);
       res.status(500).json({ error: 'Failed to update user role' });
@@ -3725,10 +3829,25 @@ export function createApp() {
 
   app.put('/api/admin/users/:id/verify', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
     try {
-      const { isVerified } = req.body;
+      const { isVerified, reason } = req.body;
       const userId = req.params.id;
+      const actorId = (req as AuthenticatedRequest).user?.id;
+      const before = db.prepare('SELECT is_verified FROM users WHERE id = ?').get(userId) as any;
+      if (!before) return res.status(404).json({ error: 'User not found' });
 
       db.prepare('UPDATE users SET is_verified = ?, updated_at = ? WHERE id = ?').run(isVerified ? 1 : 0, new Date().toISOString(), userId);
+
+      AuditService.log({
+        eventType: isVerified ? 'USER_VERIFIED' : 'USER_VERIFICATION_REMOVED',
+        userId: actorId,
+        actorType: 'ADMIN',
+        targetType: 'USER',
+        targetId: userId,
+        beforeState: { isVerified: Boolean(before.is_verified) },
+        afterState: { isVerified: Boolean(isVerified) },
+        reason: reason || undefined
+      });
+
       res.json({ success: true, userId, isVerified: Boolean(isVerified) });
     } catch (err: any) {
       logger.error(`Admin verify user error: ${err.message}`);
@@ -3767,8 +3886,11 @@ export function createApp() {
 
   app.put('/api/admin/posts/:id/moderation', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
     try {
-      const { moderationStatus, reportLifecycleStatus } = req.body;
+      const { moderationStatus, reportLifecycleStatus, reason } = req.body;
       const postId = req.params.id;
+      const actorId = (req as AuthenticatedRequest).user?.id;
+      const before = db.prepare('SELECT moderation_status, report_lifecycle_status FROM posts WHERE id = ?').get(postId) as any;
+      if (!before) return res.status(404).json({ error: 'Post not found' });
 
       db.prepare(`
         UPDATE posts
@@ -3778,15 +3900,32 @@ export function createApp() {
         WHERE id = ?
       `).run(moderationStatus || null, reportLifecycleStatus || null, new Date().toISOString(), postId);
 
-      eventBus.emitReportEvent({
-        reportId: postId,
-        eventType: moderationStatus === 'approved' ? 'MODERATION_APPROVED' : 'REPORT_HELD',
+      const eventType =
+        moderationStatus === 'approved' ? 'MODERATION_APPROVED'
+        : moderationStatus === 'removed' ? 'MODERATION_REMOVED'
+        : moderationStatus === 'flagged' ? 'MODERATION_FLAGGED'
+        : 'MODERATION_HELD';
+
+      AuditService.log({
+        eventType,
+        userId: actorId,
         actorType: 'MODERATOR',
-        actorId: (req as AuthenticatedRequest).user?.id || 'admin',
-        metadata: { moderationStatus, reportLifecycleStatus }
+        targetType: 'POST',
+        targetId: postId,
+        beforeState: { moderationStatus: before.moderation_status, reportLifecycleStatus: before.report_lifecycle_status },
+        afterState: { moderationStatus, reportLifecycleStatus },
+        reason: reason || undefined
       });
 
-      res.json({ success: true, postId, moderationStatus, reportLifecycleStatus });
+      eventBus.emitReportEvent({
+        reportId: postId,
+        eventType,
+        actorType: 'MODERATOR',
+        actorId: actorId || 'admin',
+        metadata: { moderationStatus, reportLifecycleStatus, reason: reason || null }
+      });
+
+      res.json({ success: true, postId, moderationStatus, reportLifecycleStatus, reasonRecorded: Boolean(reason) });
     } catch (err: any) {
       logger.error(`Admin update post moderation error: ${err.message}`);
       res.status(500).json({ error: 'Failed to update post moderation status' });
@@ -3815,11 +3954,33 @@ export function createApp() {
 
   app.put('/api/admin/abuse-reports/:id', requireRole(['ADMIN', 'MODERATOR']), (req, res) => {
     try {
-      const { status } = req.body;
+      const { status, reason } = req.body;
       const reportId = req.params.id;
+      const actorId = (req as AuthenticatedRequest).user?.id;
+      const before = db.prepare('SELECT status FROM abuse_reports WHERE id = ?').get(reportId) as any;
+      if (!before) return res.status(404).json({ error: 'Abuse report not found' });
 
-      db.prepare('UPDATE abuse_reports SET status = ? WHERE id = ?').run(status || 'RESOLVED', reportId);
-      res.json({ success: true, reportId, status });
+      const nextStatus = status || 'RESOLVED';
+      const now = new Date().toISOString();
+      db.prepare(`
+        UPDATE abuse_reports
+        SET status = ?, resolution_reason = ?, resolved_by_user_id = ?, resolved_at = ?
+        WHERE id = ?
+      `).run(nextStatus, reason || null, actorId || null, now, reportId);
+
+      AuditService.log({
+        eventType: nextStatus === 'RESOLVED' ? 'ABUSE_REPORT_RESOLVED' : 'ABUSE_REPORT_DISMISSED',
+        userId: actorId,
+        actorType: 'MODERATOR',
+        targetType: 'POST',
+        targetId: (db.prepare('SELECT post_id FROM abuse_reports WHERE id = ?').get(reportId) as any)?.post_id,
+        beforeState: { status: before.status },
+        afterState: { status: nextStatus },
+        reason: reason || undefined,
+        metadata: { abuseReportId: reportId }
+      });
+
+      res.json({ success: true, reportId, status: nextStatus, reasonRecorded: Boolean(reason) });
     } catch (err: any) {
       logger.error(`Admin update abuse report error: ${err.message}`);
       res.status(500).json({ error: 'Failed to update abuse report' });
@@ -3829,7 +3990,8 @@ export function createApp() {
   app.post('/api/admin/institutions', requireRole(['ADMIN']), (req, res) => {
     try {
       const { id, officialName, shortName, acronym, mandate, category, jurisdiction, alertMethod,
-              deskLevel, parentInstitutionId, regionalLevel, districtLevel } = req.body;
+              deskLevel, parentInstitutionId, regionalLevel, districtLevel,
+              officialWebsite, emailChannels, whatsappChannels } = req.body;
       if (!officialName || !shortName || !acronym) {
         return res.status(400).json({ error: 'Official name, short name, and acronym are required' });
       }
@@ -3840,9 +4002,11 @@ export function createApp() {
       db.prepare(`
         INSERT INTO institutions (
           id, official_name, short_name, acronym, mandate, category, jurisdiction, alert_method,
-          desk_level, parent_institution_id, regional_level, district_level, verification_status, created_at
+          desk_level, parent_institution_id, regional_level, district_level,
+          official_website, email_channels_json, whatsapp_channels_json,
+          verification_status, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?)
         ON CONFLICT(id) DO UPDATE SET
           official_name = excluded.official_name,
           short_name = excluded.short_name,
@@ -3854,11 +4018,18 @@ export function createApp() {
           desk_level = COALESCE(excluded.desk_level, institutions.desk_level),
           parent_institution_id = COALESCE(excluded.parent_institution_id, institutions.parent_institution_id),
           regional_level = COALESCE(excluded.regional_level, institutions.regional_level),
-          district_level = COALESCE(excluded.district_level, institutions.district_level)
+          district_level = COALESCE(excluded.district_level, institutions.district_level),
+          official_website = COALESCE(excluded.official_website, institutions.official_website),
+          email_channels_json = COALESCE(excluded.email_channels_json, institutions.email_channels_json),
+          whatsapp_channels_json = COALESCE(excluded.whatsapp_channels_json, institutions.whatsapp_channels_json)
       `).run(
         instId, officialName, shortName, acronym, mandate || '', category || 'GOVERNMENT',
         jurisdiction || 'NATIONAL', alertMethod || 'OFFICIAL_EMAIL',
-        deskLevel || 'NATIONAL_DESK', parentInstitutionId || null, regionalLevel || null, districtLevel || null, now
+        deskLevel || 'NATIONAL_DESK', parentInstitutionId || null, regionalLevel || null, districtLevel || null,
+        officialWebsite || null,
+        Array.isArray(emailChannels) ? JSON.stringify(emailChannels) : null,
+        Array.isArray(whatsappChannels) ? JSON.stringify(whatsappChannels) : null,
+        now
       );
 
       AuditService.log({
@@ -3910,6 +4081,55 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`Admin hierarchy fetch error: ${err.message}`);
       res.status(500).json({ error: 'Failed to fetch institution hierarchy' });
+    }
+  });
+
+  // ADMIN PRIVACY ENGINE: real P³RE posture, detectors and storage zones
+  app.get('/api/admin/privacy', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const policies = db.prepare('SELECT * FROM privacy_policies ORDER BY id ASC').all() as any[];
+
+      const findingsByType = db.prepare(`
+        SELECT type, COUNT(*) AS count FROM privacy_findings GROUP BY type ORDER BY count DESC
+      `).all() as any[];
+
+      const findingsByDetector = db.prepare(`
+        SELECT detector, COUNT(*) AS count FROM privacy_findings GROUP BY detector ORDER BY count DESC
+      `).all() as any[];
+
+      const totals = db.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM privacy_findings) AS totalFindings,
+          (SELECT COUNT(*) FROM representation_versions) AS totalRepresentations,
+          (SELECT COUNT(*) FROM representation_versions WHERE status = 'ACTIVE') AS activeRepresentations
+      `).get() as any;
+
+      const lastProcessedAt = (db.prepare(`
+        SELECT created_at FROM representation_versions ORDER BY created_at DESC LIMIT 1
+      `).get() as any)?.created_at || null;
+
+      res.json({
+        policies,
+        detectors: findingsByDetector,
+        findingsByType,
+        summary: {
+          totalFindings: totals.totalFindings,
+          totalRepresentations: totals.totalRepresentations,
+          activeRepresentations: totals.activeRepresentations,
+          enabledPolicies: policies.filter(p => p.enabled).length,
+          lastProcessedAt
+        },
+        storage: {
+          original: path.relative(process.cwd(), STORAGE_ZONES.ORIGINAL),
+          protected: path.relative(process.cwd(), STORAGE_ZONES.PROTECTED),
+          public: path.relative(process.cwd(), STORAGE_ZONES.PUBLIC),
+          processing: path.relative(process.cwd(), STORAGE_ZONES.PROCESSING)
+        },
+        accessTokenTtlSeconds: 900
+      });
+    } catch (err: any) {
+      logger.error(`Admin privacy fetch error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to fetch privacy posture' });
     }
   });
 

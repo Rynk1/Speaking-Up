@@ -1390,6 +1390,19 @@ export function initDatabase() {
     } catch {}
   }
 
+  // Safe ALTER migrations for abuse_reports: record who resolved a complaint
+  // and why, so the admin UI can honestly claim the reason was captured.
+  const abuseReportCols = [
+    { name: 'resolution_reason', type: 'TEXT' },
+    { name: 'resolved_by_user_id', type: 'TEXT' },
+    { name: 'resolved_at', type: 'TEXT' }
+  ];
+  for (const col of abuseReportCols) {
+    try {
+      db.exec(`ALTER TABLE abuse_reports ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
   // Safe ALTER migrations for posts: formal work-item ownership & SLA tracking
   const workflowPostCols = [
     { name: 'owner_institution_id', type: 'TEXT' },
@@ -1497,6 +1510,38 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_inbox_desk_state ON institutional_inbox_items(desk_id, action_state);
     CREATE INDEX IF NOT EXISTS idx_delegations_parent ON coordination_delegations(parent_delegation_id);
   `);
+
+  // A report may be tagged to an institution only once. Historically tag rows
+  // used random ids, so repeated routing/alerting created duplicates that
+  // double-counted reach and split alert status across rows. Collapse any
+  // existing duplicates (keeping the most advanced status) and enforce the
+  // natural key so alert upserts are idempotent.
+  try {
+    db.exec(`
+      DELETE FROM post_institution_tags
+      WHERE rowid NOT IN (
+        SELECT rowid FROM (
+          SELECT rowid, ROW_NUMBER() OVER (
+            PARTITION BY post_id, institution_id
+            ORDER BY
+              CASE alert_status
+                WHEN 'DELIVERED' THEN 1
+                WHEN 'ACKNOWLEDGED' THEN 2
+                WHEN 'SENT' THEN 3
+                WHEN 'QUEUED' THEN 4
+                WHEN 'PENDING' THEN 5
+                WHEN 'NOT_CONFIGURED' THEN 6
+                ELSE 7
+              END,
+              created_at DESC, rowid DESC
+          ) AS rn FROM post_institution_tags
+        ) WHERE rn = 1
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_inst_tags_unique ON post_institution_tags(post_id, institution_id);
+    `);
+  } catch (err: any) {
+    console.warn('Institution tag uniqueness migration notice:', err?.message);
+  }
 
   console.log('Database tables and indexes verified successfully.');
 

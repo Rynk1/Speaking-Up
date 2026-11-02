@@ -32,6 +32,37 @@ export interface InstitutionProfile {
 
 export class InstitutionRegistryService {
   /**
+   * Recomputes derived reach counters for every institution (or a single one)
+   * straight from tag + response history. Counters are never incremented
+   * ad-hoc, so they can always be trusted to match the underlying records.
+   *
+   *  - activeMentions: reports currently routed to the institution
+   *  - unansweredMentions: routed reports the institution has not yet responded to
+   *  - officialResponses: verified institutional responses published
+   */
+  public static reconcileReachCounters(institutionId?: string): void {
+    const sql = `
+      UPDATE institutions SET
+        active_mentions_count = (
+          SELECT COUNT(*) FROM post_institution_tags t WHERE t.institution_id = institutions.id
+        ),
+        unanswered_mentions_count = (
+          SELECT COUNT(*) FROM post_institution_tags t
+          WHERE t.institution_id = institutions.id
+            AND NOT EXISTS (
+              SELECT 1 FROM institution_responses r
+              WHERE r.post_id = t.post_id AND r.institution_id = t.institution_id
+            )
+        ),
+        official_responses_count = (
+          SELECT COUNT(*) FROM institution_responses r WHERE r.institution_id = institutions.id
+        )
+      ${institutionId ? 'WHERE id = ?' : ''}
+    `;
+    db.prepare(sql).run(...(institutionId ? [institutionId] : []));
+  }
+
+  /**
    * Retrieves all verified institutions with hierarchical metadata
    */
   public static getAllInstitutions(): InstitutionProfile[] {

@@ -10,6 +10,24 @@ import { CivicSituationService } from './modules/civic-situations/CivicSituation
 import { InstitutionalInboxService } from './modules/institutional-inbox/InstitutionalInboxService';
 import { InstitutionalAnnouncementService } from './modules/announcements/InstitutionalAnnouncementService';
 import { CoordinationService } from './modules/coordination/CoordinationService';
+import { InstitutionRegistryService } from './modules/institutions/InstitutionRegistryService';
+
+// Official alert email desks, by institution. Only addresses recorded here are
+// used for email dispatch; anything missing fails closed as NOT_CONFIGURED.
+const INSTITUTION_ALERT_EMAILS: Record<string, string[]> = {
+  'ghana-police-service': ['alerts@police.gov.gh'],
+  'nadmo-ghana': ['emergency@nadmo.gov.gh'],
+  'purc-ghana': ['complaints@purc.com.gh'],
+  'ecg-ghana': ['dispatch@ecg.com.gh'],
+  'gwcl-ghana': ['reports@gwcl.com.gh'],
+  'csa-ghana': ['report@csa.gov.gh'],
+  'chraj-ghana': ['complaints@chraj.gov.gh'],
+  'gha-roads': ['reports@highways.gov.gh'],
+  'ama-accra': ['reports@ama.gov.gh'],
+  'epa-ghana': ['complaints@epa.gov.gh'],
+  'ghs-health': ['reports@ghs.gov.gh'],
+  'gnfs-fire': ['operations@gnfs.gov.gh']
+};
 
 // Desk topology per institution: [name, code, level, region?, district?, specialization?]
 const DESK_TOPOLOGY: Record<string, { name: string; code: string; level: 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST'; region?: string; district?: string; specialization?: string }[]> = {
@@ -368,6 +386,14 @@ export async function seedDatabaseIfEmpty() {
   const hashedPassword = await bcrypt.hash('Password123!', 10);
   const now = new Date().toISOString();
 
+  // Anonymous reporters have no account. They still need a stable author row
+  // because posts.author_id is a foreign key, and their reports must be
+  // attributable for follow-up without exposing identity.
+  db.prepare(`
+    INSERT OR IGNORE INTO users (id, email, password_hash, name, handle, avatar, role, is_verified, followers_count, created_at, updated_at)
+    VALUES ('user-anonymous-reporter', 'anonymous@speakup.gh', ?, 'Anonymous Citizen', 'citizen_confidential', NULL, 'CITIZEN', 0, 0, ?, ?)
+  `).run(hashedPassword, now, now);
+
   // Always ensure all initial institutions exist
   const insertInstitutionOrIgnore = db.prepare(`
     INSERT OR IGNORE INTO institutions (
@@ -395,10 +421,10 @@ export async function seedDatabaseIfEmpty() {
       category: inst.categories[0] || 'Infrastructure & Roads',
       jurisdiction: inst.jurisdiction || 'NATIONAL',
       logo: inst.logo || null,
-      official_website: inst.officialWebsite || null,
+      official_website: inst.officialWebsite || inst.website || null,
       official_contacts_json: JSON.stringify(inst.officialContacts || []),
-      social_accounts_json: JSON.stringify(inst.officialSocialAccounts || []),
-      email_channels_json: JSON.stringify(inst.emailChannels || []),
+      social_accounts_json: JSON.stringify(inst.officialSocialAccounts || inst.socialChannels || []),
+      email_channels_json: JSON.stringify(inst.emailChannels || INSTITUTION_ALERT_EMAILS[inst.id] || []),
       whatsapp_channels_json: JSON.stringify(inst.whatsappChannels || []),
       alert_method: inst.alertMethod || 'OFFICIAL_EMAIL',
       active_mentions_count: inst.activeMentionsCount || 0,
@@ -416,6 +442,17 @@ export async function seedDatabaseIfEmpty() {
 
   if (instCount > 0) {
     console.log('Database already contains seed data. Syncing any missing default users, posts, and official responses...');
+
+    // Backfill dispatch metadata for institutions seeded before these fields
+    // were wired up (website was previously dropped, leaving alerts unroutable).
+    const backfillWebsite = db.prepare(`UPDATE institutions SET official_website = ? WHERE id = ? AND (official_website IS NULL OR official_website = '')`);
+    const backfillEmail = db.prepare(`UPDATE institutions SET email_channels_json = ? WHERE id = ? AND (email_channels_json IS NULL OR email_channels_json = '[]')`);
+    for (const inst of INITIAL_INSTITUTIONS) {
+      const site = inst.officialWebsite || inst.website;
+      if (site) backfillWebsite.run(site, inst.id);
+      const emails = inst.emailChannels?.length ? inst.emailChannels : INSTITUTION_ALERT_EMAILS[inst.id];
+      if (emails?.length) backfillEmail.run(JSON.stringify(emails), inst.id);
+    }
 
     // Ensure core users exist
     const defaultUsers = [
@@ -623,6 +660,7 @@ export async function seedDatabaseIfEmpty() {
     }
     syncSituationsAndInstitutionalInbox();
     seedCoordinationHierarchy();
+    InstitutionRegistryService.reconcileReachCounters();
     return;
   }
 
@@ -769,10 +807,10 @@ export async function seedDatabaseIfEmpty() {
       category: inst.categories[0] || 'Infrastructure & Roads',
       jurisdiction: inst.jurisdiction || 'NATIONAL',
       logo: inst.logo || null,
-      official_website: inst.officialWebsite || null,
+      official_website: inst.officialWebsite || inst.website || null,
       official_contacts_json: JSON.stringify(inst.officialContacts || []),
-      social_accounts_json: JSON.stringify(inst.officialSocialAccounts || []),
-      email_channels_json: JSON.stringify(inst.emailChannels || []),
+      social_accounts_json: JSON.stringify(inst.officialSocialAccounts || inst.socialChannels || []),
+      email_channels_json: JSON.stringify(inst.emailChannels || INSTITUTION_ALERT_EMAILS[inst.id] || []),
       whatsapp_channels_json: JSON.stringify(inst.whatsappChannels || []),
       alert_method: inst.alertMethod || 'OFFICIAL_EMAIL',
       active_mentions_count: inst.activeMentionsCount || 0,
@@ -879,7 +917,7 @@ export async function seedDatabaseIfEmpty() {
 
     for (const tag of p.institutionTags || []) {
       insertTag.run({
-        id: `tag-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: `tag-${p.id}-${tag.institutionId}`,
         post_id: p.id,
         institution_id: tag.institutionId,
         institution_name: tag.institutionName,
@@ -1052,5 +1090,7 @@ export async function seedDatabaseIfEmpty() {
 
   syncSituationsAndInstitutionalInbox();
   seedCoordinationHierarchy();
+  InstitutionRegistryService.reconcileReachCounters();
   console.log('Database successfully seeded with persistent initial data!');
 }
+

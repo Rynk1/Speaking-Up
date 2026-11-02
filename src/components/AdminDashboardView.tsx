@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ShieldAlert,
   Users,
@@ -7,65 +7,108 @@ import {
   Building2,
   Lock,
   Cpu,
-  CheckCircle2,
-  XCircle,
   RefreshCw,
   Search,
-  Filter,
   Plus,
-  Play,
   RotateCcw,
   Activity,
-  Layers,
-  Eye,
   ShieldCheck,
   UserCheck,
   Clock,
-  ExternalLink,
-  ChevronRight,
-  ChevronDown,
   GitPullRequest,
-  ArrowRight
+  ArrowRight,
+  CheckCircle2,
+  Mail,
+  Inbox,
+  Pencil,
+  Check,
+  X
 } from 'lucide-react';
 import { api } from '../services/api';
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  ConsoleLayout,
+  DataTable,
+  EmptyState,
+  Field,
+  Input,
+  Modal,
+  SearchInput,
+  SectionHeader,
+  Select,
+  StatCard,
+  StatusBadge,
+  TableRow,
+  TableSkeleton,
+  Td,
+  Th,
+  Tile,
+  useToast,
+  type ConsoleNavItem
+} from './ui';
+import {
+  getAbuseReportMeta,
+  getJobMeta,
+  getModerationMeta,
+  getPriorityMeta,
+  getRoleMeta
+} from '../utils/status';
 
 type AdminTab = 'overview' | 'content' | 'reports' | 'users' | 'institutions' | 'coordination' | 'privacy' | 'system';
 
+interface PendingAction {
+  title: string;
+  message: React.ReactNode;
+  confirmLabel: string;
+  tone: 'danger' | 'primary' | 'success';
+  confirmPhrase?: string;
+  reasonLabel?: string;
+  reasonRequired?: boolean;
+  run: (reason?: string) => Promise<void>;
+}
+
+const TAB_META: Record<AdminTab, { title: string; subtitle: string }> = {
+  overview: { title: 'System Performance & Platform Overview', subtitle: 'Live platform health, workload and subsystem readiness.' },
+  content: { title: 'Civic Content & Report Moderation', subtitle: 'Review, approve, hold or remove citizen submissions.' },
+  reports: { title: 'Citizen Abuse & Flagging Review Queue', subtitle: 'Triage abuse complaints raised against content and users.' },
+  users: { title: 'User Accounts & Access Management', subtitle: 'Elevate roles, verify identities and control platform access.' },
+  institutions: { title: 'State Agencies & Alert Channel Configuration', subtitle: 'Register agencies and configure dispatch channels.' },
+  coordination: { title: 'Inter-Institutional Coordination & SLA Oversight', subtitle: 'Oversee transfers, delegations, escalations and SLA compliance.' },
+  privacy: { title: 'P³RE Privacy Engine Policy & Audit', subtitle: 'Privacy-preserving representation policy and storage posture.' },
+  system: { title: 'Durable Job Queue & Event Timeline Audit', subtitle: 'Retry background jobs and inspect the immutable event trail.' }
+};
+
 export const AdminDashboardView: React.FC = () => {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [pending, setPending] = useState<PendingAction | null>(null);
 
-  // Overview stats
   const [overview, setOverview] = useState<any>(null);
 
-  // Users tab state
   const [users, setUsers] = useState<any[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('ALL');
 
-  // Posts / Moderation state
   const [adminPosts, setAdminPosts] = useState<any[]>([]);
   const [postSearch, setPostSearch] = useState('');
   const [moderationFilter, setModerationFilter] = useState('ALL');
 
-  // Abuse Reports state
   const [abuseReports, setAbuseReports] = useState<any[]>([]);
   const [reportStatusFilter, setReportStatusFilter] = useState('ALL');
 
-  // Jobs state
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobStatusFilter, setJobStatusFilter] = useState('ALL');
-
-  // Audit logs state
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
-  // Coordination oversight state
   const [coordination, setCoordination] = useState<any>(null);
-  const [sweepResult, setSweepResult] = useState<string | null>(null);
+  const [institutions, setInstitutions] = useState<any[]>([]);
+  const [privacy, setPrivacy] = useState<any>(null);
 
-  // Institution Modal / Form state
   const [showInstModal, setShowInstModal] = useState(false);
   const [instForm, setInstForm] = useState({
     id: '',
@@ -75,943 +118,766 @@ export const AdminDashboardView: React.FC = () => {
     mandate: '',
     category: 'GOVERNMENT',
     jurisdiction: 'NATIONAL',
-    alertMethod: 'OFFICIAL_EMAIL'
+    alertMethod: 'OFFICIAL_EMAIL',
+    officialWebsite: '',
+    emailChannels: '',
+    whatsappChannels: ''
   });
 
-  const getTabLabel = (tab: AdminTab) => {
-    switch (tab) {
-      case 'overview': return 'System Overview';
-      case 'content': return 'Content Moderation';
-      case 'reports': return 'Abuse Flag Queue';
-      case 'users': return 'User Management';
-      case 'institutions': return 'State Institutions';
-      case 'coordination': return 'Coordination Oversight';
-      case 'privacy': return 'P³RE Privacy Engine';
-      case 'system': return 'Job Queue & Audit';
-    }
-  };
-
-  // Load overview data
   const loadOverview = useCallback(async () => {
     try {
-      const data = await api.getAdminOverview();
-      setOverview(data);
+      setOverview(await api.getAdminOverview());
     } catch (err) {
       console.error('Failed to load admin overview:', err);
     }
   }, []);
 
-  // Load Tab-specific data
   const loadTabData = useCallback(async () => {
     setLoading(true);
     try {
       if (activeTab === 'overview') {
         await loadOverview();
       } else if (activeTab === 'users') {
-        const u = await api.getAdminUsers({ search: userSearch, role: userRoleFilter });
-        setUsers(u);
+        setUsers(await api.getAdminUsers({ search: userSearch, role: userRoleFilter }));
       } else if (activeTab === 'content') {
-        const p = await api.getAdminPosts({ search: postSearch, moderationStatus: moderationFilter });
-        setAdminPosts(p);
+        setAdminPosts(await api.getAdminPosts({ search: postSearch, moderationStatus: moderationFilter }));
       } else if (activeTab === 'reports') {
-        const r = await api.getAdminAbuseReports(reportStatusFilter);
-        setAbuseReports(r);
+        setAbuseReports(await api.getAdminAbuseReports(reportStatusFilter));
       } else if (activeTab === 'coordination') {
-        const c = await api.getAdminCoordination();
-        setCoordination(c);
+        setCoordination(await api.getAdminCoordination());
+      } else if (activeTab === 'institutions') {
+        setInstitutions(await api.getInstitutions());
+      } else if (activeTab === 'privacy') {
+        setPrivacy(await api.getAdminPrivacy());
       } else if (activeTab === 'system') {
-        const [j, logs] = await Promise.all([
-          api.getAdminJobs(jobStatusFilter),
-          api.getAdminAuditLogs()
-        ]);
+        const [j, logs] = await Promise.all([api.getAdminJobs(jobStatusFilter), api.getAdminAuditLogs()]);
         setJobs(j);
         setAuditLogs(logs);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(`Failed to load tab data for ${activeTab}:`, err);
+      toast.error('Could not load data', err?.message || 'The server did not respond as expected.');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, userSearch, userRoleFilter, postSearch, moderationFilter, reportStatusFilter, jobStatusFilter, loadOverview]);
+  }, [activeTab, userSearch, userRoleFilter, postSearch, moderationFilter, reportStatusFilter, jobStatusFilter, loadOverview, toast]);
 
   useEffect(() => {
     loadTabData();
   }, [loadTabData]);
 
-  // Handlers
+  /* ----------------------------- actions ----------------------------- */
+
   const handleRunSlaSweep = async () => {
     setActionLoading('sla-sweep');
-    setSweepResult(null);
     try {
       const r = await api.runSlaSweep();
-      setSweepResult(`Swept ${r.overdueItems} overdue, ${r.warningItems} approaching; escalated ${r.escalatedDelegations} delegations and ${r.ladderEscalations ?? 0} work items up the desk ladder (${r.notified} officials notified).`);
+      toast.success(
+        'SLA sweep complete',
+        `${r.overdueItems} overdue · ${r.warningItems} approaching · ${r.escalatedDelegations} delegations and ${r.ladderEscalations ?? 0} work items escalated · ${r.notified} officials notified.`
+      );
       await loadTabData();
     } catch (err: any) {
-      setSweepResult(`SLA sweep failed: ${err.message}`);
+      toast.error('SLA sweep failed', err?.message);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleUserRoleChange = async (userId: string, newRole: string) => {
-    setActionLoading(`user-role-${userId}`);
-    try {
-      await api.updateUserRole(userId, newRole);
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-    } catch (err) {
-      alert('Failed to update user role');
-    } finally {
-      setActionLoading(null);
-    }
+  const handleUserRoleChange = (userId: string, newRole: string, currentRole: string) => {
+    const user = users.find((u) => u.id === userId);
+    setPending({
+      title: 'Change user role',
+      tone: newRole === 'ADMIN' ? 'danger' : 'primary',
+      confirmLabel: `Set to ${newRole}`,
+      reasonLabel: 'Reason for this role change',
+      reasonRequired: true,
+      message: (
+        <>
+          Change <span className="font-semibold text-white">{user?.name || userId}</span> from{' '}
+          <span className="font-semibold text-white">{currentRole}</span> to{' '}
+          <span className="font-semibold text-white">{newRole}</span>?
+          {newRole === 'ADMIN' && (
+            <span className="block mt-2 text-red-300">
+              Administrators hold full platform authority. Grant this only to vetted staff.
+            </span>
+          )}
+        </>
+      ),
+      run: async (reason) => {
+        setActionLoading(`user-role-${userId}`);
+        try {
+          const res = await api.updateUserRole(userId, newRole, reason);
+          setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+          toast.success('Role updated', `${user?.name || 'User'} is now ${newRole}.${res?.reasonRecorded ? ' Reason recorded.' : ''}`);
+        } catch (err: any) {
+          toast.error('Failed to update role', err?.message);
+        } finally {
+          setActionLoading(null);
+        }
+      }
+    });
   };
 
   const handleUserVerifyToggle = async (userId: string, currentStatus: boolean) => {
     setActionLoading(`user-verify-${userId}`);
     try {
       await api.updateUserVerification(userId, !currentStatus);
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_verified: !currentStatus ? 1 : 0 } : u));
-    } catch (err) {
-      alert('Failed to toggle verification status');
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, is_verified: !currentStatus ? 1 : 0 } : u)));
+      toast.success(!currentStatus ? 'User verified' : 'Verification removed');
+    } catch (err: any) {
+      toast.error('Failed to update verification', err?.message);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handlePostModerationUpdate = async (postId: string, modStatus: string, lifecycleStatus?: string) => {
+  const runPostModeration = async (postId: string, modStatus: string, lifecycleStatus: string | undefined, reason?: string) => {
     setActionLoading(`post-mod-${postId}`);
     try {
-      await api.updatePostModeration(postId, { moderationStatus: modStatus, reportLifecycleStatus: lifecycleStatus });
-      setAdminPosts(prev => prev.map(p => p.id === postId ? { ...p, moderation_status: modStatus, report_lifecycle_status: lifecycleStatus || p.report_lifecycle_status } : p));
-    } catch (err) {
-      alert('Failed to update post moderation');
+      const res = await api.updatePostModeration(postId, { moderationStatus: modStatus, reportLifecycleStatus: lifecycleStatus, reason });
+      setAdminPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId ? { ...p, moderation_status: modStatus, report_lifecycle_status: lifecycleStatus || p.report_lifecycle_status } : p
+        )
+      );
+      toast.success(`Report ${getModerationMeta(modStatus).label.toLowerCase()}`, res?.reasonRecorded ? 'Reason recorded in the audit trail.' : undefined);
+    } catch (err: any) {
+      toast.error('Failed to update moderation', err?.message);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleAbuseReportResolve = async (reportId: string, status: 'RESOLVED' | 'DISMISSED') => {
-    setActionLoading(`report-${reportId}`);
+  const handlePostModeration = (post: any, modStatus: string, lifecycleStatus?: string) => {
+    if (modStatus === 'removed' || modStatus === 'held') {
+      setPending({
+        title: modStatus === 'removed' ? 'Remove this report' : 'Hold this report',
+        tone: modStatus === 'removed' ? 'danger' : 'primary',
+        confirmLabel: modStatus === 'removed' ? 'Remove report' : 'Hold for review',
+        reasonLabel: 'Reason (recorded in audit trail)',
+        reasonRequired: true,
+        message: (
+          <>
+            <span className="font-semibold text-white">{post.title}</span> by {post.author_name} will be{' '}
+            {modStatus === 'removed' ? 'removed from public view' : 'held for moderation review'}.
+          </>
+        ),
+        run: (reason) => runPostModeration(post.id, modStatus, lifecycleStatus, reason)
+      });
+    } else {
+      runPostModeration(post.id, modStatus, lifecycleStatus);
+    }
+  };
+
+  const resolveAbuseReport = async (rep: any, status: 'RESOLVED' | 'DISMISSED', reason?: string): Promise<void> => {
+    setActionLoading(`report-${rep.id}`);
     try {
-      await api.updateAbuseReport(reportId, status);
-      setAbuseReports(prev => prev.map(r => r.id === reportId ? { ...r, status } : r));
-    } catch (err) {
-      alert('Failed to update report status');
+      const res = await api.updateAbuseReport(rep.id, status, reason);
+      setAbuseReports((prev) => prev.map((r) => (r.id === rep.id ? { ...r, status } : r)));
+      toast.success(status === 'RESOLVED' ? 'Complaint resolved' : 'Complaint dismissed', res?.reasonRecorded ? 'Reason recorded in the audit trail.' : undefined);
+    } catch (err: any) {
+      toast.error('Failed to update complaint', err?.message);
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const handleAbuseReportAction = (rep: any, status: 'RESOLVED' | 'DISMISSED') => {
+    setPending({
+      title: status === 'RESOLVED' ? 'Action and resolve complaint' : 'Dismiss complaint',
+      tone: status === 'RESOLVED' ? 'success' : 'primary',
+      confirmLabel: status === 'RESOLVED' ? 'Confirm action taken' : 'Dismiss',
+      reasonLabel: status === 'RESOLVED' ? 'Action taken' : 'Reason for dismissal',
+      reasonRequired: true,
+      message: (
+        <>
+          {status === 'RESOLVED' ? 'Mark the complaint against ' : 'Dismiss the complaint against '}
+          <span className="font-semibold text-white">{rep.post_title || rep.post_id}</span>
+          {status === 'RESOLVED' ? ' as resolved after taking moderation action.' : ' as unfounded.'}
+        </>
+      ),
+      run: (reason) => resolveAbuseReport(rep, status, reason)
+    });
+  };
+
+  const handleDelegationTransition = async (delegation: any, status: 'ACCEPTED' | 'DECLINED' | 'CANCELLED', note?: string) => {
+    setActionLoading(`delegation-${delegation.id}`);
+    try {
+      await api.transitionDelegation(delegation.id, status, note);
+      toast.success(
+        status === 'ACCEPTED' ? 'Delegation accepted' : status === 'DECLINED' ? 'Delegation declined' : 'Delegation cancelled',
+        note ? 'Note recorded on the delegation.' : undefined
+      );
+      await loadTabData();
+    } catch (err: any) {
+      toast.error('Failed to update delegation', err?.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDelegationAction = (delegation: any, status: 'ACCEPTED' | 'DECLINED' | 'CANCELLED') => {
+    setPending({
+      title:
+        status === 'ACCEPTED' ? 'Accept delegation'
+        : status === 'DECLINED' ? 'Decline delegation'
+        : 'Cancel delegation',
+      tone: status === 'ACCEPTED' ? 'success' : status === 'DECLINED' ? 'danger' : 'primary',
+      confirmLabel:
+        status === 'ACCEPTED' ? 'Accept on behalf of desk'
+        : status === 'DECLINED' ? 'Decline delegation'
+        : 'Cancel delegation',
+      reasonLabel: status === 'ACCEPTED' ? 'Acceptance note (optional)' : 'Reason (recorded on the delegation)',
+      reasonRequired: status !== 'ACCEPTED',
+      message: (
+        <>
+          {status === 'ACCEPTED' ? 'Accept the transfer of ' : status === 'DECLINED' ? 'Decline the transfer of ' : 'Cancel the transfer of '}
+          <span className="font-semibold text-white">{delegation.postTitle || 'this work item'}</span> from{' '}
+          {delegation.fromInstitutionName || 'external'} to{' '}
+          <span className="font-semibold text-white">{delegation.toInstitutionName}</span> as oversight.
+        </>
+      ),
+      run: (reason) => handleDelegationTransition(delegation, status, reason)
+    });
   };
 
   const handleRetryJob = async (jobId: string) => {
     setActionLoading(`job-${jobId}`);
     try {
       await api.retryAdminJob(jobId);
-      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'QUEUED', attempts: 0 } : j));
-    } catch (err) {
-      alert('Failed to retry background job');
+      setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: 'QUEUED', attempts: 0 } : j)));
+      toast.success('Job re-queued', 'The background job will be retried by the worker.');
+    } catch (err: any) {
+      toast.error('Failed to retry job', err?.message);
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const resetInstForm = () => setInstForm({
+    id: '', officialName: '', shortName: '', acronym: '', mandate: '',
+    category: 'GOVERNMENT', jurisdiction: 'NATIONAL', alertMethod: 'OFFICIAL_EMAIL',
+    officialWebsite: '', emailChannels: '', whatsappChannels: ''
+  });
+
+  const openInstitutionModal = (inst?: any) => {
+    if (inst) {
+      setInstForm({
+        id: inst.id,
+        officialName: inst.officialName || '',
+        shortName: inst.shortName || '',
+        acronym: inst.acronym || '',
+        mandate: inst.mandate || '',
+        category: inst.category || 'GOVERNMENT',
+        jurisdiction: inst.jurisdiction || 'NATIONAL',
+        alertMethod: inst.alertMethod || 'OFFICIAL_EMAIL',
+        officialWebsite: inst.website || '',
+        emailChannels: (inst.emailChannels || []).join(', '),
+        whatsappChannels: (inst.whatsappChannels || []).join(', ')
+      });
+    } else {
+      resetInstForm();
+    }
+    setShowInstModal(true);
   };
 
   const handleSaveInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
     setActionLoading('save-inst');
     try {
-      await api.manageInstitution(instForm);
-      setShowInstModal(false);
-      setInstForm({
-        id: '',
-        officialName: '',
-        shortName: '',
-        acronym: '',
-        mandate: '',
-        category: 'GOVERNMENT',
-        jurisdiction: 'NATIONAL',
-        alertMethod: 'OFFICIAL_EMAIL'
+      const toList = (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean);
+      await api.manageInstitution({
+        ...instForm,
+        officialWebsite: instForm.officialWebsite.trim() || undefined,
+        emailChannels: toList(instForm.emailChannels),
+        whatsappChannels: toList(instForm.whatsappChannels)
       });
-      alert('State agency successfully saved/updated!');
-    } catch (err) {
-      alert('Failed to save institution');
+      setShowInstModal(false);
+      resetInstForm();
+      await loadTabData();
+      toast.success('Agency saved', `${instForm.officialName} dispatch configuration updated.`);
+    } catch (err: any) {
+      toast.error('Failed to save agency', err?.message);
     } finally {
       setActionLoading(null);
     }
   };
 
+  const runPending = async (reason?: string) => {
+    if (!pending) return;
+    const action = pending;
+    setPending(null);
+    await action.run(reason);
+  };
+
+  /* ----------------------------- nav ----------------------------- */
+
+  const navItems: ConsoleNavItem<AdminTab>[] = useMemo(
+    () => [
+      { id: 'overview', label: 'System Overview', icon: <Activity className="w-4 h-4" />, alert: true },
+      { id: 'content', label: 'Content Moderation', icon: <FileText className="w-4 h-4" />, badge: overview?.pendingAbuse },
+      { id: 'reports', label: 'Abuse Flag Queue', icon: <AlertTriangle className="w-4 h-4" /> },
+      { id: 'users', label: 'User Management', icon: <Users className="w-4 h-4" /> },
+      { id: 'institutions', label: 'State Institutions', icon: <Building2 className="w-4 h-4" /> },
+      { id: 'coordination', label: 'Coordination Oversight', icon: <GitPullRequest className="w-4 h-4" />, badge: coordination?.summary?.overdueItems },
+      { id: 'privacy', label: 'P³RE Privacy Engine', icon: <Lock className="w-4 h-4" /> },
+      { id: 'system', label: 'Job Queue & Audit', icon: <Cpu className="w-4 h-4" /> }
+    ],
+    [overview, coordination]
+  );
+
+  const meta = TAB_META[activeTab];
+
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden min-h-[680px] flex flex-col md:flex-row text-slate-100">
-      {/* Sidebar Navigation - Desktop */}
-      <aside className="hidden md:flex w-64 lg:w-72 bg-slate-950/90 border-r border-slate-800 p-4 shrink-0 flex-col justify-between">
-        <div className="space-y-6">
-          {/* Header Badge */}
-          <div className="flex items-center gap-2.5 px-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg">
-              <ShieldAlert className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h2 className="font-extrabold text-sm text-white tracking-wide">ADMIN CONSOLE</h2>
-              <p className="text-[10px] text-slate-400">Ghana Civic Control Center</p>
-            </div>
-          </div>
-
-          {/* Nav Tabs */}
-          <nav className="space-y-1">
-            <button
-              onClick={() => setActiveTab('overview')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                activeTab === 'overview'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Activity className="w-4 h-4" /> System Overview
-              </span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('content')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                activeTab === 'content'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <FileText className="w-4 h-4" /> Content Moderation
-              </span>
-              {overview?.pendingAbuse > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold border border-amber-500/30">
-                  {overview.pendingAbuse}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('reports')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                activeTab === 'reports'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <AlertTriangle className="w-4 h-4" /> Abuse Flag Queue
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                activeTab === 'users'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Users className="w-4 h-4" /> User Management
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('institutions')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                activeTab === 'institutions'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Building2 className="w-4 h-4" /> State Institutions
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('coordination')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                activeTab === 'coordination'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <GitPullRequest className="w-4 h-4" /> Coordination Oversight
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('privacy')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                activeTab === 'privacy'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Lock className="w-4 h-4" /> P³RE Privacy Engine
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('system')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                activeTab === 'system'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Cpu className="w-4 h-4" /> Job Queue & Audit Logs
-              </span>
-            </button>
-          </nav>
-        </div>
-
-        {/* Footer Status */}
-        <div className="pt-4 border-t border-slate-800/80 text-[11px] text-slate-500 space-y-1 px-2">
-          <div className="flex items-center justify-between">
-            <span>Status:</span>
-            <span className="text-emerald-400 font-bold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> ONLINE
-            </span>
-          </div>
-          <div className="text-[10px]">Speak Up Web v1.0 Production</div>
-        </div>
-      </aside>
-
-      {/* Mobile Top Header with Interactive Breadcrumb Drawer Trigger */}
-      <div className="md:hidden bg-slate-950/95 border-b border-slate-800 p-3 sm:p-3.5 space-y-2">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setShowMobileSidebar(true)}
-            className="flex items-center gap-2 group text-left cursor-pointer"
-          >
-            <div className="w-8 h-8 rounded-xl bg-purple-600 flex items-center justify-center text-white shadow-md group-active:scale-95 transition-transform">
-              <ShieldAlert className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-extrabold text-xs text-white block">ADMIN CONSOLE</span>
-              <div className="flex items-center gap-1 text-[11px] text-purple-400 font-semibold">
-                <span>Console</span>
-                <ChevronRight className="w-3 h-3 text-slate-500" />
-                <span className="text-white underline underline-offset-2 decoration-purple-500">{getTabLabel(activeTab)}</span>
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setShowMobileSidebar(true)}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-bold rounded-xl border border-slate-700 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-          >
-            <Layers className="w-3.5 h-3.5 text-purple-400" />
-            <span>Menu Drawer</span>
-          </button>
-        </div>
-
-      </div>
-
-      {/* Mobile Left Sidebar Overlay Drawer */}
-      {showMobileSidebar && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
-          {/* Backdrop */}
-          <div
-            onClick={() => setShowMobileSidebar(false)}
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm animate-in fade-in"
-          />
-
-          {/* Sliding Left Overlay Drawer */}
-          <div className="relative w-4/5 max-w-xs bg-slate-950 border-r border-slate-800 h-full p-4 flex flex-col justify-between shadow-2xl z-10 animate-in slide-in-from-left duration-200">
-            <div className="space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-purple-600 flex items-center justify-center text-white shadow-lg">
-                    <ShieldAlert className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h2 className="font-extrabold text-sm text-white">ADMIN CONSOLE</h2>
-                    <p className="text-[10px] text-slate-400">Ghana Civic Control Center</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowMobileSidebar(false)}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-                >
-                  <XCircle className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Navigation Tabs List */}
-              <nav className="space-y-1.5">
-                {(['overview', 'content', 'reports', 'users', 'institutions', 'coordination', 'privacy', 'system'] as AdminTab[]).map(tab => (
-                  <button
-                    key={`drawer-adm-${tab}`}
-                    onClick={() => {
-                      setActiveTab(tab);
-                      setShowMobileSidebar(false);
-                    }}
-                    className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                      activeTab === tab
-                        ? 'bg-purple-600 text-white shadow-md font-bold'
-                        : 'text-slate-300 hover:bg-slate-800/80'
-                    }`}
-                  >
-                    <span>{getTabLabel(tab)}</span>
-                    {activeTab === tab && <CheckCircle2 className="w-4 h-4 text-white" />}
-                  </button>
-                ))}
-              </nav>
-            </div>
-
-            <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-500 space-y-1">
-              <div className="flex items-center justify-between">
-                <span>Status:</span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> ONLINE
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content Body */}
-      <main className="flex-1 p-4 sm:p-6 bg-slate-900/60 overflow-y-auto space-y-5">
-        {/* Top Header - Desktop view */}
-        <div className="hidden md:flex items-center justify-between pb-4 border-b border-slate-800">
-          <div>
-            <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold mb-1">
-              <span>Admin Console</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-              <span className="text-slate-200">{getTabLabel(activeTab)}</span>
-            </div>
-            <h1 className="text-lg font-bold text-white capitalize flex items-center gap-2">
-              {activeTab === 'overview' && 'System Performance & Platform Overview'}
-              {activeTab === 'content' && 'Civic Content & Report Moderation'}
-              {activeTab === 'reports' && 'Citizen Abuse & Flagging Review Queue'}
-              {activeTab === 'users' && 'User Accounts & Access Management'}
-              {activeTab === 'institutions' && 'State Agencies & Alert Channel Configuration'}
-              {activeTab === 'coordination' && 'Inter-Institutional Coordination & SLA Oversight'}
-              {activeTab === 'privacy' && 'P³RE Privacy Engine Policy & Audit'}
-              {activeTab === 'system' && 'Durable Job Queue & Event Timeline Audit'}
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Full administrative authority over users, posts, alert dispatching, and site health.
-            </p>
-          </div>
-
-          <button
-            onClick={loadTabData}
-            disabled={loading}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium border border-slate-700 flex items-center gap-1.5 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-purple-400' : ''}`} />
-            <span>Refresh</span>
-          </button>
-        </div>
-
-        {/* TAB 1: OVERVIEW */}
+    <>
+      <ConsoleLayout<AdminTab>
+        brandTitle="ADMIN CONSOLE"
+        brandSubtitle="Ghana Civic Control Center"
+        brandIcon={<ShieldAlert className="w-4 h-4 text-white" />}
+        accent="purple"
+        items={navItems}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        headerTitle={meta.title}
+        headerSubtitle={meta.subtitle}
+        footerNote="Speak Up Web v1.0 Production"
+        headerActions={
+          <Button variant="secondary" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+            Refresh
+          </Button>
+        }
+      >
         {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {/* Stat Cards Grid (2 Columns on Mobile) */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-              <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-2">
-                <div className="text-xs text-slate-400 flex items-center justify-between">
-                  <span>Registered Users</span>
-                  <Users className="w-4 h-4 text-purple-400" />
-                </div>
-                <div className="text-2xl font-extrabold text-white">{overview?.totalUsers || 0}</div>
-                <div className="text-[10px] text-emerald-400">Citizens & Officials</div>
-              </div>
-
-              <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-2">
-                <div className="text-xs text-slate-400 flex items-center justify-between">
-                  <span>Total Civic Reports</span>
-                  <FileText className="w-4 h-4 text-emerald-400" />
-                </div>
-                <div className="text-2xl font-extrabold text-white">{overview?.totalPosts || 0}</div>
-                <div className="text-[10px] text-slate-400">Across 16 Regions</div>
-              </div>
-
-              <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-2">
-                <div className="text-xs text-slate-400 flex items-center justify-between">
-                  <span>Pending Abuse Flags</span>
-                  <AlertTriangle className="w-4 h-4 text-amber-400" />
-                </div>
-                <div className="text-2xl font-extrabold text-amber-400">{overview?.pendingAbuse || 0}</div>
-                <div className="text-[10px] text-slate-400">Requires review</div>
-              </div>
-
-              <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-2">
-                <div className="text-xs text-slate-400 flex items-center justify-between">
-                  <span>Active State Agencies</span>
-                  <Building2 className="w-4 h-4 text-sky-400" />
-                </div>
-                <div className="text-2xl font-extrabold text-white">{overview?.activeInstitutions || 0}</div>
-                <div className="text-[10px] text-slate-400">Alert routing configured</div>
-              </div>
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard label="Registered Users" value={overview?.totalUsers || 0} hint="Citizens & officials" icon={<Users className="w-4 h-4" />} />
+              <StatCard label="Total Civic Reports" value={overview?.totalPosts || 0} hint={`Across ${overview?.regionsRepresented ?? 0} regions`} icon={<FileText className="w-4 h-4" />} />
+              <StatCard
+                label="Pending Abuse Flags"
+                value={overview?.pendingAbuse || 0}
+                hint="Requires review"
+                tone="warning"
+                icon={<AlertTriangle className="w-4 h-4" />}
+                onClick={() => setActiveTab('reports')}
+              />
+              <StatCard label="Active State Agencies" value={overview?.activeInstitutions || 0} hint={overview?.unreachableInstitutions ? `${overview.unreachableInstitutions} without a dispatch endpoint` : 'Alert routing configured'} tone={overview?.unreachableInstitutions ? 'warning' : 'neutral'} icon={<Building2 className="w-4 h-4" />} onClick={() => setActiveTab('institutions')} />
             </div>
 
-            {/* Sub-system Status */}
-            <div className="bg-slate-950/60 border border-slate-800 p-5 rounded-2xl space-y-4">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Activity className="w-4 h-4 text-purple-400" /> Infrastructure & Subsystem Readiness
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
-                  <div className="text-slate-400">SQLite Storage Engine</div>
-                  <div className="font-bold text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> WAL Mode Active (0.2ms)
-                  </div>
-                </div>
-
-                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
-                  <div className="text-slate-400">P³RE Ghanaian PII Engine</div>
-                  <div className="font-bold text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Ghana Card / License Plate Active
-                  </div>
-                </div>
-
-                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
-                  <div className="text-slate-400">Alert Channels (HMAC / SMTP / SMS)</div>
-                  <div className="font-bold text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Idempotent Alert Queue
-                  </div>
-                </div>
+            <Card>
+              <SectionHeader title="Infrastructure & Subsystem Readiness" icon={<Activity className="w-4 h-4 text-purple-400" />} className="mb-3" />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Tile
+                  label="Platform Health"
+                  value={overview?.systemHealth === 'HEALTHY' ? 'All systems nominal' : overview?.systemHealth === 'ATTENTION_REQUIRED' ? 'Attention required' : 'Degraded'}
+                  tone={overview?.systemHealth === 'HEALTHY' ? 'success' : overview?.systemHealth === 'DEGRADED' ? 'critical' : 'warning'}
+                  icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                />
+                <Tile
+                  label="Database"
+                  value={overview?.databaseStatus === 'CONNECTED' ? 'Connected' : 'Unavailable'}
+                  tone={overview?.databaseStatus === 'CONNECTED' ? 'success' : 'critical'}
+                  icon={<ShieldCheck className="w-3.5 h-3.5" />}
+                />
+                <Tile
+                  label="Alert Delivery"
+                  value={`${overview?.alertsByStatus?.DELIVERED || 0} delivered · ${overview?.alertsByStatus?.SENT || 0} sent · ${overview?.alertsByStatus?.FAILED || 0} failed · ${overview?.alertsByStatus?.NOT_CONFIGURED || 0} unconfigured`}
+                  tone={(overview?.alertsByStatus?.FAILED || 0) > 0 ? 'warning' : 'neutral'}
+                  icon={<Mail className="w-3.5 h-3.5" />}
+                />
               </div>
-            </div>
+            </Card>
           </div>
         )}
 
-        {/* TAB 2: CONTENT MODERATION */}
         {activeTab === 'content' && (
           <div className="space-y-4">
-            {/* Filter bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                <Search className="w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Filter posts by title or author..."
+            <Card padded={false} className="p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <SearchInput
+                  icon={<Search className="w-4 h-4" />}
+                  placeholder="Filter posts by title or author…"
                   value={postSearch}
-                  onChange={e => setPostSearch(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  onChange={(e) => setPostSearch(e.target.value)}
                 />
+                <Select value={moderationFilter} onChange={(e) => setModerationFilter(e.target.value)} className="!w-auto">
+                  <option value="ALL">All Moderation Statuses</option>
+                  <option value="approved">Approved / Visible</option>
+                  <option value="held">Held for Review</option>
+                  <option value="flagged">Flagged</option>
+                  <option value="removed">Removed</option>
+                </Select>
               </div>
+            </Card>
 
-              <select
-                value={moderationFilter}
-                onChange={e => setModerationFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
-              >
-                <option value="ALL">All Moderation Statuses</option>
-                <option value="approved">Approved / Visible</option>
-                <option value="held">Held for Review</option>
-                <option value="flagged">Flagged</option>
-                <option value="removed">Removed</option>
-              </select>
-            </div>
-
-            {/* Posts Table */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-900 text-slate-400 uppercase font-bold text-[10px] border-b border-slate-800">
-                  <tr>
-                    <th className="p-3">Report Details</th>
-                    <th className="p-3">Category</th>
-                    <th className="p-3">Urgency</th>
-                    <th className="p-3">Author</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3 text-right">Moderation Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {adminPosts.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="p-6 text-center text-slate-500">
-                        No reports matching filter criteria.
-                      </td>
-                    </tr>
-                  ) : (
-                    adminPosts.map(post => (
-                      <tr key={post.id} className="hover:bg-slate-900/50 transition-colors">
-                        <td className="p-3">
-                          <div className="font-bold text-white line-clamp-1">{post.title}</div>
-                          <div className="text-[10px] text-slate-400">{post.region} - {post.district}</div>
-                        </td>
-                        <td className="p-3 font-semibold text-slate-300">{post.category}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            post.urgency === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-800 text-slate-300'
-                          }`}>
-                            {post.urgency}
-                          </span>
-                        </td>
-                        <td className="p-3 font-medium text-slate-300">{post.author_name}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            post.moderation_status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
-                          }`}>
-                            {post.moderation_status}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right space-x-1.5">
+            <DataTable
+              loading={loading}
+              skeleton={<TableSkeleton rows={6} cols={6} />}
+              isEmpty={!loading && adminPosts.length === 0}
+              empty={<EmptyState icon={<FileText className="w-5 h-5" />} title="No reports match this filter" description="Adjust the search or moderation status to widen the results." />}
+              columns={
+                <>
+                  <Th>Report Details</Th>
+                  <Th>Category</Th>
+                  <Th>Urgency</Th>
+                  <Th>Author</Th>
+                  <Th>Status</Th>
+                  <Th align="right">Moderation Actions</Th>
+                </>
+              }
+            >
+              <tbody className="divide-y divide-slate-800">
+                {adminPosts.map((post) => {
+                  const busy = actionLoading === `post-mod-${post.id}`;
+                  return (
+                    <TableRow key={post.id}>
+                      <Td>
+                        <div className="font-bold text-white line-clamp-1">{post.title}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {post.region} · {post.district}
+                        </div>
+                      </Td>
+                      <Td className="font-semibold text-slate-300">{post.category}</Td>
+                      <Td>
+                        <StatusBadge meta={getPriorityMeta(post.urgency)} />
+                      </Td>
+                      <Td className="font-medium text-slate-300">{post.author_name}</Td>
+                      <Td>
+                        <StatusBadge meta={getModerationMeta(post.moderation_status)} />
+                      </Td>
+                      <Td align="right">
+                        <div className="flex items-center justify-end gap-1.5">
                           {post.moderation_status !== 'approved' && (
-                            <button
-                              onClick={() => handlePostModerationUpdate(post.id, 'approved', 'PUBLISHED')}
-                              disabled={actionLoading === `post-mod-${post.id}`}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold transition-colors"
-                            >
+                            <Button variant="success" size="xs" loading={busy} onClick={() => handlePostModeration(post, 'approved', 'PUBLISHED')}>
                               Approve
-                            </button>
+                            </Button>
                           )}
                           {post.moderation_status !== 'held' && (
-                            <button
-                              onClick={() => handlePostModerationUpdate(post.id, 'held', 'MODERATION_REVIEW')}
-                              disabled={actionLoading === `post-mod-${post.id}`}
-                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[11px] font-bold transition-colors"
-                            >
+                            <Button variant="warning" size="xs" loading={busy} onClick={() => handlePostModeration(post, 'held', 'MODERATION_REVIEW')}>
                               Hold
-                            </button>
+                            </Button>
                           )}
                           {post.moderation_status !== 'removed' && (
-                            <button
-                              onClick={() => handlePostModerationUpdate(post.id, 'removed', 'REMOVED')}
-                              disabled={actionLoading === `post-mod-${post.id}`}
-                              className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-[11px] font-bold transition-colors"
-                            >
+                            <Button variant="danger" size="xs" loading={busy} onClick={() => handlePostModeration(post, 'removed', 'REMOVED')}>
                               Remove
-                            </button>
+                            </Button>
                           )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </Td>
+                    </TableRow>
+                  );
+                })}
+              </tbody>
+            </DataTable>
           </div>
         )}
 
-        {/* TAB 3: ABUSE REPORTS */}
         {activeTab === 'reports' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-              <span className="text-xs font-bold text-slate-300">Filter Flagged Abuse Complaints:</span>
-              <select
-                value={reportStatusFilter}
-                onChange={e => setReportStatusFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="PENDING">Pending Action</option>
-                <option value="RESOLVED">Resolved</option>
-                <option value="DISMISSED">Dismissed</option>
-              </select>
-            </div>
+            <Card padded={false} className="p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-xs font-bold text-slate-300">Filter flagged abuse complaints</span>
+                <Select value={reportStatusFilter} onChange={(e) => setReportStatusFilter(e.target.value)} className="!w-auto">
+                  <option value="ALL">All Statuses</option>
+                  <option value="PENDING">Pending Action</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="DISMISSED">Dismissed</option>
+                </Select>
+              </div>
+            </Card>
 
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-900 text-slate-400 uppercase font-bold text-[10px] border-b border-slate-800">
-                  <tr>
-                    <th className="p-3">Reported Issue Title</th>
-                    <th className="p-3">Abuse Reason</th>
-                    <th className="p-3">Reporter Details</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {abuseReports.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-6 text-center text-slate-500">
-                        No abuse reports found.
-                      </td>
-                    </tr>
-                  ) : (
-                    abuseReports.map(rep => (
-                      <tr key={rep.id} className="hover:bg-slate-900/50">
-                        <td className="p-3 font-semibold text-white">{rep.post_title || rep.post_id}</td>
-                        <td className="p-3 font-medium text-amber-400">{rep.reason}</td>
-                        <td className="p-3 text-slate-400">{rep.user_id || 'Anonymous Citizen'}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            rep.status === 'PENDING' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-400'
-                          }`}>
-                            {rep.status}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right space-x-1.5">
-                          {rep.status === 'PENDING' && (
-                            <>
-                              <button
-                                onClick={() => handleAbuseReportResolve(rep.id, 'RESOLVED')}
-                                disabled={actionLoading === `report-${rep.id}`}
-                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold"
-                              >
-                                Action & Resolve
-                              </button>
-                              <button
-                                onClick={() => handleAbuseReportResolve(rep.id, 'DISMISSED')}
-                                disabled={actionLoading === `report-${rep.id}`}
-                                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-bold"
-                              >
-                                Dismiss
-                              </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              loading={loading}
+              skeleton={<TableSkeleton rows={5} cols={5} />}
+              isEmpty={!loading && abuseReports.length === 0}
+              empty={<EmptyState icon={<AlertTriangle className="w-5 h-5" />} title="No abuse reports" description="Nothing is waiting in the flagging queue." />}
+              columns={
+                <>
+                  <Th>Reported Issue</Th>
+                  <Th>Abuse Reason</Th>
+                  <Th>Reporter</Th>
+                  <Th>Status</Th>
+                  <Th align="right">Actions</Th>
+                </>
+              }
+            >
+              <tbody className="divide-y divide-slate-800">
+                {abuseReports.map((rep) => {
+                  const busy = actionLoading === `report-${rep.id}`;
+                  return (
+                    <TableRow key={rep.id}>
+                      <Td className="font-semibold text-white">{rep.post_title || rep.post_id}</Td>
+                      <Td className="font-medium text-amber-400">{rep.reason}</Td>
+                      <Td className="text-slate-400">{rep.user_id || 'Anonymous Citizen'}</Td>
+                      <Td>
+                        <StatusBadge meta={getAbuseReportMeta(rep.status)} />
+                      </Td>
+                      <Td align="right">
+                        {rep.status === 'PENDING' ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button variant="success" size="xs" loading={busy} onClick={() => handleAbuseReportAction(rep, 'RESOLVED')}>
+                              Action & Resolve
+                            </Button>
+                            <Button variant="secondary" size="xs" loading={busy} onClick={() => handleAbuseReportAction(rep, 'DISMISSED')}>
+                              Dismiss
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-500">No action required</span>
+                        )}
+                      </Td>
+                    </TableRow>
+                  );
+                })}
+              </tbody>
+            </DataTable>
           </div>
         )}
 
-        {/* TAB 4: USERS MANAGEMENT */}
         {activeTab === 'users' && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                <Search className="w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search user by name, handle or email..."
+            <Card padded={false} className="p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <SearchInput
+                  icon={<Search className="w-4 h-4" />}
+                  placeholder="Search user by name, handle or email…"
                   value={userSearch}
-                  onChange={e => setUserSearch(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                  onChange={(e) => setUserSearch(e.target.value)}
                 />
+                <Select value={userRoleFilter} onChange={(e) => setUserRoleFilter(e.target.value)} className="!w-auto">
+                  <option value="ALL">All Roles</option>
+                  <option value="CITIZEN">Citizen</option>
+                  <option value="INSTITUTION_REP">State Institution Rep</option>
+                  <option value="JOURNALIST">Journalist</option>
+                  <option value="MODERATOR">Moderator</option>
+                  <option value="ADMIN">System Admin</option>
+                </Select>
               </div>
+            </Card>
 
-              <select
-                value={userRoleFilter}
-                onChange={e => setUserRoleFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
-              >
-                <option value="ALL">All Roles</option>
-                <option value="CITIZEN">Citizen</option>
-                <option value="INSTITUTION_REP">State Institution Rep</option>
-                <option value="JOURNALIST">Journalist</option>
-                <option value="MODERATOR">Moderator</option>
-                <option value="ADMIN">System Admin</option>
-              </select>
-            </div>
-
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-900 text-slate-400 uppercase font-bold text-[10px] border-b border-slate-800">
-                  <tr>
-                    <th className="p-3">User</th>
-                    <th className="p-3">Email</th>
-                    <th className="p-3">Role</th>
-                    <th className="p-3">Verified Status</th>
-                    <th className="p-3 text-right">Account Controls</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {users.map(u => (
-                    <tr key={u.id} className="hover:bg-slate-900/50">
-                      <td className="p-3 font-bold text-white flex items-center gap-2">
-                        <img src={u.avatar} alt="" className="w-6 h-6 rounded-full bg-slate-800" />
+            <DataTable
+              loading={loading}
+              skeleton={<TableSkeleton rows={6} cols={5} />}
+              isEmpty={!loading && users.length === 0}
+              empty={<EmptyState icon={<Users className="w-5 h-5" />} title="No users found" description="Try a different search term or role filter." />}
+              columns={
+                <>
+                  <Th>User</Th>
+                  <Th>Email</Th>
+                  <Th>Role</Th>
+                  <Th>Verification</Th>
+                  <Th align="right">Account Controls</Th>
+                </>
+              }
+            >
+              <tbody className="divide-y divide-slate-800">
+                {users.map((u) => (
+                  <TableRow key={u.id}>
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <img src={u.avatar} alt="" className="w-7 h-7 rounded-full bg-slate-800" />
                         <div>
-                          <div>{u.name}</div>
+                          <div className="font-bold text-white">{u.name}</div>
                           <div className="text-[10px] text-slate-500 font-normal">{u.handle}</div>
                         </div>
-                      </td>
-                      <td className="p-3 font-mono text-slate-400">{u.email}</td>
-                      <td className="p-3">
-                        <select
+                      </div>
+                    </Td>
+                    <Td className="font-mono text-slate-400">{u.email}</Td>
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge meta={getRoleMeta(u.role)} />
+                        <Select
+                          aria-label={`Change role for ${u.name}`}
                           value={u.role}
-                          onChange={e => handleUserRoleChange(u.id, e.target.value)}
                           disabled={actionLoading === `user-role-${u.id}`}
-                          className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-purple-300 font-bold focus:outline-none"
+                          onChange={(e) => handleUserRoleChange(u.id, e.target.value, u.role)}
+                          className="!w-auto !py-1"
                         >
                           <option value="CITIZEN">CITIZEN</option>
                           <option value="INSTITUTION_REP">INSTITUTION_REP</option>
                           <option value="JOURNALIST">JOURNALIST</option>
                           <option value="MODERATOR">MODERATOR</option>
                           <option value="ADMIN">ADMIN</option>
-                        </select>
-                      </td>
-                      <td className="p-3">
-                        <button
-                          onClick={() => handleUserVerifyToggle(u.id, Boolean(u.is_verified))}
-                          disabled={actionLoading === `user-verify-${u.id}`}
-                          className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition-colors ${
-                            u.is_verified ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
-                          }`}
-                        >
-                          <UserCheck className="w-3 h-3" />
-                          {u.is_verified ? 'VERIFIED' : 'UNVERIFIED'}
-                        </button>
-                      </td>
-                      <td className="p-3 text-right text-slate-400 text-[10px]">
-                        ID: {u.id.substring(0, 12)}...
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        </Select>
+                      </div>
+                    </Td>
+                    <Td>
+                      <Button
+                        variant={u.is_verified ? 'success' : 'secondary'}
+                        size="xs"
+                        loading={actionLoading === `user-verify-${u.id}`}
+                        icon={<UserCheck className="w-3 h-3" />}
+                        onClick={() => handleUserVerifyToggle(u.id, Boolean(u.is_verified))}
+                      >
+                        {u.is_verified ? 'Verified' : 'Unverified'}
+                      </Button>
+                    </Td>
+                    <Td align="right" className="text-[10px] text-slate-500 font-mono">
+                      {String(u.id).slice(0, 12)}…
+                    </Td>
+                  </TableRow>
+                ))}
+              </tbody>
+            </DataTable>
           </div>
         )}
 
-        {/* TAB 5: INSTITUTIONS & ALERT CHANNELS */}
         {activeTab === 'institutions' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm text-white">Registered Ghanaian Public Institutions</h3>
-              <button
-                onClick={() => setShowInstModal(true)}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md"
-              >
-                <Plus className="w-4 h-4" /> Add State Agency
-              </button>
-            </div>
+            <SectionHeader
+              title="Registered Ghanaian Public Institutions"
+              description="Agencies receiving routed reports and alerts."
+              actions={
+                <Button variant="success" onClick={() => openInstitutionModal()} icon={<Plus className="w-4 h-4" />}>
+                  Add State Agency
+                </Button>
+              }
+            />
 
-            {showInstModal && (
-              <form onSubmit={handleSaveInstitution} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                <h4 className="font-bold text-xs text-purple-400 uppercase">Manage Agency Profile</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <input
-                    type="text"
-                    placeholder="Official Name (e.g., Ghana Police Service)"
-                    required
-                    value={instForm.officialName}
-                    onChange={e => setInstForm({ ...instForm, officialName: e.target.value })}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Short Name (e.g., Ghana Police)"
-                    required
-                    value={instForm.shortName}
-                    onChange={e => setInstForm({ ...instForm, shortName: e.target.value })}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Acronym (e.g., GPS)"
-                    required
-                    value={instForm.acronym}
-                    onChange={e => setInstForm({ ...instForm, acronym: e.target.value })}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                  <select
-                    value={instForm.alertMethod}
-                    onChange={e => setInstForm({ ...instForm, alertMethod: e.target.value })}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  >
+            <DataTable
+              loading={loading}
+              skeleton={<TableSkeleton rows={5} cols={6} />}
+              isEmpty={!loading && institutions.length === 0}
+              empty={<EmptyState icon={<Building2 className="w-5 h-5" />} title="No agencies registered" description="Register a state agency to begin routing citizen reports and dispatching alerts." action={<Button variant="success" size="sm" onClick={() => openInstitutionModal()} icon={<Plus className="w-4 h-4" />}>Add State Agency</Button>} />}
+              columns={
+                <>
+                  <Th>Agency</Th>
+                  <Th>Jurisdiction</Th>
+                  <Th>Alert Method</Th>
+                  <Th>Dispatch Endpoint</Th>
+                  <Th>Reach</Th>
+                  <Th align="right">Actions</Th>
+                </>
+              }
+            >
+              <tbody className="divide-y divide-slate-800">
+                {institutions.map((inst) => {
+                  const email = inst.emailChannels?.[0];
+                  const whatsapp = inst.whatsappChannels?.[0];
+                  const endpoint = inst.alertMethod === 'OFFICIAL_EMAIL' ? email
+                    : inst.alertMethod === 'WHATSAPP_LINE' ? whatsapp
+                    : inst.alertMethod === 'DIRECT_API' ? (inst.website ? `${inst.website.replace(/\/$/, '')}/api/speakup-webhook` : undefined)
+                    : undefined;
+                  return (
+                    <TableRow key={inst.id}>
+                      <Td>
+                        <div className="font-medium text-white">{inst.shortName}</div>
+                        <div className="text-slate-400 text-xs">{inst.officialName}</div>
+                      </Td>
+                      <Td><Badge tone="neutral">{inst.jurisdiction || 'NATIONAL'}</Badge></Td>
+                      <Td><Badge tone="info">{inst.alertMethod || 'UNSET'}</Badge></Td>
+                      <Td>
+                        {endpoint
+                          ? <span className="font-mono text-emerald-400 text-xs">{endpoint}</span>
+                          : <Badge tone="warning">NOT CONFIGURED</Badge>}
+                      </Td>
+                      <Td>
+                        <span className="text-xs text-slate-300">
+                          {inst.activeMentionsCount || 0} routed · {inst.unansweredMentionsCount || 0} awaiting
+                        </span>
+                      </Td>
+                      <Td align="right">
+                        <Button variant="ghost" size="xs" icon={<Pencil className="w-3.5 h-3.5" />} onClick={() => openInstitutionModal(inst)}>
+                          Configure
+                        </Button>
+                      </Td>
+                    </TableRow>
+                  );
+                })}
+              </tbody>
+            </DataTable>
+
+            <Modal
+              open={showInstModal}
+              onClose={() => setShowInstModal(false)}
+              title="Manage agency profile"
+              description="Register a state agency and configure how it receives alerts."
+              footer={
+                <>
+                  <Button variant="ghost" onClick={() => setShowInstModal(false)} disabled={actionLoading === 'save-inst'}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" form="institution-form" variant="primary" loading={actionLoading === 'save-inst'}>
+                    Save Institution
+                  </Button>
+                </>
+              }
+            >
+              <form id="institution-form" onSubmit={handleSaveInstitution} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Official Name" required>
+                  <Input required placeholder="Ghana Police Service" value={instForm.officialName} onChange={(e) => setInstForm({ ...instForm, officialName: e.target.value })} />
+                </Field>
+                <Field label="Short Name" required>
+                  <Input required placeholder="Ghana Police" value={instForm.shortName} onChange={(e) => setInstForm({ ...instForm, shortName: e.target.value })} />
+                </Field>
+                <Field label="Acronym" required>
+                  <Input required placeholder="GPS" value={instForm.acronym} onChange={(e) => setInstForm({ ...instForm, acronym: e.target.value })} />
+                </Field>
+                <Field label="Primary Alert Channel">
+                  <Select value={instForm.alertMethod} onChange={(e) => setInstForm({ ...instForm, alertMethod: e.target.value })}>
                     <option value="OFFICIAL_EMAIL">Official SMTP Email Alert</option>
                     <option value="DIRECT_API">HMAC Webhook API</option>
-                    <option value="WHATSAPP_DISPATCH">WhatsApp Dispatch Desk</option>
-                  </select>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowInstModal(false)}
-                    className="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs rounded-lg"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg"
-                  >
-                    Save Institution
-                  </button>
-                </div>
+                    <option value="WHATSAPP_LINE">WhatsApp Dispatch Desk</option>
+                    <option value="NO_DIRECT_CHANNEL">No Direct Channel (tag only)</option>
+                  </Select>
+                </Field>
+                <Field label="Official Website" hint="Used to derive the HMAC webhook endpoint for API dispatch.">
+                  <Input placeholder="https://police.gov.gh" value={instForm.officialWebsite} onChange={(e) => setInstForm({ ...instForm, officialWebsite: e.target.value })} />
+                </Field>
+                <Field label="Alert Email Desk(s)" hint="Comma-separated. Required for email dispatch." className="sm:col-span-2">
+                  <Input placeholder="alerts@police.gov.gh, dispatch@police.gov.gh" value={instForm.emailChannels} onChange={(e) => setInstForm({ ...instForm, emailChannels: e.target.value })} />
+                </Field>
+                <Field label="WhatsApp Desk Number(s)" hint="Comma-separated. Required for WhatsApp dispatch." className="sm:col-span-2">
+                  <Input placeholder="+233206639121" value={instForm.whatsappChannels} onChange={(e) => setInstForm({ ...instForm, whatsappChannels: e.target.value })} />
+                </Field>
+                <Field label="Mandate" className="sm:col-span-2">
+                  <Input placeholder="Constitutional mandate or service scope" value={instForm.mandate} onChange={(e) => setInstForm({ ...instForm, mandate: e.target.value })} />
+                </Field>
               </form>
-            )}
-
-            <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-xl text-xs text-slate-300 space-y-2">
-              <p className="font-semibold text-white">Configured Dispatch Channels:</p>
-              <ul className="list-disc list-inside space-y-1 text-slate-400">
-                <li>Ghana Police Service (GPS) — <span className="text-emerald-400">alerts@police.gov.gh</span> (Email & HMAC Webhook)</li>
-                <li>Electricity Company of Ghana (ECG) — <span className="text-emerald-400">dispatch@ecg.gov.gh</span> (Direct API)</li>
-                <li>Ghana Water Company Ltd (GWCL) — <span className="text-emerald-400">reports@gwcl.com.gh</span> (Email)</li>
-                <li>NADMO Disaster Emergency — <span className="text-emerald-400">emergency@nadmo.gov.gh</span> (SMS / API)</li>
-              </ul>
-            </div>
+            </Modal>
           </div>
         )}
 
-        {/* TAB: COORDINATION OVERSIGHT */}
         {activeTab === 'coordination' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                  <GitPullRequest className="w-4 h-4 text-amber-400" /> Cross-Institution Coordination
-                </h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Oversight of transfers, delegations, escalations and SLA compliance across all desks.
-                </p>
-              </div>
-              <button
-                onClick={handleRunSlaSweep}
-                disabled={actionLoading === 'sla-sweep'}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-slate-950 text-xs font-bold rounded-lg flex items-center gap-1.5"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${actionLoading === 'sla-sweep' ? 'animate-spin' : ''}`} />
-                Run SLA Sweep Now
-              </button>
-            </div>
-
-            {sweepResult && (
-              <div className="p-3 bg-slate-900 border border-amber-900/50 rounded-xl text-[11px] text-amber-200">
-                {sweepResult}
-              </div>
-            )}
+            <SectionHeader
+              title="Cross-Institution Coordination"
+              description="Oversight of transfers, delegations, escalations and SLA compliance across all desks."
+              icon={<GitPullRequest className="w-4 h-4 text-amber-400" />}
+              actions={
+                <Button variant="warning" loading={actionLoading === 'sla-sweep'} onClick={handleRunSlaSweep} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+                  Run SLA Sweep Now
+                </Button>
+              }
+            />
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-4 bg-slate-950/80 border border-amber-900/50 rounded-2xl">
-                <div className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1">
-                  <GitPullRequest className="w-3.5 h-3.5" /> Pending Delegations
-                </div>
-                <div className="text-2xl font-black text-white mt-1">{coordination?.summary?.pendingDelegations ?? 0}</div>
-                <p className="text-[10px] text-slate-400">Inter-institution transfers awaiting acceptance</p>
-              </div>
-              <div className="p-4 bg-slate-950/80 border border-red-900/50 rounded-2xl">
-                <div className="text-[10px] uppercase font-bold text-red-400 flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5" /> SLA Breaches
-                </div>
-                <div className="text-2xl font-black text-white mt-1">{coordination?.summary?.overdueItems ?? 0}</div>
-                <p className="text-[10px] text-slate-400">Inbox items past their response deadline</p>
-              </div>
-              <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl">
-                <div className="text-[10px] uppercase font-bold text-slate-300 flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5" /> Agencies With Open Work
-                </div>
-                <div className="text-2xl font-black text-white mt-1">{coordination?.summary?.institutionsWithOpenWork ?? 0}</div>
-                <p className="text-[10px] text-slate-400">Institutions holding unresolved reports</p>
-              </div>
+              <StatCard label="Pending Delegations" value={coordination?.summary?.pendingDelegations ?? 0} hint="Transfers awaiting acceptance" tone="warning" icon={<GitPullRequest className="w-4 h-4" />} />
+              <StatCard label="SLA Breaches" value={coordination?.summary?.overdueItems ?? 0} hint="Past their response deadline" tone="critical" icon={<AlertTriangle className="w-4 h-4" />} />
+              <StatCard label="Agencies With Open Work" value={coordination?.summary?.institutionsWithOpenWork ?? 0} hint="Holding unresolved reports" icon={<Building2 className="w-4 h-4" />} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2">
-                    <GitPullRequest className="w-4 h-4 text-amber-400" /> Pending Delegations
-                  </h3>
-                  <button onClick={loadTabData} className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1">
-                    <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Refresh
-                  </button>
-                </div>
-                {(!coordination?.pendingDelegations || coordination.pendingDelegations.length === 0) ? (
-                  <p className="text-xs text-slate-500 py-6 text-center">No pending delegations across the platform.</p>
+              <Card className="space-y-3">
+                <SectionHeader
+                  title="Pending Delegations"
+                  icon={<GitPullRequest className="w-4 h-4 text-amber-400" />}
+                  actions={<Button variant="ghost" size="xs" onClick={loadTabData} loading={loading} icon={<RefreshCw className="w-3 h-3" />}>Refresh</Button>}
+                />
+                {loading ? (
+                  <div className="space-y-2">
+                    <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
+                    <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
+                  </div>
+                ) : !coordination?.pendingDelegations?.length ? (
+                  <EmptyState icon={<GitPullRequest className="w-5 h-5" />} title="No pending delegations" description="Every inter-institution transfer has been actioned." />
                 ) : (
-                  <div className="space-y-2 max-h-[360px] overflow-y-auto">
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
                     {coordination.pendingDelegations.map((d: any) => (
                       <div key={d.id} className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs space-y-1">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-bold text-white truncate">{d.postTitle || 'Linked report'}</span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800 uppercase">
-                            {d.delegationType}
-                          </span>
+                          <Badge tone="warning" uppercase>{d.delegationType}</Badge>
                         </div>
                         <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
                           <span>{d.fromInstitutionName || 'External'}</span>
@@ -1019,176 +885,253 @@ export const AdminDashboardView: React.FC = () => {
                           <span className="text-slate-200">{d.toInstitutionName}</span>
                         </div>
                         <p className="text-[11px] text-slate-500 line-clamp-2">{d.reason}</p>
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            size="xs"
+                            variant="success"
+                            loading={actionLoading === `delegation-${d.id}`}
+                            onClick={() => handleDelegationAction(d, 'ACCEPTED')}
+                            icon={<Check className="w-3 h-3" />}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="danger"
+                            loading={actionLoading === `delegation-${d.id}`}
+                            onClick={() => handleDelegationAction(d, 'DECLINED')}
+                            icon={<X className="w-3 h-3" />}
+                          >
+                            Decline
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            loading={actionLoading === `delegation-${d.id}`}
+                            onClick={() => handleDelegationAction(d, 'CANCELLED')}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </Card>
 
-              <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
-                <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-red-400" /> SLA Overdue Inbox Items
-                </h3>
-                {(!coordination?.overdueItems || coordination.overdueItems.length === 0) ? (
-                  <p className="text-xs text-slate-500 py-6 text-center">No overdue items. All desks within SLA.</p>
+              <Card className="space-y-3">
+                <SectionHeader title="SLA Overdue Inbox Items" icon={<AlertTriangle className="w-4 h-4 text-red-400" />} />
+                {loading ? (
+                  <div className="space-y-2">
+                    <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
+                    <div className="h-16 rounded-xl bg-slate-800/60 animate-pulse" />
+                  </div>
+                ) : !coordination?.overdueItems?.length ? (
+                  <EmptyState icon={<CheckCircle2 className="w-5 h-5" />} title="All desks within SLA" description="No overdue work items across the platform." />
                 ) : (
-                  <div className="space-y-2 max-h-[360px] overflow-y-auto">
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
                     {coordination.overdueItems.map((item: any) => (
-                      <div key={item.id} className="p-3 bg-slate-900 border border-red-900/40 rounded-xl text-xs space-y-1">
+                      <div key={item.id} className="p-3 bg-slate-900 border border-red-900/40 rounded-xl text-xs space-y-1.5">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-bold text-white truncate">{item.title}</span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950/70 text-red-300 border border-red-800 uppercase">
-                            {item.itemPriority}
-                          </span>
+                          <StatusBadge meta={getPriorityMeta(item.itemPriority)} />
                         </div>
                         <div className="text-[11px] text-slate-400">
-                          {item.institutionName}{item.deskName ? ` • ${item.deskName}` : ''}
+                          {item.institutionName}
+                          {item.deskName ? ` • ${item.deskName}` : ''}
                         </div>
                         {item.dueAt && (
-                          <div className="text-[11px] text-red-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> Due {new Date(item.dueAt).toLocaleString()}
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-3 h-3 text-red-400" />
+                            <span className="text-[10px] text-red-400 font-semibold">Due {new Date(item.dueAt).toLocaleString()}</span>
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </Card>
             </div>
 
-            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
-              <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-purple-400" /> Open Workload by Institution
-              </h3>
-              {(!coordination?.byInstitution || coordination.byInstitution.length === 0) ? (
-                <p className="text-xs text-slate-500 py-6 text-center">No open institutional work items.</p>
+            <Card className="space-y-3">
+              <SectionHeader title="Open Workload by Institution" icon={<Building2 className="w-4 h-4 text-purple-400" />} />
+              {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-12 rounded-xl bg-slate-800/60 animate-pulse" />
+                  ))}
+                </div>
+              ) : !coordination?.byInstitution?.length ? (
+                <EmptyState icon={<Inbox className="w-5 h-5" />} title="No open institutional work" description="All routed reports have been resolved." />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {coordination.byInstitution.map((row: any) => (
-                    <div key={row.institutionId} className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between">
+                    <div key={row.institutionId} className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between gap-2">
                       <span className="text-xs text-slate-200 truncate">{row.institutionName || row.institutionId}</span>
-                      <span className="text-sm font-black text-purple-400">{row.openReports}</span>
+                      <Badge tone="progress" size="sm">{row.openReports}</Badge>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
           </div>
         )}
 
-        {/* TAB 6: P3RE PRIVACY ENGINE */}
         {activeTab === 'privacy' && (
           <div className="space-y-4">
-            <div className="p-5 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase">
-                <ShieldCheck className="w-4 h-4" /> P³RE Privacy Engine Active Policy
-              </div>
+            <Card className="space-y-3">
+              <SectionHeader title="P³RE Privacy Engine Active Policy" icon={<ShieldCheck className="w-4 h-4 text-emerald-400" />} />
               <p className="text-xs text-slate-300 leading-relaxed">
-                The Privacy-Preserving Public Representation Engine isolates raw citizen submissions in protected storage, executes local Ghanaian deterministic PII detectors (Ghana Card IDs, Phone numbers, GPS coordinates), generates public projections, and restricts raw evidence to authorized state officials.
+                The Privacy-Preserving Public Representation Engine isolates raw citizen submissions in protected storage, runs local
+                Ghanaian deterministic PII detectors (Ghana Card IDs, phone numbers, GPS coordinates), generates public projections, and
+                restricts raw evidence to authorised state officials.
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-                <div className="bg-slate-900 p-2 rounded-lg border border-slate-800">
-                  <div className="text-slate-500 text-[10px]">Protected Storage</div>
-                  <div className="font-bold text-white">/uploads/protected</div>
-                </div>
-                <div className="bg-slate-900 p-2 rounded-lg border border-slate-800">
-                  <div className="text-slate-500 text-[10px]">Public Storage</div>
-                  <div className="font-bold text-white">/uploads/public</div>
-                </div>
-                <div className="bg-slate-900 p-2 rounded-lg border border-slate-800">
-                  <div className="text-slate-500 text-[10px]">Ghana Card ID Detector</div>
-                  <div className="font-bold text-emerald-400">GHA-XXXXXXXXX-X</div>
-                </div>
-                <div className="bg-slate-900 p-2 rounded-lg border border-slate-800">
-                  <div className="text-slate-500 text-[10px]">Access Token Expiry</div>
-                  <div className="font-bold text-amber-400">30 Minutes</div>
-                </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Tile label="Protected Storage" value={privacy?.storage?.protected || '—'} />
+                <Tile label="Public Storage" value={privacy?.storage?.public || '—'} />
+                <Tile label="Findings Detected" value={String(privacy?.summary?.totalFindings ?? '—')} tone="success" />
+                <Tile
+                  label="Evidence Token TTL"
+                  value={privacy?.accessTokenTtlSeconds ? `${Math.round(privacy.accessTokenTtlSeconds / 60)} Minutes` : '—'}
+                  tone="warning"
+                />
               </div>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card className="space-y-3">
+                <SectionHeader title="Detection Coverage" icon={<Activity className="w-4 h-4 text-purple-400" />} />
+                {!privacy?.detectors?.length ? (
+                  <EmptyState icon={<Lock className="w-5 h-5" />} title="No findings recorded yet" description="PII detectors run automatically on new submissions." />
+                ) : (
+                  <div className="space-y-2">
+                    {privacy.detectors.map((d: any) => (
+                      <div key={d.detector} className="flex items-center justify-between p-2.5 bg-slate-900 border border-slate-800 rounded-lg">
+                        <span className="text-xs text-slate-200 font-mono">{d.detector}</span>
+                        <Badge tone="progress" size="sm">{d.count}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+
+              <Card className="space-y-3">
+                <SectionHeader title="Active Policy Rules" icon={<ShieldCheck className="w-4 h-4 text-emerald-400" />} />
+                {!privacy?.policies?.length ? (
+                  <EmptyState icon={<Lock className="w-5 h-5" />} title="No policies configured" />
+                ) : (
+                  <div className="space-y-2">
+                    {privacy.policies.map((p: any) => (
+                      <div key={p.id} className="flex items-center justify-between gap-2 p-2.5 bg-slate-900 border border-slate-800 rounded-lg">
+                        <div className="min-w-0">
+                          <div className="text-xs text-slate-200 truncate">{p.policyName}</div>
+                          <div className="text-[10px] text-slate-500">{p.findingType} · {p.audience} · v{p.version}</div>
+                        </div>
+                        <Badge tone={p.enabled ? 'success' : 'neutral'} size="sm">{p.action}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
             </div>
           </div>
         )}
 
-        {/* TAB 7: JOB QUEUE & AUDIT LOGS */}
         {activeTab === 'system' && (
           <div className="space-y-6">
-            {/* Job Queue */}
             <div className="space-y-3">
-              <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-purple-400" /> Background Job Queue
-              </h3>
-              <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-900 text-slate-400 uppercase font-bold text-[10px] border-b border-slate-800">
-                    <tr>
-                      <th className="p-3">Job ID & Type</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Attempts</th>
-                      <th className="p-3">Created At</th>
-                      <th className="p-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {jobs.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="p-4 text-center text-slate-500">
-                          No background jobs in queue.
-                        </td>
-                      </tr>
-                    ) : (
-                      jobs.map(j => (
-                        <tr key={j.id} className="hover:bg-slate-900/50">
-                          <td className="p-3 font-mono font-bold text-white">
-                            <div>{j.type}</div>
-                            <div className="text-[10px] text-slate-500 font-normal">{j.id}</div>
-                          </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              j.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' :
-                              j.status === 'FAILED' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
-                            }`}>
-                              {j.status}
-                            </span>
-                          </td>
-                          <td className="p-3 text-slate-400">{j.attempts} / {j.max_attempts}</td>
-                          <td className="p-3 text-slate-400">{new Date(j.created_at).toLocaleString()}</td>
-                          <td className="p-3 text-right">
-                            {j.status === 'FAILED' && (
-                              <button
-                                onClick={() => handleRetryJob(j.id)}
-                                disabled={actionLoading === `job-${j.id}`}
-                                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-[11px] font-bold flex items-center gap-1 ml-auto"
-                              >
-                                <RotateCcw className="w-3 h-3" /> Retry
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <SectionHeader title="Background Job Queue" icon={<Cpu className="w-4 h-4 text-purple-400" />} />
+              <DataTable
+                loading={loading}
+                skeleton={<TableSkeleton rows={5} cols={5} />}
+                isEmpty={!loading && jobs.length === 0}
+                empty={<EmptyState icon={<Cpu className="w-5 h-5" />} title="No background jobs" description="The durable queue is empty." />}
+                columns={
+                  <>
+                    <Th>Job</Th>
+                    <Th>Status</Th>
+                    <Th>Attempts</Th>
+                    <Th>Created</Th>
+                    <Th align="right">Actions</Th>
+                  </>
+                }
+              >
+                <tbody className="divide-y divide-slate-800">
+                  {jobs.map((j) => (
+                    <TableRow key={j.id}>
+                      <Td>
+                        <div className="font-mono font-bold text-white">{j.type}</div>
+                        <div className="text-[10px] text-slate-500 font-normal font-mono">{j.id}</div>
+                      </Td>
+                      <Td>
+                        <StatusBadge meta={getJobMeta(j.status)} />
+                      </Td>
+                      <Td className="text-slate-400">
+                        {j.attempts} / {j.max_attempts}
+                      </Td>
+                      <Td className="text-slate-400">{new Date(j.created_at).toLocaleString()}</Td>
+                      <Td align="right">
+                        {j.status === 'FAILED' ? (
+                          <Button
+                            variant="primary"
+                            size="xs"
+                            loading={actionLoading === `job-${j.id}`}
+                            onClick={() => handleRetryJob(j.id)}
+                            icon={<RotateCcw className="w-3 h-3" />}
+                          >
+                            Retry
+                          </Button>
+                        ) : (
+                          <span className="text-[10px] text-slate-500">—</span>
+                        )}
+                      </Td>
+                    </TableRow>
+                  ))}
+                </tbody>
+              </DataTable>
             </div>
 
-            {/* Audit Logs */}
             <div className="space-y-3">
-              <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-400" /> Immutable Event Audit Timeline
-              </h3>
-              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2 max-h-60 overflow-y-auto text-xs font-mono">
-                {auditLogs.map((log, idx) => (
-                  <div key={idx} className="p-2 bg-slate-900/80 rounded border border-slate-800 flex items-center justify-between text-slate-300">
-                    <div>
-                      <span className="text-purple-400 font-bold">[{log.event_type}]</span> Report: {log.report_id} — Actor: {log.actor_type} ({log.actor_id || 'System'})
-                    </div>
-                    <span className="text-[10px] text-slate-500">{new Date(log.created_at).toLocaleTimeString()}</span>
+              <SectionHeader title="Immutable Event Audit Timeline" icon={<Clock className="w-4 h-4 text-emerald-400" />} />
+              <Card padded={false} className="p-3 space-y-2 max-h-60 overflow-y-auto">
+                {loading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-8 rounded-lg bg-slate-800/60 animate-pulse" />
+                    ))}
                   </div>
-                ))}
-              </div>
+                ) : auditLogs.length === 0 ? (
+                  <EmptyState icon={<Clock className="w-5 h-5" />} title="No audit events yet" />
+                ) : (
+                  auditLogs.map((log, idx) => (
+                    <div key={idx} className="p-2 bg-slate-900/80 rounded-lg border border-slate-800 flex items-center justify-between gap-2 text-[11px] font-mono text-slate-300">
+                      <div className="min-w-0 truncate">
+                        <span className="text-purple-400 font-bold">[{log.event_type}]</span> Report: {log.report_id} — Actor:{' '}
+                        {log.actor_type} ({log.actor_id || 'System'})
+                      </div>
+                      <span className="text-[10px] text-slate-500 shrink-0">{new Date(log.created_at).toLocaleTimeString()}</span>
+                    </div>
+                  ))
+                )}
+              </Card>
             </div>
           </div>
         )}
-      </main>
-    </div>
+      </ConsoleLayout>
+
+      <ConfirmDialog
+        open={Boolean(pending)}
+        title={pending?.title || ''}
+        message={pending?.message}
+        confirmLabel={pending?.confirmLabel}
+        tone={pending?.tone}
+        confirmPhrase={pending?.confirmPhrase}
+        reasonLabel={pending?.reasonLabel}
+        reasonRequired={pending?.reasonRequired}
+        busy={Boolean(actionLoading)}
+        onClose={() => setPending(null)}
+        onConfirm={runPending}
+      />
+    </>
   );
 };

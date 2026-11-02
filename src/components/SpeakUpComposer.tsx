@@ -177,9 +177,36 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
   const triggerAutoIntelligence = async (textInput: string) => {
     if (!textInput.trim() || isIntelligenceOverridden) return;
     setIsAnalyzing(true);
+
+    // Deterministic routing is the guaranteed floor: even when AI is offline the
+    // report still reaches the right authority, so a citizen is never left unheard.
+    const resolveDeterministic = async (category: string) => {
+      try {
+        const candidates = await api.resolveInstitutions({
+          category,
+          region,
+          district,
+          title,
+          content: textInput
+        });
+        const ranked = (candidates || []).filter(c => c.tier === 'PRIMARY' || c.tier === 'SECONDARY');
+        const matched = institutionsList.filter(i => ranked.some(c => c.id === i.id));
+        if (matched.length > 0 && !isIntelligenceOverridden) {
+          setSelectedInstitutions(matched);
+        }
+        return matched.length > 0;
+      } catch (err) {
+        console.warn('Deterministic institution routing skipped:', err);
+        return false;
+      }
+    };
+
     try {
       const res = await api.analyzePost(textInput, { region, district });
-      if (res) {
+      const aiUsable = res && res.status !== 'AI_UNAVAILABLE';
+      let aiTagged = false;
+
+      if (aiUsable) {
         if (res.category && CATEGORIES.includes(res.category as CivicCategory)) {
           setInferredCategory(res.category as CivicCategory);
         }
@@ -191,11 +218,19 @@ export const SpeakUpComposer: React.FC<SpeakUpComposerProps> = ({
           const matched = institutionsList.filter(i => res.matchedInstitutionIds.includes(i.id));
           if (matched.length > 0) {
             setSelectedInstitutions(matched);
+            aiTagged = true;
           }
         }
       }
+
+      // AI unavailable, or it returned no authorities — fall back to rule-based routing.
+      if (!aiTagged) {
+        const effectiveCategory = (aiUsable && res.category) ? res.category : inferredCategory;
+        await resolveDeterministic(effectiveCategory);
+      }
     } catch (err) {
       console.warn('Background civic intelligence inference skipped:', err);
+      await resolveDeterministic(inferredCategory);
     } finally {
       setIsAnalyzing(false);
     }

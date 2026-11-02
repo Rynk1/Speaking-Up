@@ -443,14 +443,14 @@ export class CoordinationService {
     AuditService.log({
       eventType: 'DELEGATION_TRANSITION',
       userId: actor.id,
-      actorType: 'INSTITUTION',
+      actorType: actor.role === 'ADMIN' ? 'ADMIN' : actor.role === 'MODERATOR' ? 'MODERATOR' : 'INSTITUTION',
       institutionId: delegation.to_institution_id,
       targetType: 'DELEGATION',
       targetId: delegationId,
       beforeState: { status: delegation.status },
       afterState: { status: targetStatus },
       reason: note || `Delegation marked ${targetStatus}`,
-      metadata: { actorName: actor.name }
+      metadata: { actorName: actor.name, actorRole: actor.role, oversight: actor.role === 'ADMIN' || actor.role === 'MODERATOR' }
     });
 
     OutboxService.enqueueEvent('coordination.delegation.transitioned', 'DELEGATION', delegationId, {

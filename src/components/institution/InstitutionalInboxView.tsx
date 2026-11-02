@@ -4,25 +4,36 @@ import {
   AlertTriangle,
   Flame,
   Clock,
-  Filter,
   Search,
   CheckCircle2,
-  ChevronRight,
-  Eye,
   MessageSquare,
   Building2,
   ArrowUpRight,
   Layers,
-  ShieldCheck,
   RefreshCw,
   UserPlus,
   Forward,
   ArrowUpCircle,
-  EyeOff,
-  X
+  EyeOff
 } from 'lucide-react';
 import { InstitutionalInboxItem, CivicPost, InstitutionalDesk, InstitutionTeamMember } from '../../types';
 import { CivicPriorityIndicator } from './CivicPriorityIndicator';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  InlineAlert,
+  Modal,
+  SearchInput,
+  Select,
+  StatCard,
+  StatusBadge,
+  Textarea,
+  WorkflowStepper
+} from '../ui';
+import { getInboxStateMeta, getPriorityMeta } from '../../utils/status';
 
 interface InstitutionalInboxViewProps {
   items: InstitutionalInboxItem[];
@@ -76,7 +87,6 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
     return map;
   }, [team]);
 
-  // Filter items
   const filtered = items.filter((item) => {
     if (filterPriority !== 'ALL' && item.itemPriority !== filterPriority) return false;
     if (filterType !== 'ALL' && item.itemType !== filterType) return false;
@@ -114,94 +124,43 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
     }
   };
 
-  const emergencyCount = items.filter(i => i.itemPriority === 'EMERGENCY').length;
-  const urgentCount = items.filter(i => i.itemPriority === 'URGENT').length;
-  const pendingReviewCount = items.filter(i => ['NEW', 'SEEN', 'ACKNOWLEDGED', 'UNDER_REVIEW'].includes(i.actionState)).length;
-  const resolvedCount = items.filter(i => i.actionState === 'RESOLVED').length;
+  const emergencyCount = items.filter((i) => i.itemPriority === 'EMERGENCY').length;
+  const urgentCount = items.filter((i) => i.itemPriority === 'URGENT').length;
+  const pendingReviewCount = items.filter((i) => ['NEW', 'SEEN', 'ACKNOWLEDGED', 'UNDER_REVIEW'].includes(i.actionState)).length;
+  const resolvedCount = items.filter((i) => i.actionState === 'RESOLVED').length;
 
   return (
     <div id="institutional-inbox-view" className="space-y-4">
-      {/* Top Telemetry Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
-          <div className="text-[10px] uppercase font-bold text-slate-400">Total Awareness Queue</div>
-          <div className="text-xl font-black text-white">{items.length}</div>
-          <div className="text-[10px] text-slate-500">Submissions & signals</div>
-        </div>
-
-        <div className="bg-slate-900 border border-red-900/50 p-3.5 rounded-2xl">
-          <div className="text-[10px] uppercase font-bold text-red-400 flex items-center gap-1">
-            <Flame className="w-3 h-3 text-red-400" /> Critical / Emergency
-          </div>
-          <div className="text-xl font-black text-red-400">{emergencyCount + urgentCount}</div>
-          <div className="text-[10px] text-slate-500">Requires prompt dispatch</div>
-        </div>
-
-        <div className="bg-slate-900 border border-amber-900/50 p-3.5 rounded-2xl">
-          <div className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-400" /> Pending Action
-          </div>
-          <div className="text-xl font-black text-amber-400">{pendingReviewCount}</div>
-          <div className="text-[10px] text-slate-500">New or under review</div>
-        </div>
-
-        <div className="bg-slate-900 border border-emerald-900/50 p-3.5 rounded-2xl">
-          <div className="text-[10px] uppercase font-bold text-emerald-400 flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Addressed & Resolved
-          </div>
-          <div className="text-xl font-black text-emerald-400">{resolvedCount}</div>
-          <div className="text-[10px] text-slate-500">Closed state actions</div>
-        </div>
+        <StatCard label="Total Queue" value={items.length} hint="Submissions & signals" icon={<Inbox className="w-4 h-4" />} />
+        <StatCard label="Critical / Emergency" value={emergencyCount + urgentCount} hint="Prompt dispatch needed" tone="critical" icon={<Flame className="w-4 h-4" />} />
+        <StatCard label="Pending Action" value={pendingReviewCount} hint="New or under review" tone="warning" icon={<Clock className="w-4 h-4" />} />
+        <StatCard label="Addressed & Resolved" value={resolvedCount} hint="Closed state actions" tone="success" icon={<CheckCircle2 className="w-4 h-4" />} />
       </div>
 
-      {/* Filter and Search Controls */}
-      <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[240px]">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search queue by keyword, region, district..."
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Priority filter */}
-          <select
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 font-semibold"
-          >
+      <Card padded={false} className="p-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <SearchInput
+            icon={<Search className="w-4 h-4" />}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search queue by keyword, region, district…"
+          />
+          <Select aria-label="Filter by priority" value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="!w-auto">
             <option value="ALL">All Priorities</option>
             <option value="EMERGENCY">Emergency</option>
             <option value="URGENT">Urgent</option>
             <option value="ELEVATED">Elevated</option>
             <option value="NORMAL">Normal</option>
-          </select>
-
-          {/* Type filter */}
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 font-semibold"
-          >
+          </Select>
+          <Select aria-label="Filter by signal type" value={filterType} onChange={(e) => setFilterType(e.target.value)} className="!w-auto">
             <option value="ALL">All Signal Types</option>
             <option value="REPORT">Civic Reports</option>
             <option value="EVIDENCE">Citizen Evidence</option>
             <option value="MENTION">Direct Mentions</option>
             <option value="FOLLOW_UP">Follow-up Queries</option>
-          </select>
-
-          {/* Action State filter */}
-          <select
-            value={filterState}
-            onChange={(e) => setFilterState(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 font-semibold"
-          >
+          </Select>
+          <Select aria-label="Filter by action state" value={filterState} onChange={(e) => setFilterState(e.target.value)} className="!w-auto">
             <option value="ALL">All Action States</option>
             <option value="NEW">New (Unseen)</option>
             <option value="SEEN">Seen</option>
@@ -209,101 +168,70 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
             <option value="UNDER_REVIEW">Under Review</option>
             <option value="PUBLIC_RESPONSE">Public Responded</option>
             <option value="RESOLVED">Resolved</option>
-          </select>
-
-          <button
-            onClick={onRefresh}
-            className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 transition-colors"
-            title="Refresh Inbox"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
-          </button>
+          </Select>
+          <Button variant="secondary" size="sm" onClick={onRefresh} loading={loading} icon={<RefreshCw className="w-4 h-4" />} aria-label="Refresh inbox">
+            Refresh
+          </Button>
         </div>
-      </div>
+      </Card>
 
-      {/* Inbox Items List */}
       <div className="space-y-3">
         {loading && items.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 space-y-2 bg-slate-900 rounded-2xl border border-slate-800">
-            <RefreshCw className="w-5 h-5 animate-spin mx-auto text-amber-400" />
-            <p className="text-xs">Synchronizing institutional awareness queue...</p>
-          </div>
+          <Card className="space-y-3">
+            <div className="h-5 w-1/3 rounded bg-slate-800/60 animate-pulse" />
+            <div className="h-3 w-full rounded bg-slate-800/60 animate-pulse" />
+            <div className="h-3 w-2/3 rounded bg-slate-800/60 animate-pulse" />
+          </Card>
         ) : filtered.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 space-y-2 bg-slate-900 rounded-2xl border border-slate-800">
-            <Inbox className="w-6 h-6 mx-auto text-slate-600" />
-            <p className="text-sm font-semibold text-slate-300">No awareness items match your filter criteria.</p>
-            <p className="text-xs text-slate-500">Adjust your priority or classification filters above.</p>
-          </div>
+          <Card>
+            <EmptyState
+              icon={<Inbox className="w-5 h-5" />}
+              title="No awareness items match your filters"
+              description="Adjust the priority, classification or action-state filters above to widen the results."
+            />
+          </Card>
         ) : (
           filtered.map((item) => {
             const isUpdating = updatingId === item.id;
+            const stateMeta = getInboxStateMeta(item.actionState);
 
             return (
-              <div
-                key={item.id}
-                id={`inbox-card-${item.id}`}
-                className="bg-slate-900 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl space-y-3 transition-colors text-slate-100"
-              >
-                {/* Card Header */}
+              <Card key={item.id} className="space-y-3" data-inbox-card={item.id}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="space-y-1 max-w-[75%]">
+                  <div className="space-y-1.5 max-w-[75%] min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <CivicPriorityIndicator
-                        priorityScore={item.priorityScore}
-                        priorityBand={item.itemPriority}
-                        size="sm"
-                      />
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 uppercase">
-                        {item.itemType}
-                      </span>
+                      <CivicPriorityIndicator priorityScore={item.priorityScore} priorityBand={item.itemPriority} size="sm" />
+                      <Badge tone="neutral" uppercase>{item.itemType}</Badge>
                       {item.mirrorOfItemId && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-600 uppercase flex items-center gap-1">
-                          <EyeOff className="w-3 h-3" /> Visibility Mirror
-                        </span>
+                        <Badge tone="neutral" uppercase icon={<EyeOff className="w-3 h-3" />}>
+                          Visibility Mirror
+                        </Badge>
                       )}
                       {(item.escalationLevel ?? 0) > 0 && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-950/80 text-red-300 border border-red-700 uppercase">
-                          Escalation L{item.escalationLevel}
-                        </span>
+                        <Badge tone="danger" uppercase>Escalation L{item.escalationLevel}</Badge>
                       )}
                       {item.region && (
                         <span className="text-[10px] text-amber-400 font-semibold">
-                          📍 {item.district ? `${item.district}, ` : ''}{item.region}
+                          📍 {item.district ? `${item.district}, ` : ''}
+                          {item.region}
                         </span>
                       )}
                     </div>
-                    <h3 className="text-sm sm:text-base font-bold text-white leading-snug">
-                      {item.title}
-                    </h3>
+                    <h3 className="text-sm sm:text-base font-bold text-white leading-snug">{item.title}</h3>
                   </div>
 
-                  {/* Action State Tag */}
                   <div className="text-right shrink-0">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wide border ${
-                      item.actionState === 'NEW'
-                        ? 'bg-blue-950/80 text-blue-300 border-blue-700'
-                        : item.actionState === 'SEEN'
-                        ? 'bg-slate-800 text-slate-300 border-slate-700'
-                        : item.actionState === 'UNDER_REVIEW'
-                        ? 'bg-amber-950/80 text-amber-300 border-amber-700'
-                        : item.actionState === 'RESOLVED'
-                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700'
-                        : 'bg-purple-950/80 text-purple-300 border-purple-700'
-                    }`}>
-                      {item.actionState.replace(/_/g, ' ')}
-                    </span>
-                    <div className="text-[10px] text-slate-500 pt-1 font-mono">
-                      {new Date(item.createdAt).toLocaleDateString()}
-                    </div>
+                    <StatusBadge meta={stateMeta} size="sm" />
+                    <div className="text-[10px] text-slate-500 pt-1 font-mono">{new Date(item.createdAt).toLocaleDateString()}</div>
                   </div>
                 </div>
 
-                {/* Summary */}
-                <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
-                  {item.summary}
-                </p>
+                <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">{item.summary}</p>
 
-                {/* Routing & Assignment telemetry */}
+                <div className="rounded-xl bg-slate-950/50 border border-slate-800/70 p-3">
+                  <WorkflowStepper currentState={item.actionState} />
+                </div>
+
                 {(item.assignedDeskId || item.assignedOfficerId || item.dueAt || item.handoffNotes) && (
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
                     {item.assignedDeskId && (
@@ -323,91 +251,70 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
                         <Clock className="w-3 h-3" /> Due {new Date(item.dueAt).toLocaleString()}
                       </span>
                     )}
-                    {item.handoffNotes && (
-                      <span className="text-slate-500 italic">“{item.handoffNotes}”</span>
-                    )}
+                    {item.handoffNotes && <span className="text-slate-500 italic">“{item.handoffNotes}”</span>}
                   </div>
                 )}
 
-                {/* Workflow Transition Action Strip */}
                 <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] text-slate-400 font-semibold">Workflow Action:</span>
+                    <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Workflow</span>
 
                     {item.mirrorOfItemId ? (
-                      <span className="text-[11px] text-slate-500 italic">
-                        Read-only visibility mirror — act on the source work item.
-                      </span>
+                      <span className="text-[11px] text-slate-500 italic">Read-only visibility mirror — act on the source work item.</span>
                     ) : (
                       <>
                         {item.actionState === 'NEW' && (
-                          <button
-                            onClick={() => handleStateChange(item.id, 'SEEN')}
-                            disabled={isUpdating}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition-colors"
-                          >
+                          <Button variant="secondary" size="xs" loading={isUpdating} onClick={() => handleStateChange(item.id, 'SEEN')}>
                             Mark Seen
-                          </button>
+                          </Button>
                         )}
-
                         {['NEW', 'SEEN'].includes(item.actionState) && (
-                          <button
-                            onClick={() => handleStateChange(item.id, 'ACKNOWLEDGED')}
-                            disabled={isUpdating}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-bold border border-slate-700 transition-colors"
-                          >
+                          <Button variant="secondary" size="xs" loading={isUpdating} onClick={() => handleStateChange(item.id, 'ACKNOWLEDGED')}>
                             Acknowledge
-                          </button>
+                          </Button>
                         )}
-
                         {['NEW', 'SEEN', 'ACKNOWLEDGED'].includes(item.actionState) && (
-                          <button
-                            onClick={() => handleStateChange(item.id, 'UNDER_REVIEW')}
-                            disabled={isUpdating}
-                            className="px-2.5 py-1 rounded-lg bg-amber-950/60 hover:bg-amber-900/80 text-amber-200 text-[11px] font-bold border border-amber-700/60 transition-colors"
-                          >
+                          <Button variant="warning" size="xs" loading={isUpdating} onClick={() => handleStateChange(item.id, 'UNDER_REVIEW')}>
                             Start Review
-                          </button>
+                          </Button>
                         )}
-
                         {item.actionState !== 'RESOLVED' && (
-                          <button
-                            onClick={() => handleStateChange(item.id, 'RESOLVED')}
-                            disabled={isUpdating}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 text-[11px] font-bold border border-emerald-700/60 transition-colors"
-                          >
+                          <Button variant="success" size="xs" loading={isUpdating} onClick={() => handleStateChange(item.id, 'RESOLVED')}>
                             Mark Resolved
-                          </button>
+                          </Button>
                         )}
-
                         {onAssign && team.length > 0 && (
-                          <button
+                          <Button
+                            variant="primary"
+                            size="xs"
+                            loading={isUpdating}
+                            icon={<UserPlus className="w-3 h-3" />}
                             onClick={() => setActionTarget({ item, action: 'ASSIGN' })}
-                            disabled={isUpdating}
-                            className="px-2.5 py-1 rounded-lg bg-blue-950/60 hover:bg-blue-900/80 text-blue-300 text-[11px] font-bold border border-blue-700/60 transition-colors flex items-center gap-1 disabled:opacity-50"
                           >
-                            <UserPlus className="w-3 h-3" /> Assign
-                          </button>
+                            Assign
+                          </Button>
                         )}
-
                         {onHandoff && desks.length > 0 && (
-                          <button
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            loading={isUpdating}
+                            icon={<Forward className="w-3 h-3" />}
                             onClick={() => setActionTarget({ item, action: 'HANDOFF' })}
-                            disabled={isUpdating}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition-colors flex items-center gap-1 disabled:opacity-50"
                           >
-                            <Forward className="w-3 h-3" /> Handoff
-                          </button>
+                            Handoff
+                          </Button>
                         )}
-
                         {onEscalate && item.actionState !== 'RESOLVED' && (
-                          <button
+                          <Button
+                            variant="danger"
+                            size="xs"
+                            loading={isUpdating}
+                            icon={<ArrowUpCircle className="w-3 h-3" />}
                             onClick={() => setActionTarget({ item, action: 'ESCALATE' })}
-                            disabled={isUpdating}
-                            className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 text-[11px] font-bold border border-red-700/60 transition-colors flex items-center gap-1 disabled:opacity-50"
                           >
-                            <ArrowUpCircle className="w-3 h-3" /> Escalate
-                          </button>
+                            Escalate
+                          </Button>
                         )}
                       </>
                     )}
@@ -415,37 +322,33 @@ export const InstitutionalInboxView: React.FC<InstitutionalInboxViewProps> = ({
 
                   <div className="flex items-center gap-2">
                     {item.postId && onRespondToItem && !item.mirrorOfItemId && (
-                      <button
+                      <Button
+                        variant="success"
+                        size="xs"
+                        icon={<MessageSquare className="w-3 h-3" />}
                         onClick={() => onRespondToItem(item)}
-                        className="text-xs text-emerald-300 hover:text-emerald-200 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-700/60 transition-colors"
                       >
-                        <MessageSquare className="w-3 h-3" />
-                        <span>Respond</span>
-                      </button>
+                        Respond
+                      </Button>
                     )}
-
                     {item.situationId && onOpenSituationDossier && (
-                      <button
-                        onClick={() => onOpenSituationDossier(item.situationId!)}
-                        className="text-xs text-amber-400 hover:underline font-bold flex items-center gap-1"
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        <span>Situation Dossier</span>
-                      </button>
+                      <Button variant="ghost" size="xs" icon={<Layers className="w-3.5 h-3.5" />} onClick={() => onOpenSituationDossier(item.situationId!)}>
+                        Situation Dossier
+                      </Button>
                     )}
-
                     {item.postId && (
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="xs"
+                        iconRight={<ArrowUpRight className="w-3 h-3" />}
                         onClick={() => onSelectPost({ id: item.postId } as any)}
-                        className="text-xs text-slate-300 hover:text-white font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
                       >
-                        <span>Inspect Submission</span>
-                        <ArrowUpRight className="w-3 h-3" />
-                      </button>
+                        Inspect Submission
+                      </Button>
                     )}
                   </div>
                 </div>
-              </div>
+              </Card>
             );
           })
         )}
@@ -474,22 +377,10 @@ interface WorkItemActionModalProps {
   onSubmit: (payload: any) => Promise<void>;
 }
 
-const ACTION_META: Record<WorkItemAction, { title: string; hint: string; cta: string }> = {
-  ASSIGN: {
-    title: 'Assign work item',
-    hint: 'Attach a named official and optionally re-home the item onto their desk.',
-    cta: 'Assign'
-  },
-  HANDOFF: {
-    title: 'Handoff to a desk',
-    hint: 'Move ownership to another sub-unit. The current desk keeps a read-only mirror.',
-    cta: 'Handoff'
-  },
-  ESCALATE: {
-    title: 'Escalate work item',
-    hint: 'Send this up the desk hierarchy to the next supervisory level. Two levels notify oversight.',
-    cta: 'Escalate'
-  }
+const ACTION_META: Record<WorkItemAction, { title: string; hint: string; cta: string; tone: 'primary' | 'warning' | 'danger' }> = {
+  ASSIGN: { title: 'Assign work item', hint: 'Attach a named official and optionally re-home the item onto their desk.', cta: 'Assign', tone: 'primary' },
+  HANDOFF: { title: 'Handoff to a desk', hint: 'Move ownership to another sub-unit. The current desk keeps a read-only mirror.', cta: 'Handoff', tone: 'warning' },
+  ESCALATE: { title: 'Escalate work item', hint: 'Send this up the desk hierarchy to the next supervisory level. Two levels notify oversight.', cta: 'Escalate', tone: 'danger' }
 };
 
 const WorkItemActionModal: React.FC<WorkItemActionModalProps> = ({ item, action, desks, team, onClose, onSubmit }) => {
@@ -514,12 +405,7 @@ const WorkItemActionModal: React.FC<WorkItemActionModalProps> = ({ item, action,
     } else if (action === 'HANDOFF') {
       if (!toDeskId) return setError('Select a target desk');
       if (reason.trim().length < 3) return setError('A reason is required');
-      payload = {
-        toDeskId,
-        reason: reason.trim(),
-        instructions: instructions.trim() || undefined,
-        ccDeskIds: ccDeskIds.length ? ccDeskIds : undefined
-      };
+      payload = { toDeskId, reason: reason.trim(), instructions: instructions.trim() || undefined, ccDeskIds: ccDeskIds.length ? ccDeskIds : undefined };
     } else {
       if (reason.trim().length > 0 && reason.trim().length < 3) return setError('Reason must be at least 3 characters');
       payload = { reason: reason.trim() || undefined, toDeskId: toDeskId || undefined };
@@ -536,176 +422,125 @@ const WorkItemActionModal: React.FC<WorkItemActionModalProps> = ({ item, action,
   };
 
   const toggleCc = (id: string) => {
-    setCcDeskIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+    setCcDeskIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-slate-800">
-          <div>
-            <h3 className="text-sm font-bold text-white">{meta.title}</h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">{meta.hint}</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-3">
-          {error && (
-            <div className="bg-red-950/60 border border-red-800 text-red-200 text-xs p-2.5 rounded-xl flex items-center gap-2">
-              <AlertTriangle className="w-3.5 h-3.5" /> {error}
-            </div>
-          )}
-
-          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
-            <div className="font-bold text-white">{item.title}</div>
-            <div className="text-slate-400 line-clamp-2">{item.summary}</div>
-          </div>
-
-          {action === 'ASSIGN' && (
-            <>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Officer</label>
-                <select
-                  value={officerUserId}
-                  onChange={(e) => setOfficerUserId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200"
-                >
-                  <option value="">Unassigned</option>
-                  {team.filter(m => m.userId).map(m => (
-                    <option key={m.userId} value={m.userId}>{m.name}{m.title ? ` — ${m.title}` : ''}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Desk (optional)</label>
-                <select
-                  value={deskId}
-                  onChange={(e) => setDeskId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200"
-                >
-                  <option value="">Keep current desk</option>
-                  {desks.map(d => (
-                    <option key={d.id} value={d.id}>{d.name} ({d.level})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Notes (optional)</label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 resize-none"
-                />
-              </div>
-            </>
-          )}
-
-          {action === 'HANDOFF' && (
-            <>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Target desk</label>
-                <select
-                  value={toDeskId}
-                  onChange={(e) => setToDeskId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200"
-                >
-                  <option value="">Select desk...</option>
-                  {desks.filter(d => d.id !== item.assignedDeskId).map(d => (
-                    <option key={d.id} value={d.id}>{d.name} ({d.level})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Reason (required)</label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={2}
-                  placeholder="Why is this being handed off?"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 resize-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Instructions (optional)</label>
-                <textarea
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 resize-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">CC sub-units (visibility only)</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {desks.filter(d => d.id !== toDeskId).map(d => (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => toggleCc(d.id)}
-                      className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
-                        ccDeskIds.includes(d.id)
-                          ? 'bg-amber-500 text-slate-950 border-amber-500'
-                          : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-500'
-                      }`}
-                    >
-                      {d.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {action === 'ESCALATE' && (
-            <>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Escalate to (optional)</label>
-                <select
-                  value={toDeskId}
-                  onChange={(e) => setToDeskId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200"
-                >
-                  <option value="">Next supervisory desk (automatic)</option>
-                  {desks.map(d => (
-                    <option key={d.id} value={d.id}>{d.name} ({d.level})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Reason (optional)</label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={2}
-                  placeholder="Why is this being escalated?"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 resize-none"
-                />
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-slate-800">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold"
-          >
+    <Modal
+      open
+      onClose={onClose}
+      title={meta.title}
+      description={meta.hint}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {submitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          </Button>
+          <Button variant={meta.tone} loading={submitting} onClick={handleSubmit} iconRight={<ArrowUpRight className="w-3.5 h-3.5" />}>
             {meta.cta}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      {error && <InlineAlert tone="danger" title="Cannot submit">{error}</InlineAlert>}
+
+      <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
+        <div className="font-bold text-white">{item.title}</div>
+        <div className="text-slate-400 line-clamp-2">{item.summary}</div>
       </div>
-    </div>
+
+      {action === 'ASSIGN' && (
+        <>
+          <Field label="Officer">
+            <Select value={officerUserId} onChange={(e) => setOfficerUserId(e.target.value)}>
+              <option value="">Unassigned</option>
+              {team.filter((m) => m.userId).map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.name}
+                  {m.title ? ` — ${m.title}` : ''}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Desk" hint="Leave as-is to keep the current desk.">
+            <Select value={deskId} onChange={(e) => setDeskId(e.target.value)}>
+              <option value="">Keep current desk</option>
+              {desks.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.level})
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Notes" hint="Optional context for the assigned official.">
+            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+        </>
+      )}
+
+      {action === 'HANDOFF' && (
+        <>
+          <Field label="Target desk" required>
+            <Select value={toDeskId} onChange={(e) => setToDeskId(e.target.value)}>
+              <option value="">Select desk…</option>
+              {desks.filter((d) => d.id !== item.assignedDeskId).map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.level})
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Reason" required hint="Required — recorded in the coordination audit trail.">
+            <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this being handed off?" />
+          </Field>
+          <Field label="Instructions" hint="Optional handling instructions for the receiving desk.">
+            <Textarea rows={2} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
+          </Field>
+          <Field label="CC sub-units" hint="Visibility only — CC'd desks see a mirror and cannot action the item.">
+            <div className="flex flex-wrap gap-1.5">
+              {desks.filter((d) => d.id !== toDeskId).map((d) => {
+                const selected = ccDeskIds.includes(d.id);
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => toggleCc(d.id)}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                      selected ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    {d.name}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+        </>
+      )}
+
+      {action === 'ESCALATE' && (
+        <>
+          <Field label="Escalate to" hint="Defaults to the next supervisory desk in the hierarchy.">
+            <Select value={toDeskId} onChange={(e) => setToDeskId(e.target.value)}>
+              <option value="">Next supervisory desk (automatic)</option>
+              {desks.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.level})
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Reason" hint="Optional — helps oversight understand why this was escalated.">
+            <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this being escalated?" />
+          </Field>
+        </>
+      )}
+
+      <div className="flex items-center gap-2 text-[10px] text-slate-500 pt-1">
+        <AlertTriangle className="w-3 h-3" />
+        Current state: {getInboxStateMeta(item.actionState).label} · Priority: {getPriorityMeta(item.itemPriority).label}
+      </div>
+    </Modal>
   );
 };

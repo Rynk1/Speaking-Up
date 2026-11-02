@@ -26,6 +26,9 @@ export class InstitutionRoutingService {
   ): InstitutionCandidate[] {
     const candidates: InstitutionCandidate[] = [];
     const textToMatch = `${category} ${title || ''} ${content || ''}`.toLowerCase();
+    // Fuzzy mandate fallback only inspects the issue domain (category + title),
+    // never free-text body, so incidental words cannot pull in unrelated agencies.
+    const domainText = `${category} ${title || ''}`.toLowerCase();
 
     const rows = db.prepare('SELECT * FROM institutions').all() as any[];
 
@@ -108,10 +111,13 @@ export class InstitutionRoutingService {
 
       // Fallback matching if tier not assigned yet
       if (!tier) {
-        if (instCategory && textToMatch.includes(instCategory)) {
+        const categoryText = category.toLowerCase();
+        if (instCategory && categoryText && categoryText.includes(instCategory)) {
           tier = 'PRIMARY';
           matchReason = `Category Match: ${inst.category}`;
-        } else if (mandate && (mandate.includes(category.toLowerCase()) || textToMatch.split(' ').some(w => w.length > 4 && mandate.includes(w)))) {
+        } else if (mandate && mandate.includes(categoryText)) {
+          // Whole-category containment only. Token overlap caused unrelated
+          // agencies (e.g. utility regulators) to be tagged onto flood reports.
           tier = 'SECONDARY';
           matchReason = `Mandate Relevance: ${inst.mandate.slice(0, 50)}...`;
         }

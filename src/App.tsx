@@ -49,6 +49,7 @@ export default function App() {
     currentUser,
     userRole,
     setUserRole,
+    isAuthLoading,
     isAuthOpen,
     authMode,
     authPromptInfo,
@@ -374,7 +375,7 @@ export default function App() {
           <Route
             path="/portal"
             element={
-              <ProtectedRoute userRole={userRole} allowedRoles={['institution_rep', 'admin']}>
+              <ProtectedRoute userRole={userRole} isAuthLoading={isAuthLoading} allowedRoles={['institution_rep', 'admin']}>
                 <InstitutionDashboardView
                   institutions={institutions}
                   posts={posts}
@@ -397,7 +398,7 @@ export default function App() {
           <Route
             path="/journalist-desk"
             element={
-              <ProtectedRoute userRole={userRole} allowedRoles={['journalist', 'admin']}>
+              <ProtectedRoute userRole={userRole} isAuthLoading={isAuthLoading} allowedRoles={['journalist', 'admin']}>
                 <JournalistDeskView
                   posts={posts}
                   clusters={clusters}
@@ -412,7 +413,7 @@ export default function App() {
           <Route
             path="/privacy-portal"
             element={
-              <ProtectedRoute userRole={userRole} allowedRoles={['moderator', 'admin']}>
+              <ProtectedRoute userRole={userRole} isAuthLoading={isAuthLoading} allowedRoles={['moderator', 'admin']}>
                 <PrivacyReviewPortal />
               </ProtectedRoute>
             }
@@ -421,7 +422,7 @@ export default function App() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute userRole={userRole} allowedRoles={['admin']}>
+              <ProtectedRoute userRole={userRole} isAuthLoading={isAuthLoading} allowedRoles={['admin']}>
                 <AdminDashboardView />
               </ProtectedRoute>
             }

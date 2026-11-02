@@ -2,33 +2,23 @@ import React, { useState } from 'react';
 import {
   Newspaper,
   Flame,
-  Download,
   CheckCircle2,
-  Clock,
-  MapPin,
-  Building2,
   ExternalLink,
   Copy,
   Check,
   Search,
-  Sparkles,
   ShieldCheck,
-  AlertTriangle,
   FileText,
   Layers,
   BarChart3,
   Filter,
   Eye,
-  SlidersHorizontal,
-  ChevronRight,
-  Menu,
-  ChevronDown,
   ArrowRight,
-  TrendingUp,
   Share2
 } from 'lucide-react';
 import { CivicPost, IssueCluster, Institution } from '../types';
 import { StoryEvidencePackModal } from './StoryEvidencePackModal';
+import { ConsoleLayout } from './ui';
 
 export type JournalistTab = 'leads' | 'clusters' | 'evidence_packs' | 'accountability' | 'tools';
 
@@ -53,7 +43,6 @@ export const JournalistDeskView: React.FC<JournalistDeskViewProps> = ({
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [copiedPackId, setCopiedPackId] = useState<string | null>(null);
   const [previewPackPost, setPreviewPackPost] = useState<CivicPost | null>(null);
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   // Filtered & sorted posts for Leads
   const breakingPosts = [...posts].sort((a, b) => b.engagement.confirmations - a.engagement.confirmations);
@@ -158,228 +147,49 @@ VERIFY ONLINE : ${window.location.origin}/app/post/${post.id}
     setTimeout(() => setCopiedPackId(null), 2500);
   };
 
+  const headerTitles: Record<JournalistTab, string> = {
+    leads: 'Investigative Leads & Real-Time Ground Signals',
+    clusters: 'Emerging Multi-Report Public Interest Clusters',
+    evidence_packs: 'Exportable Newsroom Evidence Briefings',
+    accountability: 'State Institution Response & Responsiveness Tracker',
+    tools: 'Ground Verification & Fact-Checking Utilities'
+  };
+
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden min-h-[700px] flex flex-col md:flex-row text-slate-100">
-      {/* Sidebar Navigation - Desktop */}
-      <aside className="hidden md:flex w-64 lg:w-72 bg-slate-950/90 border-r border-slate-800 p-4 shrink-0 flex-col justify-between">
-        <div className="space-y-6">
-          {/* Header Badge */}
-          <div className="flex items-center gap-3 px-2 py-1">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-sky-600 via-sky-500 to-indigo-600 flex items-center justify-center shadow-lg text-white">
-              <Newspaper className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="font-extrabold text-sm text-white tracking-wide">PRESS & MEDIA DESK</h2>
-              <p className="text-[10px] text-slate-400">Ghana Investigative Wire</p>
-            </div>
-          </div>
-
-          {/* Navigation Links */}
-          <nav className="space-y-1.5">
-            <button
-              onClick={() => setActiveTab('leads')}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                activeTab === 'leads'
-                  ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Flame className="w-4 h-4 text-amber-400" /> Investigation Leads
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-200 text-[10px] font-bold border border-sky-500/30">
-                {posts.length}
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('clusters')}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                activeTab === 'clusters'
-                  ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Layers className="w-4 h-4 text-sky-400" /> Hot Story Clusters
-              </span>
-              {clusters.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
-                  {clusters.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('evidence_packs')}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                activeTab === 'evidence_packs'
-                  ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <FileText className="w-4 h-4 text-emerald-400" /> Evidence Briefings
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                Wire
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('accountability')}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                activeTab === 'accountability'
-                  ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <BarChart3 className="w-4 h-4 text-purple-400" /> State Accountability
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('tools')}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                activeTab === 'tools'
-                  ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Media Verification
-              </span>
-            </button>
-          </nav>
-        </div>
-
-        {/* Footer Status */}
-        <div className="pt-4 border-t border-slate-800/80 text-[11px] text-slate-500 space-y-1.5 px-2">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400">Newsroom Wire:</span>
-            <span className="text-sky-400 font-bold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span> LIVE SYNC
-            </span>
-          </div>
-          <div className="text-[10px] text-slate-400">P³RE Ground Witness Verified</div>
-        </div>
-      </aside>
-
-      {/* Mobile Top Header with Interactive Breadcrumb Drawer Trigger */}
-      <div className="md:hidden bg-slate-950/95 border-b border-slate-800 p-3 sm:p-3.5 space-y-2">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setShowMobileSidebar(true)}
-            className="flex items-center gap-2 group text-left cursor-pointer"
-          >
-            <div className="w-8 h-8 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-md group-active:scale-95 transition-transform">
-              <Newspaper className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-extrabold text-xs text-white block">PRESS & MEDIA DESK</span>
-              <div className="flex items-center gap-1 text-[11px] text-sky-400 font-semibold">
-                <span>Desk</span>
-                <ChevronRight className="w-3 h-3 text-slate-500" />
-                <span className="text-white underline underline-offset-2 decoration-sky-500">{getTabLabel(activeTab)}</span>
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setShowMobileSidebar(true)}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold rounded-xl border border-slate-700 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-          >
-            <Layers className="w-3.5 h-3.5 text-sky-400" />
-            <span>Menu Drawer</span>
-          </button>
-        </div>
-
-      </div>
-
-      {/* Mobile Left Sidebar Overlay Drawer */}
-      {showMobileSidebar && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
-          <div
-            onClick={() => setShowMobileSidebar(false)}
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm animate-in fade-in"
-          />
-
-          <div className="relative w-4/5 max-w-xs bg-slate-950 border-r border-slate-800 h-full p-4 flex flex-col justify-between shadow-2xl z-10 animate-in slide-in-from-left duration-200">
-            <div className="space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-lg">
-                    <Newspaper className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h2 className="font-extrabold text-sm text-white">PRESS & MEDIA DESK</h2>
-                    <p className="text-[10px] text-slate-400">Ghana Investigative Wire</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowMobileSidebar(false)}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-                >
-                  <Check className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Navigation Tabs */}
-              <nav className="space-y-1.5">
-                {(['leads', 'clusters', 'evidence_packs', 'accountability', 'tools'] as JournalistTab[]).map(tab => (
-                  <button
-                    key={`drawer-jour-${tab}`}
-                    onClick={() => {
-                      setActiveTab(tab);
-                      setShowMobileSidebar(false);
-                    }}
-                    className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                      activeTab === tab
-                        ? 'bg-sky-600 text-white font-bold shadow-md'
-                        : 'text-slate-300 hover:bg-slate-800/80'
-                    }`}
-                  >
-                    <span>{getTabLabel(tab)}</span>
-                    {tab === 'leads' && <span className="text-[10px] bg-sky-900 px-1.5 py-0.2 rounded font-mono">{posts.length}</span>}
-                    {tab === 'clusters' && <span className="text-[10px] bg-amber-900 px-1.5 py-0.2 rounded font-mono">{clusters.length}</span>}
-                  </button>
-                ))}
-              </nav>
-            </div>
-
-            <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-500 space-y-1">
-              <div className="text-[10px] text-slate-400">P³RE Ground Witness Verified</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content Body */}
-      <main className="flex-1 p-3.5 sm:p-6 bg-slate-900/60 overflow-y-auto space-y-5">
-        {/* Top Header - Desktop view */}
-        <div className="hidden md:flex items-center justify-between pb-4 border-b border-slate-800">
-          <div>
-            <div className="flex items-center gap-1.5 text-xs text-sky-400 font-semibold mb-1">
-              <span>Journalist Workspace</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-              <span className="text-slate-200">{getTabLabel(activeTab)}</span>
-            </div>
-            <h1 className="text-lg font-bold text-white flex items-center gap-2">
-              {activeTab === 'leads' && 'Investigative Leads & Real-Time Ground Signals'}
-              {activeTab === 'clusters' && 'Emerging Multi-Report Public Interest Clusters'}
-              {activeTab === 'evidence_packs' && 'Exportable Newsroom Evidence Briefings'}
-              {activeTab === 'accountability' && 'State Institution Response & Responsiveness Tracker'}
-              {activeTab === 'tools' && 'Ground Verification & Fact-Checking Utilities'}
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-sky-950 text-sky-300 border border-sky-800/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-sky-400" /> Verified Press Hub
-            </span>
-          </div>
-        </div>
+    <>
+    <ConsoleLayout<JournalistTab>
+      brandTitle="PRESS & MEDIA DESK"
+      brandSubtitle="Ghana Investigative Wire"
+      brandIcon={<Newspaper className="w-4 h-4 text-white" />}
+      accent="purple"
+      sections={[
+        {
+          label: 'Newsroom',
+          items: [
+            { id: 'leads', label: 'Investigation Leads', icon: <Flame className="w-4 h-4 text-amber-400" />, badge: posts.length },
+            { id: 'clusters', label: 'Hot Story Clusters', icon: <Layers className="w-4 h-4 text-sky-400" />, badge: clusters.length },
+            { id: 'evidence_packs', label: 'Evidence Briefings', icon: <FileText className="w-4 h-4 text-emerald-400" /> }
+          ]
+        },
+        {
+          label: 'Accountability',
+          items: [
+            { id: 'accountability', label: 'State Accountability', icon: <BarChart3 className="w-4 h-4 text-purple-400" /> },
+            { id: 'tools', label: 'Media Verification', icon: <ShieldCheck className="w-4 h-4 text-emerald-400" /> }
+          ]
+        }
+      ]}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      headerTitle={headerTitles[activeTab]}
+      headerSubtitle="Verified press hub with P³RE ground-witness validation"
+      headerActions={
+        <span className="px-3 py-1 bg-sky-950 text-sky-300 border border-sky-800/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-sky-400" /> Verified Press Hub
+        </span>
+      }
+      footerNote="P³RE Ground Witness Verified"
+    >
 
         {/* TAB 1: LEADS */}
         {activeTab === 'leads' && (
@@ -729,7 +539,7 @@ VERIFY ONLINE : ${window.location.origin}/app/post/${post.id}
             </div>
           </div>
         )}
-      </main>
+      </ConsoleLayout>
 
       {/* STORY EVIDENCE PACK PREVIEW MODAL */}
       <StoryEvidencePackModal
@@ -739,6 +549,6 @@ VERIFY ONLINE : ${window.location.origin}/app/post/${post.id}
         onSelectPost={onSelectPost}
         onOpenCluster={onOpenCluster}
       />
-    </div>
+    </>
   );
 };

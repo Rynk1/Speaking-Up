@@ -57,6 +57,7 @@ import { HierarchyDesksView } from './institution/HierarchyDesksView';
 import { CoordinationDeskView } from './institution/CoordinationDeskView';
 import { SituationDossierModal } from './institution/SituationDossierModal';
 import { AnnouncementComposerModal } from './institution/AnnouncementComposerModal';
+import { ConsoleLayout, type ConsoleNavSection, SearchInput, Select, useToast } from './ui';
 
 export type InstitutionTab =
   | 'overview'
@@ -102,11 +103,11 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
   onSelectPost
 }) => {
   const [activeTab, setActiveTab] = useState<InstitutionTab>('overview');
-  const { currentUser } = useAuth();
+  const { currentUser, userRole } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [selectedReportPost, setSelectedReportPost] = useState<CivicPost | null>(null);
+  const toast = useToast();
 
   // Quick Assignment Modal State
   const [assigningPost, setAssigningPost] = useState<CivicPost | null>(null);
@@ -135,6 +136,16 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
   const [composerLinkedSituation, setComposerLinkedSituation] = useState<CivicSituation | null>(null);
 
   const currentInstitution = institutions.find(i => i.id === selectedInstitutionId) || institutions[0];
+
+  // A verified rep is bound to one institution; pin the console to it so oversight
+  // of other institutions is never shown by default (or by stale selection).
+  useEffect(() => {
+    const affiliated = currentUser?.institutionId || currentUser?.institution_id;
+    if (!affiliated || userRole !== 'institution_rep') return;
+    if (affiliated !== selectedInstitutionId) {
+      setSelectedInstitutionId(affiliated);
+    }
+  }, [currentUser?.institutionId, currentUser?.institution_id, userRole, selectedInstitutionId, setSelectedInstitutionId]);
 
   // Data fetchers
   const loadInbox = useCallback(async () => {
@@ -278,14 +289,46 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
     }
   };
 
+  const navSections: ConsoleNavSection<InstitutionTab>[] = [
+    {
+      label: 'Command & Desks',
+      items: [
+        { id: 'overview', label: 'Command & Geo Desk', icon: <Activity className="w-4 h-4" /> },
+        { id: 'inbox', label: 'Awareness Queue', icon: <Inbox className="w-4 h-4" />, badge: pendingInboxCount },
+        { id: 'situations', label: 'Situation Dossiers', icon: <Radio className="w-4 h-4 text-emerald-400" />, badge: activeSituationsCount },
+        { id: 'announcements', label: 'Communiqués', icon: <Megaphone className="w-4 h-4 text-amber-400" />, badge: announcements.length },
+        { id: 'desks', label: 'Desks & Hierarchy', icon: <Building2 className="w-4 h-4 text-blue-400" />, badge: desks.length },
+        { id: 'coordination', label: 'Coordination & Delegations', icon: <GitPullRequest className="w-4 h-4 text-rose-400" /> }
+      ]
+    },
+    {
+      label: 'Citizen Issue Queues',
+      items: [
+        { id: 'new_awareness', label: 'New Awareness', icon: <FileText className="w-4 h-4" />, badge: newAwarenessPosts.length },
+        { id: 'urgent', label: 'Urgent / Crisis Desk', icon: <Flame className="w-4 h-4 text-red-400" />, badge: urgentPosts.length },
+        { id: 'trending', label: 'Trending / Viral', icon: <TrendingUp className="w-4 h-4 text-amber-400" />, badge: trendingPosts.length },
+        { id: 'assigned', label: 'Assigned Internally', icon: <UserCheck className="w-4 h-4 text-emerald-400" />, badge: assignedPosts.length },
+        { id: 'under_review', label: 'Under Assessment', icon: <Clock className="w-4 h-4 text-blue-400" />, badge: underReviewPosts.length },
+        { id: 'responses', label: 'Responded Statements', icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />, badge: answeredPosts.length },
+        { id: 'action_reported', label: 'Action Reported', icon: <GitPullRequest className="w-4 h-4 text-amber-300" />, badge: actionReportedPosts.length },
+        { id: 'citizen_followup', label: 'Citizen Evidence', icon: <MessageSquare className="w-4 h-4 text-purple-400" />, badge: citizenFollowupPosts.length },
+        { id: 'closed', label: 'Closed / Resolved', icon: <FolderCheck className="w-4 h-4 text-slate-400" />, badge: closedPosts.length }
+      ]
+    },
+    {
+      items: [{ id: 'config', label: 'Agency & Dispatch Config', icon: <Settings className="w-4 h-4" /> }]
+    }
+  ];
+
   const handleQuickAcknowledge = async (postId: string) => {
     setActionLoading(`ack-${postId}`);
     try {
       await api.triggerAlert(postId, currentInstitution.id);
       await api.updatePostStatus(postId, 'UNDER_REVIEW');
       onPostUpdated();
-    } catch (err) {
-      console.error('Failed to acknowledge:', err);
+      toast.success('Report acknowledged', 'The citizen submission is now marked under review.');
+    } catch (err: any) {
+      toast.error('Failed to acknowledge report', err?.message);
     } finally {
       setActionLoading(null);
     }
@@ -296,8 +339,9 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
     try {
       await api.updatePostStatus(postId, newStatus);
       onPostUpdated();
-    } catch (err) {
-      console.error('Failed to change status:', err);
+      toast.success('Status updated', `Report moved to ${newStatus.replace(/_/g, ' ').toLowerCase()}.`);
+    } catch (err: any) {
+      toast.error('Failed to change status', err?.message);
     } finally {
       setActionLoading(null);
     }
@@ -317,8 +361,9 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
       setAssigningPost(null);
       setAssignNotes('');
       onPostUpdated();
-    } catch (err) {
-      console.error('Failed to assign post:', err);
+      toast.success('Report assigned', `${assignedDepartment} has been notified of the assignment.`);
+    } catch (err: any) {
+      toast.error('Failed to assign report', err?.message);
     } finally {
       setActionLoading(null);
     }
@@ -336,8 +381,9 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
       setClarifyingPost(null);
       setClarifyQuestion('');
       onPostUpdated();
-    } catch (err) {
-      console.error('Failed to request clarification:', err);
+      toast.success('Clarification requested', 'The citizen has been asked for additional detail.');
+    } catch (err: any) {
+      toast.error('Failed to request clarification', err?.message);
     } finally {
       setActionLoading(null);
     }
@@ -538,464 +584,59 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden min-h-[750px] flex flex-col md:flex-row text-slate-100">
-      {/* Sidebar Navigation - Desktop */}
-      <aside className="hidden md:flex w-64 lg:w-72 bg-slate-950/90 border-r border-slate-800 p-4 shrink-0 flex-col justify-between">
-        <div className="space-y-5">
-          {/* Header & Institution Selector */}
-          <div className="space-y-3 px-1">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-700 flex items-center justify-center shadow-lg text-slate-950 font-black">
-                <Building2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-extrabold text-sm text-white tracking-wide">STATE DESK PORTAL</h2>
-                <p className="text-[10px] text-amber-400 font-semibold flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Verified Authority
-                </p>
-              </div>
+    <>
+    <ConsoleLayout<InstitutionTab>
+      brandTitle="STATE DESK PORTAL"
+      brandSubtitle="Verified Authority Desk"
+      brandIcon={<Building2 className="w-4 h-4 text-slate-950" />}
+      accent="amber"
+      sections={navSections}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      headerTitle={currentInstitution?.officialName || 'State Desk'}
+      headerSubtitle={`${currentInstitution?.acronym || ''} • ${currentInstitution?.category || ''} • ${getTabLabel(activeTab)}`}
+      footerNote={currentInstitution?.officialName}
+      sidebarExtra={
+        // A rep is bound to one agency; only oversight roles may switch accounts.
+        userRole === 'institution_rep' ? (
+          <div className="px-2">
+            <label className="block text-[9px] text-slate-500 mb-1 uppercase font-bold tracking-wider">
+              Signed in as
+            </label>
+            <div className="text-xs font-bold text-amber-300 truncate">
+              {currentInstitution?.shortName} ({currentInstitution?.acronym})
             </div>
-
-            {/* Institution Switcher */}
-            <div>
-              <label className="block text-[9px] text-slate-400 mb-1 uppercase font-bold tracking-wider">
-                Select Agency Account:
-              </label>
-              <select
-                value={currentInstitution?.id}
-                onChange={e => setSelectedInstitutionId(e.target.value)}
-                className="w-full p-2 bg-slate-900 text-amber-300 text-xs font-bold rounded-xl border border-slate-700 focus:outline-none focus:border-amber-500"
-              >
-                {institutions.map((inst, idx) => (
-                  <option key={inst.id ? `${inst.id}-${idx}` : `inst-opt-${idx}`} value={inst.id}>
-                    {inst.shortName} ({inst.acronym})
-                  </option>
-                ))}
-              </select>
-            </div>
+            <p className="text-[10px] text-slate-500 mt-0.5">Scope locked to your agency</p>
           </div>
-
-          {/* Granular Workflow Tabs (Command Desks + Post Queues) */}
-          <nav className="space-y-3">
-            {/* Section 1: Command & Strategic Desks */}
-            <div className="space-y-1">
-              <div className="px-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                Command & Desks
-              </div>
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'overview'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Activity className="w-4 h-4" /> Command & Geo Desk
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('inbox')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'inbox'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Inbox className="w-4 h-4" /> Awareness Queue
-                </span>
-                {pendingInboxCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
-                    {pendingInboxCount}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('situations')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'situations'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-emerald-400" /> Situation Dossiers
-                </span>
-                {activeSituationsCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                    {activeSituationsCount}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('announcements')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'announcements'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Megaphone className="w-4 h-4 text-amber-400" /> Communiqués
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
-                  {announcements.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('desks')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'desks'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-blue-400" /> Desks & Hierarchy
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
-                  {desks.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('coordination')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'coordination'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <GitPullRequest className="w-4 h-4 text-rose-400" /> Coordination & Delegations
-                </span>
-              </button>
-            </div>
-
-            {/* Section 2: Citizen Report Queues */}
-            <div className="space-y-1 pt-2 border-t border-slate-800/80">
-              <div className="px-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                Citizen Issue Queues
-              </div>
-
-              <button
-                onClick={() => setActiveTab('new_awareness')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'new_awareness'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <FileText className="w-4 h-4" /> New Awareness
-                </span>
-                {newAwarenessPosts.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30">
-                    {newAwarenessPosts.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('urgent')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'urgent'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Flame className="w-4 h-4 text-red-400" /> Urgent / Crisis Desk
-                </span>
-                {urgentPosts.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
-                    {urgentPosts.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('trending')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'trending'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-amber-400" /> Trending / Viral
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
-                  {trendingPosts.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('assigned')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'assigned'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-emerald-400" /> Assigned Internally
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
-                  {assignedPosts.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('under_review')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'under_review'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-blue-400" /> Under Assessment
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
-                  {underReviewPosts.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('responses')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'responses'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Responded Statements
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
-                  {answeredPosts.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('action_reported')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'action_reported'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <GitPullRequest className="w-4 h-4 text-amber-300" /> Action Reported
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
-                  {actionReportedPosts.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('citizen_followup')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'citizen_followup'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-purple-400" /> Citizen Evidence
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
-                  {citizenFollowupPosts.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('closed')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'closed'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <FolderCheck className="w-4 h-4 text-slate-400" /> Closed / Resolved
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
-                  {closedPosts.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('config')}
-                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                  activeTab === 'config'
-                    ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" /> Agency & Dispatch Config
-                </span>
-              </button>
-            </div>
-          </nav>
-        </div>
-
-        {/* Footer Status */}
-        <div className="pt-3 border-t border-slate-800/80 text-[11px] text-slate-500 space-y-1 px-2">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400">Dispatch Line:</span>
-            <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> ACTIVE
-            </span>
-          </div>
-          <div className="text-[10px] text-slate-400 truncate">{currentInstitution?.officialName}</div>
-        </div>
-      </aside>
-
-      {/* Mobile Top Header with Interactive Breadcrumb Drawer Trigger */}
-      <div className="md:hidden bg-slate-950/95 border-b border-slate-800 p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setShowMobileSidebar(true)}
-            className="flex items-center gap-2 group text-left cursor-pointer"
-          >
-            <div className="w-8 h-8 rounded-xl bg-amber-600 flex items-center justify-center text-slate-950 font-bold shadow-md">
-              <Building2 className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-extrabold text-xs text-white block">{currentInstitution?.acronym || 'STATE PORTAL'}</span>
-              <div className="flex items-center gap-1 text-[11px] text-amber-400 font-semibold">
-                <span>Portal</span>
-                <ChevronRight className="w-3 h-3 text-slate-500" />
-                <span className="text-white underline underline-offset-2 decoration-amber-500">{getTabLabel(activeTab)}</span>
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setShowMobileSidebar(true)}
-            className="px-3 py-1.5 bg-slate-800 text-amber-300 text-xs font-bold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer"
-          >
-            <Layers className="w-3.5 h-3.5 text-amber-400" />
-            <span>Workflow Menu</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile Left Sidebar Overlay Drawer */}
-      {showMobileSidebar && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
-          <div
-            onClick={() => setShowMobileSidebar(false)}
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm"
-          />
-
-          <div className="relative w-4/5 max-w-xs bg-slate-950 border-r border-slate-800 h-full p-4 flex flex-col justify-between shadow-2xl z-10 overflow-y-auto">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-amber-600 flex items-center justify-center text-slate-950 font-bold shadow-lg">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h2 className="font-extrabold text-sm text-white">STATE DESK PORTAL</h2>
-                    <p className="text-[10px] text-amber-400 font-semibold">Verified Authority Desk</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowMobileSidebar(false)}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-                >
-                  <Check className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Navigation Tabs */}
-              <nav className="space-y-1">
-                {(
-                  [
-                    'overview',
-                    'inbox',
-                    'situations',
-                    'announcements',
-                    'desks',
-                    'coordination',
-                    'new_awareness',
-                    'urgent',
-                    'trending',
-                    'assigned',
-                    'under_review',
-                    'responses',
-                    'action_reported',
-                    'citizen_followup',
-                    'closed',
-                    'config'
-                  ] as InstitutionTab[]
-                ).map(tab => (
-                  <button
-                    key={`drawer-inst-${tab}`}
-                    onClick={() => {
-                      setActiveTab(tab);
-                      setShowMobileSidebar(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
-                      activeTab === tab
-                        ? 'bg-amber-600 text-slate-950 font-extrabold shadow-md'
-                        : 'text-slate-300 hover:bg-slate-800/80'
-                    }`}
-                  >
-                    <span>{getTabLabel(tab)}</span>
-                  </button>
-                ))}
-              </nav>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content Body */}
-      <main className="flex-1 p-3.5 sm:p-6 bg-slate-900/60 overflow-y-auto space-y-5">
-        {/* Top Header - Desktop */}
-        <div className="hidden md:flex items-center justify-between pb-4 border-b border-slate-800">
+        ) : (
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">
-                {currentInstitution?.acronym}
-              </span>
-              <span className="text-slate-600">•</span>
-              <span className="text-xs text-slate-400 font-medium">{currentInstitution?.category}</span>
-              <ChevronRight className="w-3 h-3 text-slate-600" />
-              <span className="text-xs text-slate-300 font-semibold">{getTabLabel(activeTab)}</span>
-            </div>
-            <h1 className="text-lg font-bold text-white mt-0.5">
-              {currentInstitution?.officialName}
-            </h1>
+            <label className="block text-[9px] text-slate-400 mb-1 uppercase font-bold tracking-wider">
+              Select Agency Account
+            </label>
+            <Select
+              aria-label="Select agency account"
+              value={currentInstitution?.id}
+              onChange={(e) => setSelectedInstitutionId(e.target.value)}
+              className="!text-amber-300 !font-bold"
+            >
+              {institutions.map((inst, idx) => (
+                <option key={inst.id ? `${inst.id}-${idx}` : `inst-opt-${idx}`} value={inst.id}>
+                  {inst.shortName} ({inst.acronym})
+                </option>
+              ))}
+            </Select>
           </div>
-
-          <span className="px-3 py-1 bg-amber-950 text-amber-300 border border-amber-800 rounded-xl text-xs font-bold flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Verified State Desk
-          </span>
-        </div>
-
+        )
+      }
+    >
         {/* Global Search Bar for Tagged Queue */}
         {!['overview', 'inbox', 'situations', 'announcements', 'desks', 'config'].includes(activeTab) && (
-          <div className="flex items-center gap-2 bg-slate-950/70 p-3 rounded-2xl border border-slate-800">
-            <Search className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              type="text"
-              placeholder={`Filter ${getTabLabel(activeTab)} by keyword or district...`}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-            />
-          </div>
+          <SearchInput
+            icon={<Search className="w-4 h-4" />}
+            placeholder={`Filter ${getTabLabel(activeTab)} by keyword or district…`}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         )}
 
         {/* TAB 1: OVERVIEW & GEOGRAPHIC CONCENTRATION */}
@@ -1182,7 +823,7 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
             </div>
           </div>
         )}
-      </main>
+    </ConsoleLayout>
 
       {/* Internal Assignment Modal */}
       {assigningPost && (
@@ -1344,6 +985,6 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
           loadSituations();
         }}
       />
-    </div>
+    </>
   );
 };

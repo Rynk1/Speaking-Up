@@ -508,6 +508,30 @@ export const api = {
     return res.json();
   },
 
+  /**
+   * Deterministic institution routing. Used as the fallback when AI tagging is
+   * unavailable so a report is never left with no responsible authority.
+   */
+  async resolveInstitutions(params: {
+    category?: string;
+    region?: string;
+    district?: string;
+    title?: string;
+    content?: string;
+  }): Promise<Array<{ id: string; tier: string; matchReason: string }>> {
+    const query = new URLSearchParams();
+    if (params.category) query.append('category', params.category);
+    if (params.region) query.append('region', params.region);
+    if (params.district) query.append('district', params.district);
+    if (params.title) query.append('title', params.title);
+    if (params.content) query.append('content', params.content);
+    const res = await fetch(`/api/institutions/resolve?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to resolve responsible institutions');
+    return res.json();
+  },
+
   async getInstitutionById(id: string): Promise<{ institution: Institution; taggedPosts: CivicPost[] }> {
     const res = await fetch(`/api/institutions/${id}`, {
       headers: getAuthHeaders()
@@ -725,6 +749,14 @@ export const api = {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch assigned reports');
+    return camelize(await res.json());
+  },
+
+  async getAdminPrivacy(): Promise<any> {
+    const res = await fetch('/api/admin/privacy', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch privacy posture');
     return camelize(await res.json());
   },
 
@@ -1058,21 +1090,21 @@ export const api = {
     return res.json();
   },
 
-  async updateUserRole(userId: string, role: string): Promise<any> {
+  async updateUserRole(userId: string, role: string, reason?: string): Promise<any> {
     const res = await fetch(`/api/admin/users/${userId}/role`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ role })
+      body: JSON.stringify({ role, reason })
     });
     if (!res.ok) throw new Error('Failed to update user role');
     return res.json();
   },
 
-  async updateUserVerification(userId: string, isVerified: boolean): Promise<any> {
+  async updateUserVerification(userId: string, isVerified: boolean, reason?: string): Promise<any> {
     const res = await fetch(`/api/admin/users/${userId}/verify`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ isVerified })
+      body: JSON.stringify({ isVerified, reason })
     });
     if (!res.ok) throw new Error('Failed to update user verification');
     return res.json();
@@ -1092,7 +1124,7 @@ export const api = {
     return res.json();
   },
 
-  async updatePostModeration(postId: string, data: { moderationStatus?: string; reportLifecycleStatus?: string }): Promise<any> {
+  async updatePostModeration(postId: string, data: { moderationStatus?: string; reportLifecycleStatus?: string; reason?: string }): Promise<any> {
     const res = await fetch(`/api/admin/posts/${postId}/moderation`, {
       method: 'PUT',
       headers: getAuthHeaders(),
@@ -1111,11 +1143,11 @@ export const api = {
     return res.json();
   },
 
-  async updateAbuseReport(reportId: string, status: string): Promise<any> {
+  async updateAbuseReport(reportId: string, status: string, reason?: string): Promise<any> {
     const res = await fetch(`/api/admin/abuse-reports/${reportId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status, reason })
     });
     if (!res.ok) throw new Error('Failed to update abuse report');
     return res.json();

@@ -720,15 +720,28 @@ export interface InstitutionalDesk {
   parentDeskId?: string;
   name: string;
   code: string;
-  level: 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST';
+  level: 'NATIONAL' | 'REGIONAL' | 'METROPOLITAN' | 'MUNICIPAL' | 'DISTRICT' | 'SPECIALIST';
   region?: string;
   district?: string;
+  mmdaCode?: string;
+  coverageMode?: 'STANDING' | 'ON_CALL';
+  mobileReady?: boolean;
   specialization?: string;
   contactEmail?: string;
   contactPhone?: string;
   leadOfficerName?: string;
   status?: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
   officerCount?: number;
+}
+
+export interface RoutingCoverage {
+  region: string;
+  nationalDesk: InstitutionalDesk | null;
+  regionalDesk: InstitutionalDesk | null;
+  localDesks: InstitutionalDesk[];
+  onCallDesks: InstitutionalDesk[];
+  coveredDistricts: string[];
+  gapDistricts: string[];
 }
 
 export interface InstitutionTeamMember {

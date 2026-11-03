@@ -13,11 +13,41 @@ import {
   checkCanEscalate,
   type WorkItemFacts
 } from '../../../shared/workflow';
+import { listMmdasForRegion } from '../../../shared/ghanaMmda';
 
-export type DeskLevel = 'NATIONAL' | 'REGIONAL' | 'DISTRICT' | 'SPECIALIST';
+export type DeskLevel = 'NATIONAL' | 'REGIONAL' | 'METROPOLITAN' | 'MUNICIPAL' | 'DISTRICT' | 'SPECIALIST';
+export type LocalDeskLevel = 'METROPOLITAN' | 'MUNICIPAL' | 'DISTRICT';
 export type DelegationType = 'TRANSFER' | 'DELEGATION' | 'ESCALATION' | 'INFORMATION';
 export type DelegationStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'COMPLETED' | 'CANCELLED';
 export type ActionRequired = 'ACTION' | 'ACKNOWLEDGEMENT' | 'INFORMATION';
+
+/**
+ * Governs how a desk covers its jurisdiction. STANDING means the desk is always
+ * operational for its area; ON_CALL means the agency mobilises only when a report
+ * needs it (a national institution with no permanent MMDA presence).
+ */
+export type CoverageMode = 'STANDING' | 'ON_CALL';
+
+/**
+ * Supervisory ordering used for routing, escalation and coverage. Lower rank is
+ * more authoritative. The three local tiers (Metropolitan, Municipal, District)
+ * all sit just below REGIONAL: a report is still resolved to its most specific
+ * local desk first, but escalation always climbs local -> regional -> national.
+ */
+export const DESK_LEVEL_RANK: Record<string, number> = {
+  NATIONAL: 1,
+  REGIONAL: 2,
+  METROPOLITAN: 3,
+  MUNICIPAL: 4,
+  DISTRICT: 5,
+  SPECIALIST: 6
+};
+
+export const LOCAL_DESK_LEVELS: LocalDeskLevel[] = ['METROPOLITAN', 'MUNICIPAL', 'DISTRICT'];
+
+/** The SQL CASE that orders desks from national command down to specialist units. */
+const DESK_LEVEL_ORDER_SQL =
+  "CASE d.level WHEN 'NATIONAL' THEN 1 WHEN 'REGIONAL' THEN 2 WHEN 'METROPOLITAN' THEN 3 WHEN 'MUNICIPAL' THEN 4 WHEN 'DISTRICT' THEN 5 ELSE 6 END";
 
 export interface CoordinationActor {
   id: string;
@@ -61,6 +91,9 @@ export class CoordinationService {
     parentDeskId?: string;
     region?: string;
     district?: string;
+    mmdaCode?: string;
+    coverageMode?: CoverageMode;
+    mobileReady?: boolean;
     specialization?: string;
     contactEmail?: string;
     contactPhone?: string;
@@ -72,8 +105,9 @@ export class CoordinationService {
     db.prepare(`
       INSERT INTO institution_desks (
         id, institution_id, parent_desk_id, name, code, level, region, district,
-        specialization, contact_email, contact_phone, lead_officer_name, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?)
+        mmda_code, coverage_mode, mobile_ready, specialization, contact_email, contact_phone,
+        lead_officer_name, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?)
     `).run(
       id,
       input.institutionId,
@@ -83,6 +117,9 @@ export class CoordinationService {
       input.level || 'NATIONAL',
       input.region || null,
       input.district || null,
+      input.mmdaCode || null,
+      input.coverageMode || 'STANDING',
+      input.mobileReady ? 1 : 0,
       input.specialization || null,
       input.contactEmail || null,
       input.contactPhone || null,
@@ -90,6 +127,15 @@ export class CoordinationService {
       now,
       now
     );
+
+    // Keep the supervisory chain intact: a local desk is auto-parented to its
+    // regional desk (or the national desk when the agency has no regional tier).
+    if (!input.parentDeskId) {
+      const parent = this.inferParentDesk(input.institutionId, input.level || 'NATIONAL', input.region);
+      if (parent && parent.id !== id) {
+        db.prepare('UPDATE institution_desks SET parent_desk_id = ?, updated_at = ? WHERE id = ?').run(parent.id, now, id);
+      }
+    }
 
     AuditService.log({
       eventType: 'DESK_CREATED',
@@ -103,6 +149,137 @@ export class CoordinationService {
     return id;
   }
 
+  /**
+   * Picks the natural parent for a new desk by level and region: local desks hang
+   * off the regional desk for their region, regional desks off national.
+   */
+  private static inferParentDesk(institutionId: string, level: DeskLevel, region?: string): any | null {
+    const national = db.prepare(`
+      SELECT * FROM institution_desks
+      WHERE institution_id = ? AND level = 'NATIONAL' AND status = 'ACTIVE'
+      ORDER BY created_at ASC LIMIT 1
+    `).get(institutionId) as any;
+
+    if (LOCAL_DESK_LEVELS.includes(level as LocalDeskLevel)) {
+      if (region) {
+        const regional = db.prepare(`
+          SELECT * FROM institution_desks
+          WHERE institution_id = ? AND level = 'REGIONAL' AND region = ? AND status = 'ACTIVE'
+          ORDER BY created_at ASC LIMIT 1
+        `).get(institutionId, region) as any;
+        if (regional) return regional;
+      }
+      return national || null;
+    }
+
+    if (level === 'REGIONAL') return national || null;
+    return null;
+  }
+
+  /**
+   * Rolls out an institution's desk network from the Ghana MMDA registry in one
+   * action. For each selected region it ensures a REGIONAL desk exists (creating a
+   * national desk first if the agency has none) and creates a local MMDA desk for
+   * every selected assembly. Idempotent: existing desks are reported as `skipped`,
+   * so a national administrator can re-run the rollout safely after adding a
+   * region. Returns a per-desk outcome the console renders as a summary.
+   */
+  public static provisionHierarchy(input: {
+    institutionId: string;
+    regions: { region: string; mmdaCodes?: string[]; coverageMode?: CoverageMode; mobileReady?: boolean }[];
+    actor: CoordinationActor;
+  }): {
+    created: number;
+    skipped: number;
+    desks: { region: string; name: string; level: DeskLevel; mmdaCode?: string; status: 'created' | 'skipped' }[];
+  } {
+    const institution = db.prepare('SELECT * FROM institutions WHERE id = ?').get(input.institutionId) as any;
+    if (!institution) throw new Error(`Institution ${input.institutionId} not found`);
+    if (!Array.isArray(input.regions) || input.regions.length === 0) {
+      throw new Error('Select at least one region to roll out');
+    }
+
+    const results: { region: string; name: string; level: DeskLevel; mmdaCode?: string; status: 'created' | 'skipped' }[] = [];
+    const existing = () => db.prepare(`
+      SELECT * FROM institution_desks WHERE institution_id = ? AND status = 'ACTIVE'
+    `).all(input.institutionId) as any[];
+
+    // Ensure the institution has a national command desk to hang the network from.
+    let all = existing();
+    if (!all.some((d) => d.level === 'NATIONAL')) {
+      this.createDesk({
+        institutionId: input.institutionId,
+        name: `${institution.short_name || institution.official_name} National Command Desk`,
+        code: `${(institution.acronym || 'INST').toUpperCase()}-NAT`,
+        level: 'NATIONAL',
+        specialization: 'National command and oversight'
+      });
+      results.push({ region: '-', name: `${institution.acronym} National Command Desk`, level: 'NATIONAL', status: 'created' });
+      all = existing();
+    }
+
+    for (const sel of input.regions) {
+      const region = sel.region;
+      const regionDesk = all.find((d) => d.level === 'REGIONAL' && d.region === region);
+      if (!regionDesk) {
+        this.createDesk({
+          institutionId: input.institutionId,
+          name: `${region} Regional Operations Desk`,
+          code: `${(institution.acronym || 'INST').toUpperCase()}-${region.replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase()}`,
+          level: 'REGIONAL',
+          region,
+          specialization: `Regional coordination for ${region}`
+        });
+        results.push({ region, name: `${region} Regional Operations Desk`, level: 'REGIONAL', status: 'created' });
+        all = existing();
+      } else {
+        results.push({ region, name: regionDesk.name, level: 'REGIONAL', status: 'skipped' });
+      }
+
+      const registry = listMmdasForRegion(region);
+      const wanted = sel.mmdaCodes && sel.mmdaCodes.length
+        ? registry.filter((m) => sel.mmdaCodes!.includes(m.code))
+        : registry;
+
+      for (const mmda of wanted) {
+        const already = all.find((d) => d.mmda_code === mmda.code || (d.district === mmda.name && d.region === region));
+        if (already) {
+          results.push({ region, name: already.name, level: already.level, mmdaCode: already.mmda_code || undefined, status: 'skipped' });
+          continue;
+        }
+        this.createDesk({
+          institutionId: input.institutionId,
+          name: `${mmda.name} ${institution.acronym || ''} Desk`.replace(/\s+/g, ' ').trim(),
+          code: `${mmda.code}-${Date.now().toString().slice(-4)}`,
+          level: mmda.tier,
+          region,
+          district: mmda.name,
+          mmdaCode: mmda.code,
+          coverageMode: sel.coverageMode || 'STANDING',
+          mobileReady: sel.mobileReady ?? false,
+          specialization: `Local response for ${mmda.name}`
+        });
+        results.push({ region, name: `${mmda.name} Desk`, level: mmda.tier, mmdaCode: mmda.code, status: 'created' });
+        all = existing();
+      }
+    }
+
+    const created = results.filter((r) => r.status === 'created').length;
+    const skipped = results.filter((r) => r.status === 'skipped').length;
+
+    AuditService.log({
+      eventType: 'HIERARCHY_PROVISIONED',
+      userId: input.actor.id,
+      actorType: 'INSTITUTION',
+      institutionId: input.institutionId,
+      targetType: 'INSTITUTION',
+      targetId: input.institutionId,
+      afterState: { created, skipped, regions: input.regions.map((r) => r.region) }
+    });
+
+    return { created, skipped, desks: results };
+  }
+
   public static listDesks(institutionId: string): any[] {
     return db.prepare(`
       SELECT d.*, (
@@ -112,7 +289,7 @@ export class CoordinationService {
       FROM institution_desks d
       WHERE d.institution_id = ? AND d.status != 'ARCHIVED'
       ORDER BY
-        CASE d.level WHEN 'NATIONAL' THEN 1 WHEN 'REGIONAL' THEN 2 WHEN 'DISTRICT' THEN 3 ELSE 4 END,
+        ${DESK_LEVEL_ORDER_SQL},
         d.name ASC
     `).all(institutionId) as any[];
   }
@@ -178,21 +355,23 @@ export class CoordinationService {
   }
 
   /**
-   * Resolves the most specific desk within an institution for a location, walking
-   * from DISTRICT to REGIONAL to NATIONAL so regional and MMDA sub-units receive
-   * work before it falls back to the national command desk.
+   * Resolves the most specific operational desk within an institution for a
+   * location, walking the local tiers first (Metropolitan, Municipal, District)
+   * and falling back to REGIONAL then NATIONAL.
+   *
+   * Two rules keep this honest for agencies with no permanent local presence:
+   *  - A local desk that is ON_CALL is only returned when it is already mobilised
+   *    for that jurisdiction (mmda_code set); otherwise the report escalates to the
+   *    regional desk, which owns the on-call arrangement.
+   *  - A STANDING desk is always eligible.
    */
   public static resolveDeskForLocation(
     institutionId: string,
-    location: { region?: string; district?: string }
+    location: { region?: string; district?: string; mmdaCode?: string }
   ): any | null {
     if (location.district) {
-      const districtDesk = db.prepare(`
-        SELECT * FROM institution_desks
-        WHERE institution_id = ? AND level = 'DISTRICT' AND district = ? AND status = 'ACTIVE'
-        LIMIT 1
-      `).get(institutionId, location.district) as any;
-      if (districtDesk) return districtDesk;
+      const localDesk = this.findLocalDesk(institutionId, location);
+      if (localDesk) return localDesk;
     }
 
     if (location.region) {
@@ -209,6 +388,260 @@ export class CoordinationService {
       WHERE institution_id = ? AND level = 'NATIONAL' AND status = 'ACTIVE'
       ORDER BY created_at ASC LIMIT 1
     `).get(institutionId) as any || null;
+  }
+
+  /**
+   * Finds the local-tier desk (Metropolitan/Municipal/District) covering a
+   * jurisdiction. When several local tiers could match, the more specific one wins:
+   * an exact district match on the standing desk, then a mobilised on-call desk.
+   */
+  private static findLocalDesk(
+    institutionId: string,
+    location: { region?: string; district?: string; mmdaCode?: string }
+  ): any | null {
+    const tiers = ['METROPOLITAN', 'MUNICIPAL', 'DISTRICT'];
+    for (const tier of tiers) {
+      const desk = db.prepare(`
+        SELECT * FROM institution_desks
+        WHERE institution_id = ? AND level = ? AND district = ? AND status = 'ACTIVE'
+          AND (coverage_mode IS NULL OR coverage_mode != 'ON_CALL' OR mmda_code IS NOT NULL)
+        ORDER BY CASE WHEN coverage_mode = 'STANDING' THEN 0 ELSE 1 END, created_at ASC
+        LIMIT 1
+      `).get(institutionId, tier, location.district) as any;
+      if (desk) return desk;
+    }
+
+    if (location.mmdaCode) {
+      const byCode = db.prepare(`
+        SELECT * FROM institution_desks
+        WHERE institution_id = ? AND mmda_code = ? AND status = 'ACTIVE'
+        LIMIT 1
+      `).get(institutionId, location.mmdaCode) as any;
+      if (byCode) return byCode;
+    }
+
+    return null;
+  }
+
+  /**
+   * Returns the full supervisory chain for a resolved desk, ordered from the desk
+   * itself up to the national command desk. Used to fan a report out to the
+   * regional and local sub-units that must be aware of it.
+   */
+  public static resolveDeskChain(institutionId: string, startDeskId: string | null): any[] {
+    const chain: any[] = [];
+    const seen = new Set<string>();
+    let cursorId = startDeskId;
+    while (cursorId && !seen.has(cursorId)) {
+      seen.add(cursorId);
+      const desk = db.prepare('SELECT * FROM institution_desks WHERE id = ? AND institution_id = ?')
+        .get(cursorId, institutionId) as any;
+      if (!desk) break;
+      chain.push(desk);
+      cursorId = desk.parent_desk_id;
+    }
+    return chain;
+  }
+
+  /**
+   * Resolves how a report should be routed inside one institution: the single
+   * accountable primary desk, plus the awareness chain (regional/local sub-units)
+   * that should be informed. Honours the institution's desk_fanout_enabled toggle.
+   */
+  public static resolveRoutingChain(
+    institutionId: string,
+    location: { region?: string; district?: string; mmdaCode?: string }
+  ): { primary: any | null; chain: any[] } {
+    const primary = this.resolveDeskForLocation(institutionId, location);
+    if (!primary) return { primary: null, chain: [] };
+
+    const fanout = db.prepare('SELECT desk_fanout_enabled FROM institutions WHERE id = ?')
+      .get(institutionId) as any;
+    const enabled = fanout ? Boolean(fanout.desk_fanout_enabled) : true;
+    if (!enabled) return { primary, chain: [] };
+
+    const chain = this.resolveDeskChain(institutionId, primary.id)
+      .filter((d) => d.id !== primary.id);
+    return { primary, chain };
+  }
+
+  /**
+   * Reports the local-jurisdiction coverage an institution has for a region: which
+   * MMDA tiers are standing, which are on-call, and which districts have no desk.
+   * Surfaces the "mobilise when needed" gap so a national desk can act on it.
+   */
+  public static getRoutingCoverage(institutionId: string, region: string): {
+    region: string;
+    nationalDesk: any | null;
+    regionalDesk: any | null;
+    localDesks: any[];
+    onCallDesks: any[];
+    coveredDistricts: string[];
+    gapDistricts: string[];
+  } {
+    const desks = db.prepare(`
+      SELECT d.* FROM institution_desks d
+      WHERE d.institution_id = ? AND d.status = 'ACTIVE'
+        AND (d.region = ? OR d.level = 'NATIONAL')
+      ORDER BY ${DESK_LEVEL_ORDER_SQL}, d.name ASC
+    `).all(institutionId, region) as any[];
+
+    const localDesks = desks.filter((d) => LOCAL_DESK_LEVELS.includes(d.level));
+    const onCallDesks = localDesks.filter((d) => d.coverage_mode === 'ON_CALL' && !d.mmda_code);
+    const coveredDistricts = Array.from(new Set(localDesks.filter((d) => d.district).map((d) => d.district)));
+
+    // Districts that raised reports in this region but have no local desk.
+    const reported = db.prepare(`
+      SELECT DISTINCT district FROM posts
+      WHERE region = ? AND district IS NOT NULL AND district != ''
+    `).all(region) as any[];
+    const covered = new Set(coveredDistricts);
+    const gapDistricts = reported.map((r) => r.district).filter((d: string) => !covered.has(d));
+
+    return {
+      region,
+      nationalDesk: desks.find((d) => d.level === 'NATIONAL') || null,
+      regionalDesk: desks.find((d) => d.level === 'REGIONAL') || null,
+      localDesks,
+      onCallDesks,
+      coveredDistricts,
+      gapDistricts
+    };
+  }
+
+  /**
+   * Extends an institution's operation into a specific MMDA jurisdiction by
+   * creating a local desk for it (or activating an existing dormant one). This is
+   * how a national agency with no permanent local presence mobilises when needed.
+   * The new desk is auto-linked to its regional/national supervisor, and any
+   * existing reports already routed to the regional desk for that district are
+   * re-homed onto it so the local desk starts with the real backlog.
+   */
+  public static mobiliseLocalDesk(input: {
+    institutionId: string;
+    region: string;
+    district: string;
+    level?: LocalDeskLevel;
+    mmdaCode?: string;
+    coverageMode?: CoverageMode;
+    mobileReady?: boolean;
+    name?: string;
+    code?: string;
+    actor: CoordinationActor;
+  }): { deskId: string; created: boolean; adoptedItemIds: string[] } {
+    const level: LocalDeskLevel = input.level || 'MUNICIPAL';
+
+    const existing = db.prepare(`
+      SELECT * FROM institution_desks
+      WHERE institution_id = ? AND district = ? AND status = 'ACTIVE'
+      ORDER BY created_at ASC LIMIT 1
+    `).get(input.institutionId, input.district) as any;
+
+    let deskId: string;
+    let created = false;
+    const now = new Date().toISOString();
+
+    if (existing) {
+      deskId = existing.id;
+      db.prepare(`
+        UPDATE institution_desks
+        SET coverage_mode = ?, mobile_ready = ?, mmda_code = COALESCE(?, mmda_code),
+            region = COALESCE(region, ?), level = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        input.coverageMode || 'STANDING',
+        input.mobileReady ? 1 : 0,
+        input.mmdaCode || null,
+        input.region,
+        level,
+        now,
+        deskId
+      );
+    } else {
+      created = true;
+      deskId = this.createDesk({
+        institutionId: input.institutionId,
+        name: input.name || `${input.district} Local Operations Desk`,
+        code: input.code || `LOCAL-${input.district.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase()}-${Date.now().toString().slice(-4)}`,
+        level,
+        region: input.region,
+        district: input.district,
+        mmdaCode: input.mmdaCode,
+        coverageMode: input.coverageMode || 'STANDING',
+        mobileReady: input.mobileReady ?? true,
+        specialization: `Local response for ${input.district}`
+      });
+    }
+
+    AuditService.log({
+      eventType: created ? 'DESK_MOBILISED' : 'DESK_EXTENDED',
+      userId: input.actor.id,
+      actorType: 'INSTITUTION',
+      institutionId: input.institutionId,
+      targetType: 'DESK',
+      targetId: deskId,
+      afterState: { district: input.district, level, coverageMode: input.coverageMode || 'STANDING' }
+    });
+
+    const adoptedItemIds = this.adoptJurisdictionItems(input.institutionId, deskId, {
+      region: input.region,
+      district: input.district
+    });
+
+    return { deskId, created, adoptedItemIds };
+  }
+
+  /**
+   * Re-homes open inbox items already sitting on a supervisory desk onto a newly
+   * mobilised local desk for the same jurisdiction, and records the routing hop.
+   * Only items that are not already resolved and not owned by another local desk
+   * are moved, so a mobilisation never steals another jurisdiction's work.
+   */
+  public static adoptJurisdictionItems(
+    institutionId: string,
+    localDeskId: string,
+    location: { region: string; district: string }
+  ): string[] {
+    const now = new Date().toISOString();
+    const localDesk = db.prepare('SELECT * FROM institution_desks WHERE id = ? AND institution_id = ?')
+      .get(localDeskId, institutionId) as any;
+    if (!localDesk) return [];
+
+    const items = db.prepare(`
+      SELECT i.id, i.desk_id FROM institutional_inbox_items i
+      LEFT JOIN institution_desks d ON d.id = i.desk_id
+      WHERE i.institution_id = ? AND i.district = ?
+        AND i.mirror_of_item_id IS NULL
+        AND i.action_state NOT IN ('RESOLVED')
+        AND (d.id IS NULL OR d.level IN ('NATIONAL', 'REGIONAL'))
+    `).all(institutionId, location.district) as any[];
+
+    const adopted: string[] = [];
+    for (const item of items) {
+      db.prepare(`
+        UPDATE institutional_inbox_items
+        SET desk_id = ?, assigned_officer_user_id = NULL, assigned_at = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(localDeskId, now, item.id);
+
+      // The local desk takes over ownership: demote the supervisory desk's PRIMARY
+      // route to SUPPORTING so exactly one desk is accountable for the work item.
+      db.prepare(`
+        UPDATE inbox_item_routes SET routing_role = 'SUPPORTING'
+        WHERE inbox_item_id = ? AND routing_role = 'PRIMARY' AND desk_id != ?
+      `).run(item.id, localDeskId);
+
+      db.prepare(`
+        INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
+        VALUES (?, ?, ?, ?, 'PRIMARY', ?)
+      `).run(`rt-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`, item.id, institutionId, localDeskId, now);
+
+      if (item.desk_id) {
+        InstitutionalInboxService.createMirrorItem(item.id, item.desk_id);
+      }
+      adopted.push(item.id);
+    }
+    return adopted;
   }
 
   // ---------------------------------------------------------------------------
@@ -1245,7 +1678,7 @@ export class CoordinationService {
    * lateral/downward (handoff) using desk hierarchy and level ordering.
    */
   public static resolveHandoffDirection(institutionId: string, fromDeskId: string | null, toDeskId: string): 'UPWARD' | 'LATERAL' | 'DOWNWARD' {
-    const rank: Record<string, number> = { NATIONAL: 1, REGIONAL: 2, DISTRICT: 3, SPECIALIST: 2 };
+    const rank: Record<string, number> = { NATIONAL: 1, REGIONAL: 2, SPECIALIST: 2, METROPOLITAN: 3, MUNICIPAL: 4, DISTRICT: 5 };
     const to = db.prepare('SELECT * FROM institution_desks WHERE id = ?').get(toDeskId) as any;
     if (!to) return 'LATERAL';
     if (!fromDeskId) return 'LATERAL';

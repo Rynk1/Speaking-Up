@@ -768,6 +768,17 @@ export const InstitutionDashboardView: React.FC<InstitutionDashboardViewProps> =
             team={team}
             currentInstitution={currentInstitution}
             loading={false}
+            onMobilise={async (payload) => {
+              await api.mobiliseLocalDesk(currentInstitution.id, payload);
+              await loadDesksAndTeam();
+            }}
+            onLoadCoverage={(region) => api.getRoutingCoverage(currentInstitution.id, region)}
+            onProvisionHierarchy={async (regions) => {
+              const result = await api.provisionDeskHierarchy(currentInstitution.id, regions);
+              await loadDesksAndTeam();
+              return result;
+            }}
+            onLoadMmdaReference={() => api.getMmdaReference()}
           />
         )}
 

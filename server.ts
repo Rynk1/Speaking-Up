@@ -157,8 +157,9 @@ async function bootstrap() {
     });
   }
 
-  // 6. Start HTTP Server on Port 3000
-  const PORT = 3000;
+  // 6. Start the HTTP server. PORT is configurable so the runtime can place the
+  // app on the port its preview proxy expects; it defaults to 3000 locally.
+  const PORT = config.port;
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Speak Up Production API Server running on port ${PORT} (${config.env} mode)`);
     logger.info(`Live Web Preview: http://localhost:${PORT}/`);

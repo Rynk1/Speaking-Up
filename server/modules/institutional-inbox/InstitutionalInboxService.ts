@@ -160,6 +160,47 @@ export class InstitutionalInboxService {
   }
 
   /**
+   * Records a routing hop for an inbox item: which desk was told about it and in
+   * what capacity. PRIMARY owns the work; SECONDARY/SUPPORTING are awareness
+   * sub-units (regional or local desks fanned out from the primary). Idempotent
+   * per (item, desk) thanks to the unique constraint.
+   */
+  public static addRoute(input: {
+    inboxItemId: string;
+    institutionId: string;
+    deskId?: string | null;
+    routingRole?: 'PRIMARY' | 'SECONDARY' | 'SUPPORTING' | 'CC';
+  }): void {
+    db.prepare(`
+      INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      `rt-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      input.inboxItemId,
+      input.institutionId,
+      input.deskId || null,
+      input.routingRole || 'SECONDARY',
+      new Date().toISOString()
+    );
+  }
+
+  /**
+   * Returns the routing trail for an item so the console can show which sub-units
+   * received it, who owns it, and which are awareness-only.
+   */
+  public static listRoutes(inboxItemId: string): any[] {
+    return db.prepare(`
+      SELECT r.*, d.name AS desk_name, d.level AS desk_level, d.coverage_mode AS desk_coverage_mode
+      FROM inbox_item_routes r
+      LEFT JOIN institution_desks d ON d.id = r.desk_id
+      WHERE r.inbox_item_id = ?
+      ORDER BY
+        CASE r.routing_role WHEN 'PRIMARY' THEN 1 WHEN 'SECONDARY' THEN 2 WHEN 'SUPPORTING' THEN 3 ELSE 4 END,
+        r.routed_at ASC
+    `).all(inboxItemId) as any[];
+  }
+
+  /**
    * Propagates a state change from a source item to all of its visibility mirrors.
    */
   public static syncMirrors(sourceItemId: string, targetState: string, now: string): number {

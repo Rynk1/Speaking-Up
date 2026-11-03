@@ -1257,9 +1257,12 @@ export function initDatabase() {
       parent_desk_id TEXT,
       name TEXT NOT NULL,
       code TEXT NOT NULL,
-      level TEXT NOT NULL DEFAULT 'NATIONAL', -- NATIONAL, REGIONAL, DISTRICT, SPECIALIST
+      level TEXT NOT NULL DEFAULT 'NATIONAL', -- NATIONAL, REGIONAL, METROPOLITAN, MUNICIPAL, DISTRICT, SPECIALIST
       region TEXT,
       district TEXT,
+      mmda_code TEXT, -- GSS assembly code for the local jurisdiction (MMDA desks only)
+      coverage_mode TEXT NOT NULL DEFAULT 'STANDING', -- STANDING, ON_CALL (an agency mobilises when needed)
+      mobile_ready INTEGER NOT NULL DEFAULT 0, -- can a standing desk be summoned to a neighbouring jurisdiction
       specialization TEXT,
       contact_email TEXT,
       contact_phone TEXT,
@@ -1460,6 +1463,43 @@ export function initDatabase() {
     db.prepare("UPDATE civic_situations SET status = 'ACTIVE_MONITORING' WHERE status = 'ACTIVE'").run();
   } catch {}
 
+  // Safe ALTER migrations for institution_desks: MMDA jurisdiction metadata so a
+  // national desk can record whether it has a standing local presence, an on-call
+  // (mobilise-when-needed) arrangement, or a mobile desk that can be extended into
+  // a neighbouring jurisdiction.
+  const deskCols = [
+    { name: 'mmda_code', type: 'TEXT' },
+    { name: 'coverage_mode', type: "TEXT NOT NULL DEFAULT 'STANDING'" },
+    { name: 'mobile_ready', type: 'INTEGER NOT NULL DEFAULT 0' }
+  ];
+  for (const col of deskCols) {
+    try {
+      db.exec(`ALTER TABLE institution_desks ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
+
+  // Safe ALTER migrations for institutions: whether the institution opts into
+  // fanning a report out to its whole supervisory chain (regional + local desks)
+  // for awareness, in addition to the single accountable primary desk.
+  try {
+    db.exec("ALTER TABLE institutions ADD COLUMN desk_fanout_enabled INTEGER NOT NULL DEFAULT 1");
+  } catch {}
+
+  // Relabel pre-existing desks whose names already mark them as Metropolitan or
+  // Municipal assemblies but were stored under the generic DISTRICT level. This is
+  // a vocabulary elevation, not a behavioural change: resolution order is
+  // preserved because both tiers rank just below REGIONAL.
+  try {
+    db.prepare(`
+      UPDATE institution_desks SET level = 'METROPOLITAN', updated_at = ?
+      WHERE level = 'DISTRICT' AND (name LIKE '%Metropolitan%' OR code LIKE '%-AMA' OR code LIKE '%-KMA')
+    `).run(new Date().toISOString());
+    db.prepare(`
+      UPDATE institution_desks SET level = 'MUNICIPAL', updated_at = ?
+      WHERE level = 'DISTRICT' AND (name LIKE '%Municipal%' OR code LIKE '%-MUN%')
+    `).run(new Date().toISOString());
+  } catch {}
+
   // Safe ALTER migrations for abuse_reports: record who resolved a complaint
   // and why, so the admin UI can honestly claim the reason was captured.
   const abuseReportCols = [
@@ -1578,6 +1618,7 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_posts_owner_inst ON posts(owner_institution_id, workflow_stage);
     CREATE INDEX IF NOT EXISTS idx_inbox_mirror ON institutional_inbox_items(mirror_of_item_id);
     CREATE INDEX IF NOT EXISTS idx_inbox_desk_state ON institutional_inbox_items(desk_id, action_state);
+    CREATE INDEX IF NOT EXISTS idx_desks_local_tier ON institution_desks(institution_id, level, district, region);
     CREATE INDEX IF NOT EXISTS idx_delegations_parent ON coordination_delegations(parent_delegation_id);
     CREATE INDEX IF NOT EXISTS idx_cases_post ON coordination_cases(post_id);
     CREATE INDEX IF NOT EXISTS idx_cases_status ON coordination_cases(status, updated_at);

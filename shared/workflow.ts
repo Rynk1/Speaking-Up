@@ -11,6 +11,40 @@
  */
 
 /* ------------------------------------------------------------------ */
+/* Inbox routing roles                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How a sub-unit received a work item. `PRIMARY` owns the work. `SUPPORTING`
+ * is the supervisory chain (a parent desk that shares accountability and can
+ * act). `INFORMED` is the downward cascade — a sub-unit told about work it does
+ * not own, so a regional/national desk's intake reaches the MMDA desks without
+ * appearing as a co-owner. `SECONDARY`/`CC` are legacy awareness roles.
+ */
+export type RoutingRole = 'PRIMARY' | 'SECONDARY' | 'SUPPORTING' | 'INFORMED' | 'CC';
+
+/** Display/priority order for the routing trail: most accountable first. */
+export const ROUTING_ROLE_RANK: Record<string, number> = {
+  PRIMARY: 1,
+  SECONDARY: 2,
+  SUPPORTING: 3,
+  INFORMED: 4,
+  CC: 5
+};
+
+/** Human labels for each routing role, shared by the API and the console. */
+export const ROUTING_ROLE_LABELS: Record<string, string> = {
+  PRIMARY: 'Accountable',
+  SECONDARY: 'Secondary',
+  SUPPORTING: 'Supporting',
+  INFORMED: 'Informed (FYI)',
+  CC: 'CC'
+};
+
+/** Roles that expect the receiving desk to act, versus awareness-only roles. */
+export const ROUTING_ACTION_ROLES: string[] = ['PRIMARY', 'SECONDARY', 'SUPPORTING'];
+
+/* ------------------------------------------------------------------ */
 /* Work item (institutional awareness inbox) lifecycle                 */
 /* ------------------------------------------------------------------ */
 
@@ -195,6 +229,50 @@ export const DELEGATION_TRANSITIONS: Record<string, string[]> = {
 export function canTransitionDelegation(from: string, to: string): boolean {
   const allowed = DELEGATION_TRANSITIONS[from];
   return Boolean(allowed && allowed.includes(to));
+}
+
+/**
+ * The coarse delegation status a work-item state implies. A delegation and the
+ * inbox item it created describe the same work at two resolutions; without a
+ * mapping they drift (an operator acknowledges the item while the delegation sits
+ * PENDING forever). This is that mapping, in one place.
+ *
+ * Returns null when the state carries no delegation-level meaning (fine-grained
+ * progress such as RESPONSE_PREPARED, or CITIZEN_FOLLOW_UP, which is not a
+ * decline).
+ */
+export function delegationStatusForWorkItemState(state: string): 'ACCEPTED' | 'COMPLETED' | null {
+  switch (state) {
+    case 'ACKNOWLEDGED':
+    case 'UNDER_REVIEW':
+    case 'RESPONSE_PREPARED':
+    case 'PUBLIC_RESPONSE':
+    case 'ACTION_REPORTED':
+      return 'ACCEPTED';
+    case 'RESOLVED':
+      return 'COMPLETED';
+    default:
+      return null;
+  }
+}
+
+/**
+ * The work-item state a delegation status projects onto. The inverse direction
+ * of the mapping above, used when the delegation is the one that moved.
+ */
+export function workItemStateForDelegationStatus(status: string): WorkItemState | null {
+  switch (status) {
+    case 'ACCEPTED':
+      return 'ACKNOWLEDGED';
+    case 'COMPLETED':
+      return 'RESOLVED';
+    case 'DECLINED':
+      return 'CITIZEN_FOLLOW_UP';
+    case 'PENDING':
+      return 'NEW';
+    default:
+      return null;
+  }
 }
 
 /* ------------------------------------------------------------------ */

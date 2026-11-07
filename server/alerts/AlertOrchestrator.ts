@@ -21,11 +21,17 @@ export class AlertOrchestrator {
   };
 
   /**
-   * Main entry point to orchestrate alert dispatch for a post or civic issue cluster
+   * Main entry point to orchestrate alert dispatch for a post or civic issue cluster.
+   *
+   * When `deskId` is supplied the alert is addressed to that specific sub-unit:
+   * its own line is preferred over the institution's, so an MMDA desk is reached
+   * on the number it actually answers. The idempotency key includes the desk so a
+   * desk alert and an institution alert for the same report never collide.
    */
-  public static async orchestrateAlert(postId: string, institutionId: string, options: { force?: boolean } = {}): Promise<AlertDeliveryResult> {
+  public static async orchestrateAlert(postId: string, institutionId: string, options: { force?: boolean; deskId?: string } = {}): Promise<AlertDeliveryResult> {
     const now = new Date().toISOString();
-    const idempotencyKey = `alert-${postId}-${institutionId}`;
+    const deskId = options.deskId || null;
+    const idempotencyKey = `alert-${postId}-${institutionId}${deskId ? `-${deskId}` : ''}`;
 
     // 1. Idempotency Check — unless the caller explicitly forces a re-dispatch
     // (operator-driven retry of a FAILED delivery).
@@ -50,6 +56,10 @@ export class AlertOrchestrator {
     const inst = db.prepare('SELECT * FROM institutions WHERE id = ?').get(institutionId) as any;
     if (!inst) throw new Error(`Institution ${institutionId} not found`);
 
+    const desk = deskId
+      ? db.prepare('SELECT * FROM institution_desks WHERE id = ? AND institution_id = ?').get(deskId, institutionId) as any
+      : null;
+
     // 3. Determine Priority Tier
     let priorityTier = 'TIER_1_IMMEDIATE';
     if (post.urgency === 'CRITICAL' || post.severity === 'EMERGENCY') {
@@ -58,14 +68,21 @@ export class AlertOrchestrator {
       priorityTier = 'TIER_2_HIGH';
     }
 
-    // 4. Resolve Channel with Fallback
-    const channel = ChannelHealthMonitor.resolveOperationalChannel(institutionId);
+    // 4. Resolve Channel with Fallback. A desk resolves its own line first so the
+    // MMDA sub-unit is reached directly rather than through head office.
+    let channel = desk ? this.resolveDeskChannel(institutionId, desk) : null;
+    if (!channel) channel = ChannelHealthMonitor.resolveOperationalChannel(institutionId);
     let channelType: 'EMAIL' | 'WEBHOOK' | 'SMS' | 'WHATSAPP' | 'PUSH' = 'EMAIL';
     let endpoint = '';
 
     if (channel) {
       channelType = channel.channel_type;
       endpoint = channel.endpoint;
+    } else if (desk?.contact_phone) {
+      // A desk with a phone but no channel row is still reachable: SMS is the
+      // lowest-common-denominator field channel for MMDA officers.
+      channelType = 'SMS';
+      endpoint = desk.contact_phone;
     } else {
       // Fallback based on institution record defaults. Never invent an
       // endpoint: an alert must fail closed as NOT_CONFIGURED rather than
@@ -83,7 +100,9 @@ export class AlertOrchestrator {
         channelType = 'EMAIL';
         endpoint = emailList[0];
       } else {
-        const notConfiguredMsg = 'No direct communication channel configured; public tag active';
+        const notConfiguredMsg = desk
+          ? `No communication channel configured for desk ${desk.name}; public tag active`
+          : 'No direct communication channel configured; public tag active';
         db.prepare(`
           INSERT INTO post_institution_tags (id, post_id, institution_id, institution_name, short_name, acronym, alert_requested, alert_status, alert_method_used, delivery_timestamp, created_at)
           VALUES (?, ?, ?, ?, ?, ?, 1, 'NOT_CONFIGURED', ?, ?, ?)
@@ -104,9 +123,9 @@ export class AlertOrchestrator {
     // 5. Build Core Alert Record in DB
     const alertId = `alt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     db.prepare(`
-      INSERT INTO alerts (id, post_id, cluster_id, institution_id, priority_tier, urgency, awareness_status, transport_status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'UNOPENED', 'SENDING', ?, ?)
-    `).run(alertId, postId, post.issue_cluster_id || null, inst.id, priorityTier, post.urgency || 'NORMAL', now, now);
+      INSERT INTO alerts (id, post_id, cluster_id, institution_id, desk_id, channel_type, priority_tier, urgency, awareness_status, transport_status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UNOPENED', 'SENDING', ?, ?)
+    `).run(alertId, postId, post.issue_cluster_id || null, inst.id, desk?.id || null, channelType, priorityTier, post.urgency || 'NORMAL', now, now);
 
     const payload: InstitutionAlertPayload = {
       alertId,
@@ -176,6 +195,36 @@ export class AlertOrchestrator {
     });
 
     return result;
+  }
+
+  /**
+   * Resolves the best channel for a specific desk. A desk may carry its own
+   * phone (SMS/WhatsApp) or email; if it has none, the caller falls back to the
+   * institution's channel. Prefers an operational row, then degraded.
+   */
+  private static resolveDeskChannel(institutionId: string, desk: any): any | null {
+    if (!desk) return null;
+
+    const byPhone = db.prepare(`
+      SELECT * FROM institution_channels
+      WHERE institution_id = ? AND enabled = 1 AND channel_type IN ('SMS', 'WHATSAPP')
+        AND (endpoint = ? OR (region IS NOT NULL AND region = ?))
+      ORDER BY priority ASC
+    `).all(institutionId, desk.contact_phone || '', desk.region || '') as any[];
+    if (byPhone.length > 0) {
+      return byPhone.find((c) => c.health_status === 'OPERATIONAL') || byPhone[0];
+    }
+
+    if (desk.contact_email) {
+      const byEmail = db.prepare(`
+        SELECT * FROM institution_channels
+        WHERE institution_id = ? AND enabled = 1 AND channel_type = 'EMAIL' AND endpoint = ?
+        ORDER BY priority ASC LIMIT 1
+      `).get(institutionId, desk.contact_email) as any;
+      if (byEmail) return byEmail;
+    }
+
+    return null;
   }
 
   /**

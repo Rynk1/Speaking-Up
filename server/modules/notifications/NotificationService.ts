@@ -63,6 +63,33 @@ export class NotificationService {
   }
 
   /**
+   * Notifies only the officials attached to a specific desk, with no fallback to
+   * the wider institution roster. Used for the downward FYI cascade, where a
+   * sub-unit is informed of work it does not own: if the desk has no staff yet,
+   * the routing record still stands but no one is paged.
+   */
+  public static notifyDeskOfficers(
+    institutionId: string,
+    deskId: string,
+    notification: Omit<NotificationInput, 'userId'>
+  ): number {
+    let officers: { user_id: string }[] = [];
+    try {
+      officers = db.prepare(`
+        SELECT user_id FROM institution_desk_officers
+        WHERE desk_id = ? AND status = 'ACTIVE'
+      `).all(deskId) as any[];
+    } catch (err: any) {
+      logger.warn(`Failed to resolve desk officers for ${deskId}: ${err.message}`);
+      return 0;
+    }
+    for (const officer of officers) {
+      this.notify({ ...notification, userId: officer.user_id });
+    }
+    return officers.length;
+  }
+
+  /**
    * Resolves the active user accounts that act on behalf of an institution.
    * Falls back from desk officers, to the institution roster, to verified
    * institution representatives, so routing never silently drops a notification.

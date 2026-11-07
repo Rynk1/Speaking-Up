@@ -22,7 +22,10 @@ import {
   Inbox,
   Pencil,
   Check,
-  X
+  X,
+  TrendingUp,
+  Layers,
+  Network
 } from 'lucide-react';
 import { api } from '../services/api';
 import {
@@ -60,7 +63,7 @@ import {
   getPriorityMeta,
   getRoleMeta
 } from '../utils/status';
-import type { CoordinationQueueItem } from '../types';
+import type { CoordinationQueueItem, CoordinationAnalytics } from '../types';
 
 type AdminTab = 'overview' | 'content' | 'reports' | 'users' | 'institutions' | 'coordination' | 'privacy' | 'system';
 
@@ -117,6 +120,7 @@ export const AdminDashboardView: React.FC = () => {
 
   const [coordination, setCoordination] = useState<any>(null);
   const [queue, setQueue] = useState<{ items: CoordinationQueueItem[]; summary: any; totalCount: number } | null>(null);
+  const [analytics, setAnalytics] = useState<CoordinationAnalytics | null>(null);
   const [queueSeverity, setQueueSeverity] = useState('ALL');
   const [queueSource, setQueueSource] = useState('ALL');
   const [institutions, setInstitutions] = useState<any[]>([]);
@@ -191,14 +195,16 @@ export const AdminDashboardView: React.FC = () => {
       } else if (activeTab === 'reports') {
         setAbuseReports(await api.getAdminAbuseReports(reportStatusFilter));
       } else if (activeTab === 'coordination') {
-        const [coord, cases, q] = await Promise.all([
+        const [coord, cases, q, stats] = await Promise.all([
           api.getAdminCoordination(),
           api.getAdminJointCases({ limit: 50 }),
-          api.getAdminCoordinationQueue({ severity: queueSeverity, source: queueSource, limit: 100 })
+          api.getAdminCoordinationQueue({ severity: queueSeverity, source: queueSource, limit: 100 }),
+          api.getAdminCoordinationAnalytics()
         ]);
         setCoordination(coord);
         setJointCases(cases.items || []);
         setQueue(q);
+        setAnalytics(stats);
       } else if (activeTab === 'institutions') {
         setInstitutions(await api.getInstitutions());
       } else if (activeTab === 'privacy') {
@@ -1461,6 +1467,124 @@ export const AdminDashboardView: React.FC = () => {
                 </div>
               </div>
             </Card>
+
+            {/* National supervision picture: how far reports travel, where work
+                piles up, where presence is thin, and how agencies engage. */}
+            {analytics && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <Card className="space-y-3">
+                  <SectionHeader
+                    title="Routing Funnel by Region"
+                    description="How far reports travel. A wide gap between reported and resolved is where coordination stalls."
+                    icon={<TrendingUp className="w-4 h-4 text-emerald-400" />}
+                  />
+                  {!analytics.funnel?.regions?.length ? (
+                    <EmptyState icon={<TrendingUp className="w-5 h-5" />} title="No routed reports yet" description="Funnel stages appear once reports are routed to institutions." />
+                  ) : (
+                    <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                      {analytics.funnel.regions.slice(0, 12).map((r) => {
+                        const pct = (n: number) => (r.reported ? Math.round((n / r.reported) * 100) : 0);
+                        return (
+                          <div key={r.region} className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-white truncate">{r.region}</span>
+                              <span className="text-[10px] text-slate-500">
+                                {r.reported} reports
+                                {r.medianHoursToAck != null ? ` • ack ~${r.medianHoursToAck}h` : ''}
+                                {r.medianHoursToResolve != null ? ` • resolve ~${r.medianHoursToResolve}h` : ''}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-6 gap-1">
+                              {([
+                                ['Reported', r.reported, 'bg-slate-500'],
+                                ['Routed', r.routed, 'bg-sky-500'],
+                                ['Ack', r.acknowledged, 'bg-indigo-500'],
+                                ['Review', r.inReview, 'bg-violet-500'],
+                                ['Responded', r.responded, 'bg-amber-500'],
+                                ['Resolved', r.resolved, 'bg-emerald-500']
+                              ] as [string, number, string][]).map(([label, value, tone]) => (
+                                <div key={label} className="text-center">
+                                  <div className={`h-1.5 rounded-full ${tone}`} style={{ opacity: 0.35 + pct(value) / 200 }} />
+                                  <div className="mt-1 text-[11px] font-bold text-slate-200">{value}</div>
+                                  <div className="text-[9px] uppercase tracking-wide text-slate-500">{label}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+
+                <div className="space-y-4">
+                  <Card className="space-y-3">
+                    <SectionHeader
+                      title="Backlog by Desk Tier"
+                      description="Open work sitting at each level of government."
+                      icon={<Layers className="w-4 h-4 text-amber-400" />}
+                    />
+                    {!analytics.backlog?.tiers?.length ? (
+                      <EmptyState icon={<Layers className="w-5 h-5" />} title="No open work" description="Every desk queue is clear." />
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {analytics.backlog.tiers.map((t) => (
+                          <div key={t.level} className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl">
+                            <div className="text-[10px] uppercase tracking-wide text-slate-500">{t.level}</div>
+                            <div className="text-lg font-bold text-white">{t.openItems}</div>
+                            <div className="text-[10px] text-slate-400">
+                              {t.breached > 0 && <span className="text-rose-400">{t.breached} breached • </span>}
+                              {t.unassigned} unassigned
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card className="space-y-3">
+                    <SectionHeader
+                      title="MMDA Coverage & Delegation Health"
+                      description="Where national presence is thin, and whether agencies accept the work delegated to them."
+                      icon={<Network className="w-4 h-4 text-cyan-400" />}
+                    />
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-center">
+                        <div className="text-[10px] uppercase tracking-wide text-slate-500">Coverage</div>
+                        <div className="text-lg font-bold text-white">{Math.round((analytics.coverage?.totals?.coverageRate ?? 0) * 100)}%</div>
+                        <div className="text-[10px] text-slate-400">{analytics.coverage?.totals?.covered ?? 0}/{analytics.coverage?.totals?.total ?? 261}</div>
+                      </div>
+                      <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-center">
+                        <div className="text-[10px] uppercase tracking-wide text-slate-500">Accept rate</div>
+                        <div className="text-lg font-bold text-white">{Math.round((analytics.delegations?.acceptanceRate ?? 0) * 100)}%</div>
+                        <div className="text-[10px] text-slate-400">{analytics.delegations?.total ?? 0} delegations</div>
+                      </div>
+                      <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-center">
+                        <div className="text-[10px] uppercase tracking-wide text-slate-500">Overdue</div>
+                        <div className={`text-lg font-bold ${(analytics.delegations?.overduePending ?? 0) > 0 ? 'text-rose-400' : 'text-white'}`}>
+                          {analytics.delegations?.overduePending ?? 0}
+                        </div>
+                        <div className="text-[10px] text-slate-400">awaiting decision</div>
+                      </div>
+                    </div>
+                    {analytics.coverage?.regions?.length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] uppercase tracking-wide text-slate-500">Thinnest coverage</div>
+                        {analytics.coverage.regions.slice(0, 4).map((c) => (
+                          <div key={c.region} className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-300 w-28 truncate">{c.region}</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                              <div className="h-full bg-cyan-500" style={{ width: `${Math.round(c.coverageRate * 100)}%` }} />
+                            </div>
+                            <span className="text-[10px] text-slate-400 w-14 text-right">{c.covered}/{c.total}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                </div>
+              </div>
+            )}
 
             {/* The queue itself */}
             {loading ? (

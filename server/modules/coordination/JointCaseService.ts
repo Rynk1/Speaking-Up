@@ -549,6 +549,63 @@ export class JointCaseService {
     return rows;
   }
 
+  /**
+   * Opens a joint case automatically for a report that has been routed to two or
+   * more institutions. A single-agency report is an ordinary routing job, but a
+   * multi-agency one (police + NADMO + assembly, say) is exactly the situation a
+   * joint case exists for, and waiting for an admin to notice it by hand is how
+   * those cases fall between the desks.
+   *
+   * Idempotent: a report that already has an open case is returned as-is, so this
+   * can be called from report intake without guarding the caller.
+   */
+  public static autoOpenForReport(input: {
+    postId: string;
+    institutionIds: string[];
+    title: string;
+    category?: string;
+    region?: string;
+    district?: string;
+    summary?: string;
+    priority?: string;
+  }): { caseId: string; created: boolean } | null {
+    const unique = Array.from(new Set(input.institutionIds.filter(Boolean)));
+    if (unique.length < 2) return null;
+
+    const existing = db.prepare(`
+      SELECT id FROM coordination_cases
+      WHERE post_id = ? AND status NOT IN ('RESOLVED', 'CLOSED')
+      LIMIT 1
+    `).get(input.postId) as any;
+    if (existing) return { caseId: existing.id, created: false };
+
+    // The lead is the institution that owns the report; otherwise the first tag.
+    const owner = db.prepare('SELECT owner_institution_id FROM posts WHERE id = ?').get(input.postId) as any;
+    const leadInstitutionId = owner?.owner_institution_id && unique.includes(owner.owner_institution_id)
+      ? owner.owner_institution_id
+      : unique[0];
+
+    const created = this.createCase(
+      {
+        postId: input.postId,
+        title: input.title,
+        category: input.category,
+        region: input.region,
+        district: input.district,
+        summary: input.summary || 'Auto-opened: this report was routed to multiple state institutions.',
+        priority: input.priority || 'ELEVATED',
+        leadInstitutionId,
+        participants: unique.map((institutionId) => ({
+          institutionId,
+          role: institutionId === leadInstitutionId ? 'LEAD' : 'SUPPORTING'
+        }))
+      },
+      { id: 'system', name: 'Coordination Engine', role: 'SYSTEM' }
+    );
+
+    return { caseId: created.id, created: true };
+  }
+
   private static recordCaseEvent(
     caseId: string,
     eventType: string,

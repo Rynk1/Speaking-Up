@@ -27,6 +27,8 @@ import {
   AssignedReport,
   AdminCoordinationOverview,
   CoordinationQueueResponse,
+  CoordinationAnalytics,
+  CoordinationNationalSummary,
   JointCase
 } from '../types';
 
@@ -856,6 +858,23 @@ export const api = {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Failed to run SLA sweep');
     }
+    return camelize(await res.json());
+  },
+
+  async getAdminCoordinationAnalytics(region?: string): Promise<CoordinationAnalytics> {
+    const query = region ? `?region=${encodeURIComponent(region)}` : '';
+    const res = await fetch(`/api/admin/coordination/analytics${query}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch coordination analytics');
+    return camelize(await res.json());
+  },
+
+  async getAdminCoordinationSummary(): Promise<CoordinationNationalSummary> {
+    const res = await fetch('/api/admin/coordination/analytics/summary', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to fetch coordination summary');
     return camelize(await res.json());
   },
 

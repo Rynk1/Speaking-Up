@@ -955,3 +955,60 @@ export interface CoordinationQueueResponse {
   totalCount: number;
 }
 
+export interface CoordinationFunnelRow {
+  region: string;
+  reported: number;
+  routed: number;
+  acknowledged: number;
+  inReview: number;
+  responded: number;
+  resolved: number;
+  routedRate: number;
+  resolvedRate: number;
+  medianHoursToAck: number | null;
+  medianHoursToResolve: number | null;
+}
+
+export interface CoordinationBacklogTier {
+  level: string;
+  openItems: number;
+  breached: number;
+  unassigned: number;
+  desks: number;
+}
+
+export interface CoordinationCoverageRow {
+  region: string;
+  total: number;
+  covered: number;
+  onCall: number;
+  coverageRate: number;
+}
+
+export interface CoordinationDelegationHealth {
+  total: number;
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+  acceptanceRate: number;
+  declineRate: number;
+  completionRate: number;
+  overduePending: number;
+  avgHoursToDecision: number | null;
+  topReceivers: { institutionId: string; institutionName: string | null; received: number; pending: number; declined: number }[];
+}
+
+export interface CoordinationAnalytics {
+  funnel: { regions: CoordinationFunnelRow[]; totals: Record<string, number> };
+  backlog: { tiers: CoordinationBacklogTier[]; totalOpen: number; totalBreached: number };
+  coverage: { regions: CoordinationCoverageRow[]; totals: { total: number; covered: number; coverageRate: number } };
+  delegations: CoordinationDelegationHealth;
+}
+
+export interface CoordinationNationalSummary {
+  funnel: Record<string, number>;
+  backlog: { totalOpen: number; totalBreached: number };
+  coverage: { total: number; covered: number; coverageRate: number };
+  delegations: { total: number; acceptanceRate: number; overduePending: number };
+  worstCoverageRegions: CoordinationCoverageRow[];
+}
+

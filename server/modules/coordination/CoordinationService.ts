@@ -11,6 +11,7 @@ import {
   checkCanAssign,
   checkCanHandoff,
   checkCanEscalate,
+  workItemStateForDelegationStatus,
   type WorkItemFacts
 } from '../../../shared/workflow';
 import { listMmdasForRegion } from '../../../shared/ghanaMmda';
@@ -445,24 +446,62 @@ export class CoordinationService {
 
   /**
    * Resolves how a report should be routed inside one institution: the single
-   * accountable primary desk, plus the awareness chain (regional/local sub-units)
-   * that should be informed. Honours the institution's desk_fanout_enabled toggle.
+   * accountable primary desk, the awareness chain of supervisory desks it climbs
+   * through (regional/national), and the downward cascade of local MMDA desks in
+   * the report's region that should be *informed* even when they do not own it.
+   *
+   * The cascade is what lets a national or regional desk's intake reach the
+   * MMDA desks on the ground. Those desks are INFORMED (FYI), not SUPPORTING:
+   * they are told, but the accountable owner is still the primary desk, so a
+   * report can never appear to have several owners. Honours the institution's
+   * desk_fanout_enabled toggle.
    */
   public static resolveRoutingChain(
     institutionId: string,
     location: { region?: string; district?: string; mmdaCode?: string }
-  ): { primary: any | null; chain: any[] } {
+  ): { primary: any | null; chain: any[]; informed: any[] } {
     const primary = this.resolveDeskForLocation(institutionId, location);
-    if (!primary) return { primary: null, chain: [] };
+    if (!primary) return { primary: null, chain: [], informed: [] };
 
     const fanout = db.prepare('SELECT desk_fanout_enabled FROM institutions WHERE id = ?')
       .get(institutionId) as any;
     const enabled = fanout ? Boolean(fanout.desk_fanout_enabled) : true;
-    if (!enabled) return { primary, chain: [] };
+    if (!enabled) return { primary, chain: [], informed: [] };
 
     const chain = this.resolveDeskChain(institutionId, primary.id)
       .filter((d) => d.id !== primary.id);
-    return { primary, chain };
+
+    const informed = this.resolveInformedLocalDesks(institutionId, primary, location, chain);
+    return { primary, chain, informed };
+  }
+
+  /**
+   * The downward cascade: local MMDA desks in the report's region that are not
+   * already the primary or on its supervisory chain. Only standing or mobilised
+   * desks are included, so an agency is never shown an on-call desk it has not
+   * actually stood up for that jurisdiction.
+   */
+  private static resolveInformedLocalDesks(
+    institutionId: string,
+    primary: any,
+    location: { region?: string; district?: string; mmdaCode?: string },
+    chain: any[]
+  ): any[] {
+    if (!location.region) return [];
+
+    const exclude = new Set<string>([primary.id, ...chain.map((d) => d.id)]);
+    const localDesks = db.prepare(`
+      SELECT d.* FROM institution_desks d
+      WHERE d.institution_id = ? AND d.status = 'ACTIVE'
+        AND d.level IN ('METROPOLITAN', 'MUNICIPAL', 'DISTRICT')
+        AND d.region = ?
+        AND (d.coverage_mode IS NULL OR d.coverage_mode != 'ON_CALL' OR d.mmda_code IS NOT NULL)
+      ORDER BY ${DESK_LEVEL_ORDER_SQL}, d.created_at ASC
+    `).all(institutionId, location.region) as any[];
+
+    // A district-named report informs its own local desk even if the primary is
+    // that desk already (excluded above); everything else in the region is FYI.
+    return localDesks.filter((d) => !exclude.has(d.id));
   }
 
   /**
@@ -838,13 +877,12 @@ export class CoordinationService {
     if (delegation.post_id) {
       const linkedItem = db.prepare('SELECT * FROM institutional_inbox_items WHERE delegation_id = ?').get(delegationId) as any;
       if (linkedItem) {
-        const mappedState =
-          targetStatus === 'ACCEPTED' ? 'ACKNOWLEDGED' :
-          targetStatus === 'COMPLETED' ? 'RESOLVED' :
-          targetStatus === 'DECLINED' ? 'CITIZEN_FOLLOW_UP' : 'NEW';
-        db.prepare('UPDATE institutional_inbox_items SET action_state = ?, updated_at = ? WHERE id = ?')
-          .run(mappedState, now, linkedItem.id);
-        InstitutionalInboxService.syncMirrors(linkedItem.id, mappedState, now);
+        const mappedState = workItemStateForDelegationStatus(targetStatus);
+        if (mappedState) {
+          db.prepare('UPDATE institutional_inbox_items SET action_state = ?, updated_at = ? WHERE id = ?')
+            .run(mappedState, now, linkedItem.id);
+          InstitutionalInboxService.syncMirrors(linkedItem.id, mappedState, now);
+        }
       }
 
       if (targetStatus === 'ACCEPTED') {

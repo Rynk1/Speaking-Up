@@ -30,8 +30,8 @@ export function initializeJobWorkers(): void {
 
   // 3. Institution Alert Dispatch Worker
   jobQueue.registerHandler('DISPATCH_ALERT', async (payload: any) => {
-    logger.info(`[Worker] Dispatching alert to institution ${payload.institutionId} for post ${payload.postId}`);
-    await InstitutionAlertService.dispatchAlert(payload.postId, payload.institutionId);
+    logger.info(`[Worker] Dispatching alert to institution ${payload.institutionId}${payload.deskId ? ` desk ${payload.deskId}` : ''} for post ${payload.postId}`);
+    await InstitutionAlertService.dispatchAlert(payload.postId, payload.institutionId, payload.deskId);
   });
 
   jobQueue.startWorker();

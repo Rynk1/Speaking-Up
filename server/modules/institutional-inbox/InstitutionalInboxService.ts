@@ -6,7 +6,10 @@ import { AppError } from '../../shared/errors';
 import {
   canTransitionWorkItem,
   checkCanResolve,
+  delegationStatusForWorkItemState,
+  canTransitionDelegation,
   WORK_ITEM_SEQUENCE,
+  type RoutingRole,
   type WorkItemFacts
 } from '../../../shared/workflow';
 
@@ -161,15 +164,15 @@ export class InstitutionalInboxService {
 
   /**
    * Records a routing hop for an inbox item: which desk was told about it and in
-   * what capacity. PRIMARY owns the work; SECONDARY/SUPPORTING are awareness
-   * sub-units (regional or local desks fanned out from the primary). Idempotent
-   * per (item, desk) thanks to the unique constraint.
+   * what capacity. PRIMARY owns the work; SUPPORTING is the supervisory chain that
+   * shares accountability; INFORMED is the downward cascade (FYI, no ownership).
+   * Idempotent per (item, desk) thanks to the unique constraint.
    */
   public static addRoute(input: {
     inboxItemId: string;
     institutionId: string;
     deskId?: string | null;
-    routingRole?: 'PRIMARY' | 'SECONDARY' | 'SUPPORTING' | 'CC';
+    routingRole?: RoutingRole;
   }): void {
     db.prepare(`
       INSERT OR IGNORE INTO inbox_item_routes (id, inbox_item_id, institution_id, desk_id, routing_role, routed_at)
@@ -195,7 +198,9 @@ export class InstitutionalInboxService {
       LEFT JOIN institution_desks d ON d.id = r.desk_id
       WHERE r.inbox_item_id = ?
       ORDER BY
-        CASE r.routing_role WHEN 'PRIMARY' THEN 1 WHEN 'SECONDARY' THEN 2 WHEN 'SUPPORTING' THEN 3 ELSE 4 END,
+        CASE r.routing_role
+          WHEN 'PRIMARY' THEN 1 WHEN 'SECONDARY' THEN 2 WHEN 'SUPPORTING' THEN 3
+          WHEN 'INFORMED' THEN 4 ELSE 5 END,
         r.routed_at ASC
     `).all(inboxItemId) as any[];
   }
@@ -210,6 +215,52 @@ export class InstitutionalInboxService {
       WHERE mirror_of_item_id = ? AND action_state != ?
     `).run(targetState, now, sourceItemId, targetState);
     return result.changes;
+  }
+
+  /**
+   * Reconciles the delegation a work item was created from with the item's new
+   * state. Only the delegation status is moved here — the post/citizen side
+   * effects belong to the delegation's own transition path, so this cannot
+   * double-notify. A PENDING delegation that is being completed is stepped
+   * through ACCEPTED first, since the delegation lifecycle has no PENDING→COMPLETED
+   * edge and we refuse to write an illegal status.
+   */
+  private static projectStateToDelegation(item: any, targetState: ActionState, now: string): void {
+    if (!item.delegation_id) return;
+    const target = delegationStatusForWorkItemState(targetState);
+    if (!target) return;
+
+    try {
+      const delegation = db.prepare('SELECT id, status FROM coordination_delegations WHERE id = ?')
+        .get(item.delegation_id) as any;
+      if (!delegation) return;
+
+      const steps: string[] = [];
+      if (canTransitionDelegation(delegation.status, target)) {
+        steps.push(target);
+      } else if (delegation.status === 'PENDING' && target === 'COMPLETED') {
+        steps.push('ACCEPTED', 'COMPLETED');
+      } else {
+        return;
+      }
+
+      for (const step of steps) {
+        const acceptedAt = step === 'ACCEPTED' ? now : null;
+        const completedAt = step === 'COMPLETED' ? now : null;
+        db.prepare(`
+          UPDATE coordination_delegations
+          SET status = ?,
+              accepted_at = COALESCE(?, accepted_at),
+              completed_at = COALESCE(?, completed_at),
+              updated_at = ?
+          WHERE id = ?
+        `).run(step, acceptedAt, completedAt, now, delegation.id);
+      }
+
+      logger.info(`Delegation ${delegation.id} projected to ${target} from work item ${item.id}`);
+    } catch (err: any) {
+      logger.warn(`Delegation projection failed for item ${item.id}: ${err.message}`);
+    }
   }
 
   /**
@@ -393,6 +444,11 @@ export class InstitutionalInboxService {
 
     // Keep read-only mirrors of this item in sync with the source state.
     this.syncMirrors(itemId, targetState, now);
+
+    // Keep the linked delegation in step with the work item. A delegation and the
+    // inbox item it created are the same work at two resolutions; without this an
+    // item can be acknowledged or resolved while its delegation sits PENDING.
+    this.projectStateToDelegation(item, targetState, now);
 
     // If associated with a post, synchronize post accountability_status
     if (item.post_id) {

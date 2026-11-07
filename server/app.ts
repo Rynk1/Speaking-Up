@@ -52,6 +52,7 @@ import type { CoverageMode } from './modules/coordination/CoordinationService';
 import { listMmdasForRegion, MMDA_REGIONS, GHANA_MMDA_BY_REGION } from '../shared/ghanaMmda';
 import { JointCaseService } from './modules/coordination/JointCaseService';
 import { CoordinationQueueService } from './modules/coordination/CoordinationQueueService';
+import { CoordinationAnalyticsService } from './modules/coordination/CoordinationAnalyticsService';
 import { NotificationService } from './modules/notifications/NotificationService';
 import { CitizenNotificationService } from './modules/notifications/CitizenNotificationService';
 
@@ -2075,6 +2076,38 @@ export function createApp() {
                 routingRole: 'SUPPORTING'
               });
             }
+
+            // Cascade downward: inform the local MMDA desks in the report's region
+            // (FYI — no ownership) so national/regional intake reaches the ground.
+            for (const localDesk of routing.informed) {
+              InstitutionalInboxService.addRoute({
+                inboxItemId,
+                institutionId: instId,
+                deskId: localDesk.id,
+                routingRole: 'INFORMED'
+              });
+              try {
+                NotificationService.notifyDeskOfficers(instId, localDesk.id, {
+                  type: 'REPORT_FYI',
+                  title: `FYI: report in ${safeDistrict || safeRegion}`,
+                  message: `${finalTitle} — routed to ${desk?.name || 'the primary desk'}; your desk is informed.`,
+                  postId
+                });
+              } catch (fyiErr: any) {
+                logger.warn(`FYI cascade notification warning: ${fyiErr.message}`);
+              }
+            }
+
+            // Field reach: when the accountable desk is a local MMDA sub-unit,
+            // dispatch a desk-scoped alert so the officers on the ground are paged
+            // on the desk's own line rather than only through head office.
+            if (desk && ['METROPOLITAN', 'MUNICIPAL', 'DISTRICT'].includes(desk.level)) {
+              try {
+                await jobQueue.enqueue('DISPATCH_ALERT', { postId, institutionId: instId, deskId: desk.id });
+              } catch (deskAlertErr: any) {
+                logger.warn(`Desk alert queue warning: ${deskAlertErr.message}`);
+              }
+            }
           } catch (inbErr: any) {
             logger.warn(`Institutional inbox population warning: ${inbErr.message}`);
           }
@@ -2106,6 +2139,30 @@ export function createApp() {
           CitizenNotificationService.notifyRouted(postId, ownerInstitutionId);
         } catch (citizenErr: any) {
           logger.warn(`Citizen routing notification warning: ${citizenErr.message}`);
+        }
+      }
+
+      // A report routed to two or more institutions is a joint response by
+      // definition: open (or reuse) a coordination case so the agencies work from
+      // one shared record instead of three disconnected inbox items.
+      if (effectiveTags.length >= 2) {
+        try {
+          const caseResult = JointCaseService.autoOpenForReport({
+            postId,
+            institutionIds: effectiveTags.map((t) => t.institutionId || t.id),
+            title: finalTitle,
+            category: inferredCategory,
+            region: safeRegion,
+            district: safeDistrict,
+            summary: `Multi-agency report: ${effectiveTags.length} institutions routed.`,
+            priority: (urgency === 'CRITICAL' || severity === 'EMERGENCY') ? 'EMERGENCY'
+              : (urgency === 'HIGH' || severity === 'SEVERE') ? 'URGENT' : 'ELEVATED'
+          });
+          if (caseResult?.created) {
+            logger.info(`Auto-opened joint case ${caseResult.caseId} for report ${postId}`);
+          }
+        } catch (caseErr: any) {
+          logger.warn(`Joint case auto-open warning: ${caseErr.message}`);
         }
       }
 
@@ -4707,6 +4764,50 @@ export function createApp() {
     } catch (err: any) {
       logger.error(`SLA sweep error: ${err.message}`);
       res.status(500).json({ error: 'SLA sweep failed' });
+    }
+  });
+
+  // ADMIN COORDINATION ANALYTICS: the national supervision picture — the routing
+  // funnel per region, backlog by desk tier, MMDA coverage heat and delegation
+  // health. This is what lets a national body supervise regions, not just triage.
+  app.get('/api/admin/coordination/analytics', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      const region = (req.query.region as string) || undefined;
+      res.json({
+        funnel: CoordinationAnalyticsService.getRoutingFunnel({ region }),
+        backlog: CoordinationAnalyticsService.getBacklogByTier(),
+        coverage: CoordinationAnalyticsService.getCoverageHeat(),
+        delegations: CoordinationAnalyticsService.getDelegationHealth()
+      });
+    } catch (err: any) {
+      logger.error(`Coordination analytics error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to build coordination analytics' });
+    }
+  });
+
+  // ADMIN COORDINATION ANALYTICS: compact national roll-up for the overview tab.
+  app.get('/api/admin/coordination/analytics/summary', requireRole(['ADMIN', 'MODERATOR']), (req: AuthenticatedRequest, res) => {
+    try {
+      res.json(CoordinationAnalyticsService.getNationalSummary());
+    } catch (err: any) {
+      logger.error(`Coordination summary error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to build coordination summary' });
+    }
+  });
+
+  // INSTITUTION COORDINATION ANALYTICS: scoped to one institution's own desks,
+  // delegations and coverage, so a national desk can supervise its own regions.
+  app.get('/api/institutions/:id/coordination/analytics', requireAuth, requireInstitutionScope('id'), (req: AuthenticatedRequest, res) => {
+    try {
+      const institutionId = req.params.id;
+      res.json({
+        coverage: CoordinationAnalyticsService.getCoverageHeat(institutionId),
+        delegations: CoordinationAnalyticsService.getDelegationHealth({ institutionId }),
+        backlog: CoordinationAnalyticsService.getBacklogByTier()
+      });
+    } catch (err: any) {
+      logger.error(`Institution coordination analytics error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to build institution coordination analytics' });
     }
   });
 

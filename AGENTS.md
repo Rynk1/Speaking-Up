@@ -155,6 +155,48 @@ auto-escalates breached items up the desk hierarchy via `escalateInboxItem`, wit
 runs at `POST /api/admin/coordination/run-sla-sweep` (admin/moderator). Do not
 rebuild this — extend it.
 
+**Awareness cascades downward, ownership does not.** `resolveRoutingChain`
+returns `informed` local desks alongside `primary`/`chain`. Intake writes
+`PRIMARY` (one owner), `SUPPORTING` (the supervisory chain above), and
+`INFORMED` routes (sibling local MMDA desks in the same region, FYI only). An
+`INFORMED` route is awareness, never a second owner — the FYI notification is
+desk-scoped, and `informed` desks are excluded from the escalation ladder.
+
+**MMDA desks are reachable on the field channel.** `AlertOrchestrator` dispatches
+per desk: `resolveDeskChannel` prefers a verified `institution_channels` row for
+the desk's institution and otherwise falls back to the desk's `contact_phone`
+(SMS). Each attempt is recorded on `alert_attempts.desk_id`. The `DISPATCH_ALERT`
+worker (`server/jobs/workers/index.ts`) passes `deskId` through to
+`InstitutionAlertService.dispatchAlert`, so a local desk with only a phone number
+is still alerted directly.
+
+**Multi-agency reports open one joint case automatically.** When a report is
+routed to two or more institutions, intake calls
+`JointCaseService.autoOpenForReport`, which opens a `coordination_cases` row with
+the routing `primary` institution as `LEAD` and the rest as participants. It is
+idempotent per `post_id` — a re-run returns the existing case with
+`created: false` rather than opening a second one.
+
+**Delegation state is projected, not re-typed.** `delegationStatusForWorkItemState`
+and `workItemStateForDelegationStatus` in `shared/workflow.ts` are the single
+mapping between the work-item lifecycle and the delegation lifecycle. Both
+`InstitutionalInboxService.transitionItemState` (and its `syncMirrors`) and
+`CoordinationService.transitionDelegation` apply it, so advancing an inbox item
+moves its linked delegation (`ACKNOWLEDGED → ACCEPTED`, `RESOLVED → COMPLETED`)
+and vice versa without the two records drifting. Do not set `coordination_delegations.status`
+directly outside that mapping.
+
+**Coordination analytics are derived live.** `CoordinationAnalyticsService`
+builds the national supervision picture straight from the live tables — a
+per-region routing funnel (`reported → routed → acknowledged → in_review →
+responded → resolved` with median hours to ack/resolve), backlog by desk tier,
+MMDA coverage vs the 261-assembly register, and delegation health (acceptance /
+decline / completion rates, overdue pending, top receivers). Exposed at
+`GET /api/admin/coordination/analytics?region=` and a compact
+`GET /api/admin/coordination/analytics/summary`. The admin console's
+*Operations Queue* tab renders the funnel, backlog and coverage panels above the
+queue. Nothing is synthesised; empty state is rendered as empty.
+
 ## Gotchas
 
 - `users.password_hash` is `NOT NULL`. Use `INSERT OR REPLACE` with a `password_hash` when seeding users; a bare `INSERT OR IGNORE` without it is silently skipped, which then breaks any JOIN on `users` (e.g. desk-officer lookups returning empty).

@@ -739,6 +739,21 @@ export function initDatabase() {
     }
   }
 
+  // Safe ALTER migrations for alerts: record which desk an alert was dispatched
+  // to, so MMDA-level delivery can be audited per sub-unit rather than only per
+  // institution. NULL means the alert went to the institution as a whole.
+  const alertCols = [
+    { name: 'desk_id', type: 'TEXT' },
+    { name: 'channel_type', type: 'TEXT' }
+  ];
+  for (const col of alertCols) {
+    try {
+      db.exec(`ALTER TABLE alerts ADD COLUMN ${col.name} ${col.type}`);
+    } catch (e) {
+      // Column exists
+    }
+  }
+
   // Safe ALTER migrations for alert_attempts
   const attemptCols = [
     { name: 'provider_message_id', type: 'TEXT' },

@@ -16,12 +16,42 @@ import {
   checkCanResolve,
   checkCanHandoff,
   checkCanEscalate,
-  checkCanAssign
+  checkCanAssign,
+  delegationStatusForWorkItemState,
+  workItemStateForDelegationStatus
 } from '../shared/workflow';
 
 const app = createApp();
 
 describe('Unified workflow policy — pure rules', () => {
+  it('delegation and work-item states project onto each other consistently', () => {
+    // Advancing the work item moves the delegation, and vice versa.
+    expect(delegationStatusForWorkItemState('ACKNOWLEDGED')).toBe('ACCEPTED');
+    expect(delegationStatusForWorkItemState('UNDER_REVIEW')).toBe('ACCEPTED');
+    expect(delegationStatusForWorkItemState('RESOLVED')).toBe('COMPLETED');
+    expect(delegationStatusForWorkItemState('CITIZEN_FOLLOW_UP')).toBeNull();
+    expect(delegationStatusForWorkItemState('NEW')).toBeNull();
+
+    expect(workItemStateForDelegationStatus('ACCEPTED')).toBe('ACKNOWLEDGED');
+    expect(workItemStateForDelegationStatus('COMPLETED')).toBe('RESOLVED');
+    expect(workItemStateForDelegationStatus('DECLINED')).toBe('CITIZEN_FOLLOW_UP');
+    expect(workItemStateForDelegationStatus('PENDING')).toBe('NEW');
+
+    // Round-tripping an accepted/completed pair is stable.
+    expect(workItemStateForDelegationStatus(delegationStatusForWorkItemState('ACKNOWLEDGED')!)).toBe('ACKNOWLEDGED');
+    expect(workItemStateForDelegationStatus(delegationStatusForWorkItemState('RESOLVED')!)).toBe('RESOLVED');
+  });
+
+  it('the projected delegation transitions are all legal in the delegation policy', () => {
+    for (const state of ['ACKNOWLEDGED', 'UNDER_REVIEW', 'RESPONSE_PREPARED', 'PUBLIC_RESPONSE', 'ACTION_REPORTED', 'RESOLVED']) {
+      const target = delegationStatusForWorkItemState(state);
+      if (!target) continue;
+      // PENDING -> ACCEPTED and ACCEPTED -> COMPLETED are the only edges we emit.
+      const from = target === 'COMPLETED' ? 'ACCEPTED' : 'PENDING';
+      expect(canTransitionDelegation(from, target)).toBe(true);
+    }
+  });
+
   it('work-item lifecycle is forward-only', () => {
     expect(canTransitionWorkItem('NEW', 'SEEN')).toBe(true);
     expect(canTransitionWorkItem('ACKNOWLEDGED', 'UNDER_REVIEW')).toBe(true);

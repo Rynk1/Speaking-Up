@@ -332,8 +332,17 @@ export function syncSituationsAndInstitutionalInbox() {
   // 4. Sync Initial Official Announcements if empty
   const announcementCount = (db.prepare('SELECT COUNT(*) as count FROM institutional_announcements').get() as any)?.count || 0;
   if (announcementCount === 0) {
-    try {
-      InstitutionalAnnouncementService.createAnnouncement({
+    // Each announcement is seeded independently: a stale institution reference in
+    // one must not silently abort the rest.
+    const seedAnnouncement = (label: string, input: any) => {
+      try {
+        InstitutionalAnnouncementService.createAnnouncement(input);
+      } catch (e) {
+        console.error(`Error seeding announcement "${label}":`, e);
+      }
+    };
+
+    seedAnnouncement('GPS public safety advisory', {
         institutionId: 'ghana-police-service',
         authorId: 'user-current',
         authorName: 'ACP Kwesi Mensah',
@@ -350,10 +359,10 @@ export function syncSituationsAndInstitutionalInbox() {
         officialLinks: [
           { label: 'GPS Emergency Safety Portal', url: 'https://police.gov.gh/safety-advisory' }
         ]
-      });
+    });
 
-      InstitutionalAnnouncementService.createAnnouncement({
-        institutionId: 'ghana-highways-authority',
+    seedAnnouncement('GHA bridge resurfacing notice', {
+        institutionId: 'gha-roads',
         authorId: 'user-current',
         authorName: 'Ing. Christian Nti',
         authorTitle: 'Chief Executive, Ghana Highway Authority',
@@ -369,10 +378,10 @@ export function syncSituationsAndInstitutionalInbox() {
         officialLinks: [
           { label: 'GHA Maintenance Schedule', url: 'https://highways.gov.gh/notices/pokuase' }
         ]
-      });
+    });
 
-      InstitutionalAnnouncementService.createAnnouncement({
-        institutionId: 'ecg-power-ghana',
+    seedAnnouncement('ECG substation reinforcement notice', {
+        institutionId: 'ecg-ghana',
         authorId: 'user-current',
         authorName: 'Ing. Kwaku Obeng',
         authorTitle: 'Ashanti Metro Operations Director',
@@ -388,10 +397,7 @@ export function syncSituationsAndInstitutionalInbox() {
         officialLinks: [
           { label: 'ECG Power Reliability Outage Schedule', url: 'https://ecg.com.gh/outages/ashanti' }
         ]
-      });
-    } catch (e) {
-      console.error('Error seeding announcements:', e);
-    }
+    });
   }
 }
 

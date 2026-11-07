@@ -288,6 +288,173 @@ describe('Local Governance: national → regional → MMDA desk elevation', () =
     expect(empty.status).toBe(400);
   });
 
+  it('14. The routing chain cascades downward so local MMDA desks are informed', async () => {
+    const district = 'Accra Metropolitan';
+    const res = await request(app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${citizenToken}`)
+      .send({
+        title: `Cascade awareness report ${Date.now()}`,
+        content: 'Illegal dumping is recurring behind the Accra Metropolitan assembly offices.',
+        category: 'Sanitation & Waste',
+        urgency: 'NORMAL',
+        severity: 'MODERATE',
+        location: { region: 'Greater Accra', district },
+        institutionTags: [{ institutionId: 'ghana-police-service' }]
+      });
+    expect(res.status).toBe(201);
+
+    const item = db.prepare(`
+      SELECT * FROM institutional_inbox_items WHERE post_id = ? AND institution_id = 'ghana-police-service'
+    `).get(res.body.id) as any;
+    expect(item).toBeTruthy();
+
+    const routes = InstitutionalInboxService.listRoutes(item.id);
+    // The accountable desk owns the work exactly once.
+    expect(routes.filter((r) => r.routing_role === 'PRIMARY')).toHaveLength(1);
+    // The supervisory chain above is kept aware...
+    const supporting = routes.filter((r) => r.routing_role === 'SUPPORTING').map((r) => r.desk_level);
+    expect(supporting).toContain('REGIONAL');
+    expect(supporting).toContain('NATIONAL');
+    // ...and any sibling local desk in the region is informed (FYI), never a second owner.
+    for (const r of routes.filter((x) => x.routing_role === 'INFORMED')) {
+      expect(['METROPOLITAN', 'MUNICIPAL', 'DISTRICT']).toContain(r.desk_level);
+      expect(r.desk_id).not.toBe(item.desk_id);
+    }
+  });
+
+  it('15. An MMDA desk with a phone is alerted directly on that line', async () => {
+    const desk = CoordinationService.listDesks('ghana-police-service')
+      .find((d: any) => d.level === 'METROPOLITAN') as any;
+    expect(desk).toBeTruthy();
+
+    // Give the desk a field number but no channel row, to prove the SMS fallback.
+    db.prepare('UPDATE institution_desks SET contact_phone = ? WHERE id = ?').run('+233200000001', desk.id);
+
+    const res = await request(app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${citizenToken}`)
+      .send({
+        title: `Desk alert reach report ${Date.now()}`,
+        content: 'Streetlights are out along the main road in the Accra Metropolitan area.',
+        category: 'Security & Safety',
+        urgency: 'HIGH',
+        severity: 'SEVERE',
+        location: { region: 'Greater Accra', district: 'Accra Metropolitan' },
+        institutionTags: [{ institutionId: 'ghana-police-service' }]
+      });
+    expect(res.status).toBe(201);
+
+    // The background worker is not started under test, so exercise the real
+    // dispatch path directly, exactly as the worker would.
+    const { InstitutionAlertService } = await import('../server/alerts/alertEngine');
+    await InstitutionAlertService.dispatchAlert(res.body.id, 'ghana-police-service', desk.id);
+
+    const alert = db.prepare(`
+      SELECT * FROM alerts WHERE post_id = ? AND institution_id = 'ghana-police-service' AND desk_id = ?
+    `).get(res.body.id, desk.id) as any;
+    expect(alert).toBeTruthy();
+    expect(alert.channel_type).toBe('SMS');
+  });
+
+  it('16. Admin coordination analytics expose the national supervision picture', async () => {
+    const adminToken = token('admin-user-1', 'ADMIN', undefined, 'System Admin');
+    const res = await request(app)
+      .get('/api/admin/coordination/analytics')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+
+    expect(res.body.funnel).toBeTruthy();
+    expect(Array.isArray(res.body.funnel.regions)).toBe(true);
+    expect(res.body.funnel.totals).toHaveProperty('reported');
+
+    expect(res.body.backlog).toBeTruthy();
+    expect(Array.isArray(res.body.backlog.tiers)).toBe(true);
+
+    expect(res.body.coverage.totals.total).toBe(261);
+
+    expect(res.body.delegations).toBeTruthy();
+    expect(typeof res.body.delegations.acceptanceRate).toBe('number');
+  });
+
+  it('17. A multi-agency report auto-opens a joint coordination case, idempotently', async () => {
+    const res = await request(app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${citizenToken}`)
+      .send({
+        title: `Joint response report ${Date.now()}`,
+        content: 'A burst water main is flooding the road and the school; multiple agencies are needed.',
+        category: 'Flooding & Drainage',
+        urgency: 'CRITICAL',
+        severity: 'EMERGENCY',
+        location: { region: 'Greater Accra', district: 'Accra Metropolitan' },
+        institutionTags: [
+          { institutionId: 'ghana-police-service' },
+          { institutionId: 'ghs-health' }
+        ]
+      });
+    expect(res.status).toBe(201);
+
+    const cases = db.prepare('SELECT * FROM coordination_cases WHERE post_id = ?').all(res.body.id) as any[];
+    expect(cases).toHaveLength(1);
+    expect(cases[0].status).not.toBe('CLOSED');
+
+    const participants = db.prepare('SELECT * FROM coordination_case_participants WHERE case_id = ?').all(cases[0].id) as any[];
+    const institutionIds = participants.map((p) => p.institution_id);
+    expect(institutionIds).toContain('ghana-police-service');
+    expect(institutionIds).toContain('ghs-health');
+
+    // Re-running the auto-open for the same report must not create a second case.
+    const { JointCaseService } = await import('../server/modules/coordination/JointCaseService');
+    const again = JointCaseService.autoOpenForReport({
+      postId: res.body.id,
+      institutionIds: ['ghana-police-service', 'ghs-health'],
+      title: 'Re-run'
+    });
+    expect(again?.created).toBe(false);
+    expect(again?.caseId).toBe(cases[0].id);
+  });
+
+  it('18. Advancing a work item keeps its linked delegation in step', async () => {
+    const desk = CoordinationService.listDesks('ghana-police-service')
+      .find((d: any) => d.level === 'METROPOLITAN') as any;
+    const item = db.prepare(`
+      SELECT * FROM institutional_inbox_items
+      WHERE institution_id = 'ghana-police-service' AND action_state = 'NEW'
+        AND mirror_of_item_id IS NULL
+      ORDER BY created_at DESC LIMIT 1
+    `).get() as any;
+    expect(item).toBeTruthy();
+
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO coordination_delegations
+        (id, post_id, from_institution_id, to_institution_id, delegation_type, status, priority, reason, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'ESCALATION', 'PENDING', 'ELEVATED', 'test', ?, ?)
+    `).run('del-projection-test', item.post_id, 'ghs-health', 'ghana-police-service', now, now);
+    db.prepare('UPDATE institutional_inbox_items SET delegation_id = ? WHERE id = ?').run('del-projection-test', item.id);
+
+    const step = (targetState: string, notes?: string) =>
+      request(app)
+        .post(`/api/institutions/ghana-police-service/inbox/${item.id}/transition`)
+        .set('Authorization', `Bearer ${policeToken}`)
+        .send({ targetState, notes });
+
+    // NEW -> ACKNOWLEDGED accepts the delegation.
+    expect((await step('ACKNOWLEDGED')).status).toBe(200);
+    let delegation = db.prepare('SELECT * FROM coordination_delegations WHERE id = ?').get('del-projection-test') as any;
+    expect(delegation.status).toBe('ACCEPTED');
+
+    // Walk the legal path to RESOLVED and watch the delegation complete.
+    expect((await step('UNDER_REVIEW')).status).toBe(200);
+    expect((await step('PUBLIC_RESPONSE')).status).toBe(200);
+    expect((await step('RESOLVED', 'Resolved and verified on site.')).status).toBe(200);
+
+    delegation = db.prepare('SELECT * FROM coordination_delegations WHERE id = ?').get('del-projection-test') as any;
+    expect(delegation.status).toBe('COMPLETED');
+    expect(delegation.completed_at).toBeTruthy();
+  });
+
   it('13. The MMDA registry is the complete 261-assembly national register', () => {
     expect(MMDA_REGIONS).toHaveLength(16);
 
